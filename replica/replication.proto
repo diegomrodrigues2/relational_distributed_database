@@ -1,0 +1,31 @@
+// Definicoes de mensagens e servico para replicacao via gRPC
+// As mensagens sao simples para facilitar o entendimento.
+
+syntax = "proto3";
+package replication;
+
+// Requisicao contendo apenas a chave da operacao
+message KeyRequest {
+  string key = 1;
+}
+
+// Estrutura para enviar chave e valor de uma escrita
+message KeyValue {
+  string key = 1;
+  string value = 2;
+}
+
+// Resposta que devolve um valor, vazio caso nao encontrado
+message ValueResponse {
+  string value = 1;
+}
+
+// Mensagem vazia usada em operacoes sem retorno
+message Empty {}
+
+// Servico disponibilizado por cada seguidor
+service Replica {
+  rpc Put(KeyValue) returns (Empty);
+  rpc Delete(KeyRequest) returns (Empty);
+  rpc Get(KeyRequest) returns (ValueResponse);
+}
