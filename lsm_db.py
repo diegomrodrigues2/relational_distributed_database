@@ -4,7 +4,9 @@ from sstable import SSTableManager, TOMBSTONE
 from wal import WriteAheadLog
 
 class SimpleLSMDB:
+    """Banco de dados simples baseado em LSM."""
     def __init__(self, db_path: str = "simple_db_data", max_memtable_size: int = 1000):
+        """Inicializa estruturas e carrega dados do WAL."""
         self.db_path = db_path
         self.wal_file = os.path.join(self.db_path, "write_ahead_log.txt")
         self.sstable_dir = os.path.join(self.db_path, "sstables")
@@ -18,7 +20,7 @@ class SimpleLSMDB:
         print(f"\n--- Banco de Dados Iniciado em {self.db_path} ---")
 
     def _recover_from_wal(self):
-        """Recupera o estado do MemTable a partir do WAL após uma possível queda."""
+        """Recupera o MemTable a partir do WAL."""
         print("Iniciando recuperação do WAL...")
         wal_entries = self.wal.read_all()
         # Aplica as entradas do WAL no MemTable, garantindo a última escrita para cada chave
@@ -34,7 +36,7 @@ class SimpleLSMDB:
         print(f"Recuperação do WAL concluída. MemTable agora tem {len(self.memtable)} itens.")
 
     def _flush_memtable_to_sstable(self):
-        """Descarrega o MemTable para um novo SSTable e limpa o WAL."""
+        """Descarrega o MemTable para SSTable e limpa o WAL."""
         if not self.memtable:
             print("  FLUSH: MemTable está vazio, nada para descarregar.")
             return
@@ -59,6 +61,7 @@ class SimpleLSMDB:
         # self.sstable_manager.compact_segments() # Descomente para ver a compactação automática
 
     def put(self, key, value):
+        """Insere ou atualiza uma chave."""
         key = str(key)
         value = str(value)
         self.wal.append("PUT", key, value)
@@ -67,6 +70,7 @@ class SimpleLSMDB:
             self._flush_memtable_to_sstable()
 
     def get(self, key):
+        """Retorna o valor mais recente de uma chave."""
         key = str(key)
         print(f"\nGET: Buscando chave '{key}'")
         
@@ -95,6 +99,7 @@ class SimpleLSMDB:
         return None
 
     def delete(self, key):
+        """Marca uma chave como removida."""
         key = str(key)
         print(f"\nDELETE: Marcando chave '{key}' para exclusão.")
         self.wal.append("DELETE", key, TOMBSTONE)
@@ -103,7 +108,7 @@ class SimpleLSMDB:
             self._flush_memtable_to_sstable()
 
     def compact_all_data(self):
-        """Método público para forçar a compactação de todos os SSTables."""
+        """Força a compactação de todos os SSTables."""
         # Garante que qualquer coisa no memtable seja descarregada primeiro
         if len(self.memtable) > 0:
             print("\nCompactação Manual: Descarregando MemTable antes de compactar todos os SSTables.")
@@ -112,7 +117,7 @@ class SimpleLSMDB:
         self.sstable_manager.compact_segments()
 
     def close(self):
-        """Garanta que todos os dados do MemTable sejam descarregados antes de fechar."""
+        """Descarrega dados pendentes e fecha o BD."""
         if len(self.memtable) > 0:
             print("\nFechando DB: Descarregando MemTable restante...")
             self._flush_memtable_to_sstable()

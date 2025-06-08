@@ -110,6 +110,7 @@ class RBTree:
 
     # —— Busca ——
     def search(self, key):
+        """Busca chave e retorna valor."""
         x = self.root
         while x != self.NIL:
             if key == x.key:
@@ -119,18 +120,21 @@ class RBTree:
 
     # —— Traversal ordenado ——
     def _inorder(self, node, acc):
+        """Percorre em ordem recursivamente."""
         if node != self.NIL:
             self._inorder(node.left, acc)
             acc.append((node.key, node.value))
             self._inorder(node.right, acc)
 
     def inorder(self):
+        """Retorna itens em ordem de chave."""
         acc = []
         self._inorder(self.root, acc)
         return acc
 
     # —— Utilidades ——
     def __len__(self):
+        """Retorna o número de nós na árvore."""
         return self._size
 
 
@@ -138,27 +142,33 @@ class MemTable:
     """MemTable baseada em Red‑Black Tree (substitui o dicionário anterior)."""
 
     def __init__(self, max_size: int) -> None:
+        """Cria a estrutura em memória."""
         self._tree = RBTree()
         self.max_size = max_size
         print(f"MemTable (RBTree) inicializado — capacidade máxima {self.max_size} itens.")
 
     # API pública compatível
     def put(self, key, value):
+        """Insere ou atualiza um par chave-valor."""
         self._tree.insert(key, value)
 
     def get(self, key):
+        """Retorna valor associado à chave."""
         return self._tree.search(key)
 
     def is_full(self):
+        """Indica se atingiu a capacidade máxima."""
         return len(self._tree) >= self.max_size
 
     def clear(self):
+        """Remove todos os itens."""
         self._tree = RBTree()
         print("MemTable: Limpo.")
 
     def get_sorted_items(self):
-        """Retorna todos os pares (k, v) ordenados por chave para flush."""
+        """Retorna todos os pares ordenados por chave."""
         return self._tree.inorder()
 
     def __len__(self):
+        """Quantidade de itens armazenados."""
         return len(self._tree)
