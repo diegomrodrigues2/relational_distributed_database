@@ -4,6 +4,9 @@ import multiprocessing
 import grpc
 from lsm_db import SimpleLSMDB
 from replica.grpc_server import run_server
+from concurrent import futures
+import threading
+import time
 from replica import replication_pb2
 from replica import replication_pb2_grpc
 
@@ -12,8 +15,9 @@ class GRPCReplicaClient:
     """Cliente gRPC para interagir com uma réplica."""
 
     def __init__(self, host: str, port: int) -> None:
-        channel = grpc.insecure_channel(f"{host}:{port}")
-        self.stub = replication_pb2_grpc.ReplicaStub(channel)
+        self.channel = grpc.insecure_channel(f"{host}:{port}")
+        self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
+        self.hb_stub = replication_pb2_grpc.HeartbeatServiceStub(self.channel)
 
     def put(self, key, value):
         request = replication_pb2.KeyValue(key=key, value=value)
@@ -27,6 +31,31 @@ class GRPCReplicaClient:
         request = replication_pb2.KeyRequest(key=key)
         response = self.stub.Get(request)
         return response.value if response.value else None
+
+    def heartbeat(self, node_id: str):
+        """Envia mensagem de heartbeat para este nó."""
+        request = replication_pb2.Heartbeat(node_id=node_id)
+        self.hb_stub.Ping(request)
+
+    def close(self):
+        self.channel.close()
+
+
+def _start_leader_heartbeat_server(host: str, port: int, manager):
+    """Inicia um pequeno servidor gRPC para receber heartbeats dos seguidores."""
+
+    class LeaderHBServicer(replication_pb2_grpc.HeartbeatServiceServicer):
+        def Ping(self, request, context):
+            # Registra o horário do último heartbeat recebido de cada seguidor
+            manager.last_heartbeat_from[request.node_id] = time.time()
+            return replication_pb2.Empty()
+
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
+    replication_pb2_grpc.add_HeartbeatServiceServicer_to_server(LeaderHBServicer(), server)
+    server.add_insecure_port(f"{host}:{port}")
+    server.start()
+    print(f"Heartbeat server do líder escutando em {host}:{port}")
+    return server
 
 class ReplicationManager:
     """Gerencia um cluster com replicação assíncrona."""
@@ -47,14 +76,25 @@ class ReplicationManager:
         self._all_followers = []
         self._follower_processes = []
         base_port = 9000
+
+        # Porta usada para o servidor de heartbeat do líder
+        self.leader_hb_port = base_port + num_followers
+        self.last_heartbeat_from = {}
+        self._leader_hb_server = None
+        self._stopped = False
+
         for i in range(num_followers):
             follower_path = os.path.join(self.base_path, f"follower_{i}")
             port = base_port + i
-            p = multiprocessing.Process(target=run_server, args=(follower_path, 'localhost', port), daemon=True)
+            p = multiprocessing.Process(target=run_server, args=(follower_path, 'localhost', port, 'localhost', self.leader_hb_port, f'follower_{i}'), daemon=True)
             p.start()
             client = GRPCReplicaClient('localhost', port)
             self._all_followers.append(client)
             self._follower_processes.append(p)
+
+        # Servidor de heartbeat do líder é iniciado após os forks para evitar
+        # problemas de threads compartilhados pelo gRPC
+        self._leader_hb_server = _start_leader_heartbeat_server('localhost', self.leader_hb_port, self)
 
         # dá tempo para os servidores iniciarem
         import time
@@ -62,6 +102,17 @@ class ReplicationManager:
 
         # A lista `online_followers` contém os seguidores que estão ativos
         self.online_followers = list(self._all_followers)
+
+        # Inicia threads de heartbeat para monitorar seguidores
+        self._threads = []
+        for idx, follower in enumerate(self._all_followers):
+            t = threading.Thread(target=self._send_heartbeat_loop, args=(follower, idx))
+            t.start()
+            self._threads.append(t)
+
+        monitor = threading.Thread(target=self._monitor_followers)
+        monitor.start()
+        self._threads.append(monitor)
 
     def _replicate_operation(self, operation, key, value):
         """Replica a operação para seguidores online."""
@@ -139,7 +190,43 @@ class ReplicationManager:
 
     def shutdown(self):
         """Encerra todos os processos de seguidores."""
+        self._stopped = True
+        if hasattr(self, '_leader_hb_server'):
+            # Aguarda parada do servidor de heartbeat para evitar threads
+            # pendentes que podem causar falhas ao final dos testes
+            self._leader_hb_server.stop(0).wait()
+        # Aguarda termino das threads auxiliares
+        for t in getattr(self, '_threads', []):
+            t.join(timeout=1)
         for p in getattr(self, '_follower_processes', []):
             if p.is_alive():
                 p.terminate()
+            p.join()
+        for f in self._all_followers:
+            f.close()
+
+    # --- Métodos auxiliares para heartbeat ---
+    def _send_heartbeat_loop(self, follower, idx):
+        while not self._stopped:
+            try:
+                follower.heartbeat('leader')
+            except Exception as e:
+                print(f'Falha ao enviar heartbeat para seguidor {idx}: {e}')
+            time.sleep(1)
+
+    def _monitor_followers(self):
+        while not self._stopped:
+            time.sleep(2)
+            now = time.time()
+            for i, follower in enumerate(self._all_followers):
+                last = self.last_heartbeat_from.get(f'follower_{i}', 0)
+                if now - last > 3:
+                    if follower in self.online_followers:
+                        self.online_followers.remove(follower)
+                        print(f'Seguidor {i} considerado OFFLINE pelo heartbeat')
+                else:
+                    if follower not in self.online_followers:
+                        self.online_followers.append(follower)
+                        print(f'Seguidor {i} voltou ONLINE pelo heartbeat')
+
 

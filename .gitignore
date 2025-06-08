@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.swp
+.eggs/
+build/
+dist/
+*.egg-info/
+
+# Protobuf generated files
+replica/replication_pb2.py
+replica/replication_pb2_grpc.py
+
+# Env
+.env
+*.db
+

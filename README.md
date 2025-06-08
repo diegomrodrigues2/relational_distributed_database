@@ -14,7 +14,14 @@ O script inicializa um pequeno cluster, grava uma chave e exibe a leitura do lí
 
 Os arquivos de definição do gRPC encontram-se no diretório `replica/`.
 
+## Heartbeat
+
+O gerenciador implementa um mecanismo simples de heartbeat para detectar falhas.
+Cada seguidor executa um pequeno servidor gRPC que recebe `Ping` do líder e também envia heartbeats periodicamente.
+Se um lado deixar de receber heartbeats por alguns segundos, o nó é considerado offline.
+
 ## Rodando os testes
+
 
 Os testes unitários ficam no diretório `tests`. Para executá-los utilize:
 
