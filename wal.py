@@ -21,7 +21,7 @@ class WriteAheadLog(object):
         timestamp = int(time.time() * 1000) # ms
         entry = f"{timestamp}|{entry_type}|{key}|{value}"
         with open(self.wal_file_path, 'a') as file:
-            file.write(entry)
+            file.write(entry + "\n")
 
     def read_all(self):
         """Lê todas as entradas do WAL (para recuperação de falhas)."""
