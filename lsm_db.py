@@ -1,0 +1,119 @@
+import os
+from mem_table import MemTable
+from sstable import SSTableManager, TOMBSTONE
+from wal import WriteAheadLog
+
+class SimpleLSMDB:
+    def __init__(self, db_path: str = "simple_db_data", max_memtable_size: int = 1000):
+        self.db_path = db_path
+        self.wal_file = os.path.join(self.db_path, "write_ahead_log.txt")
+        self.sstable_dir = os.path.join(self.db_path, "sstables")
+
+        os.makedirs(self.sstable_dir, exist_ok=True)
+
+        self.memtable = MemTable(max_memtable_size)
+        self.wal = WriteAheadLog(self.wal_file)
+        self.sstable_manager = SSTableManager(self.sstable_dir)
+        self._recover_from_wal()
+        print(f"\n--- Banco de Dados Iniciado em {self.db_path} ---")
+
+    def _recover_from_wal(self):
+        """Recupera o estado do MemTable a partir do WAL após uma possível queda."""
+        print("Iniciando recuperação do WAL...")
+        wal_entries = self.wal.read_all()
+        # Aplica as entradas do WAL no MemTable, garantindo a última escrita para cada chave
+        for _, entry_type, key, value in wal_entries:
+            # Em uma recuperação real, você também precisaria verificar se o SSTable mais recente
+            # já contém essa entrada para evitar reprocessar dados já persistidos.
+            # Para simplicidade didática, assumimos que o WAL contém apenas dados que ainda
+            # não foram descarregados para o SSTable.
+            if entry_type == "PUT":
+                self.memtable.put(key, value)
+            elif entry_type == "DELETE":
+                self.memtable.put(key, TOMBSTONE) # DELETE é um PUT de um TOMBSTONE
+        print(f"Recuperação do WAL concluída. MemTable agora tem {len(self.memtable)} itens.")
+
+    def _flush_memtable_to_sstable(self):
+        """Descarrega o MemTable para um novo SSTable e limpa o WAL."""
+        if not self.memtable:
+            print("  FLUSH: MemTable está vazio, nada para descarregar.")
+            return
+
+        print("  FLUSH: MemTable cheio ou trigger de flush manual. Descarregando para SSTable...")
+        
+        # Prepara os dados para o SSTable (ordenados por chave)
+        sorted_data = self.memtable.get_sorted_items()
+        
+        # Escreve o SSTable
+        self.sstable_manager.write_sstable(sorted_data)
+        
+        # Limpa o MemTable e o WAL (os dados agora estão em disco)
+        self.memtable.clear()
+        self.wal.clear()
+        print("  FLUSH: MemTable descarregado e WAL limpo.")
+        
+        # DISCUSSÃO SOBRE COMPACTAÇÃO:
+        # A compactação deve ser assíncrona em um BD real.
+        # Por simplicidade didática, vamos chamá-la de forma síncrona aqui,
+        # mas na prática, seria um thread ou processo em segundo plano.
+        # self.sstable_manager.compact_segments() # Descomente para ver a compactação automática
+
+    def put(self, key, value):
+        key = str(key)
+        value = str(value)
+        self.wal.append("PUT", key, value)
+        self.memtable.put(key, value)
+        if self.memtable.is_full():
+            self._flush_memtable_to_sstable()
+
+    def get(self, key):
+        key = str(key)
+        print(f"\nGET: Buscando chave '{key}'")
+        
+        # 1. Tenta encontrar no MemTable (mais recente)
+        value = self.memtable.get(key)
+        if value is not None:
+            if value == TOMBSTONE:
+                print(f"GET: '{key}' encontrado como TOMBSTONE no MemTable. Não existe.")
+                return None
+            print(f"GET: '{key}' encontrado no MemTable.")
+            return value
+
+        # 2. Se não encontrado, procura nos SSTables, do mais novo para o mais antigo
+        # Percorre a lista de SSTables do mais novo para o mais antigo
+        # (A lista sstable_segments é ordenada do mais antigo para o mais novo, então invertemos)
+        for sstable_entry in reversed(self.sstable_manager.sstable_segments):
+            value = self.sstable_manager.get_from_sstable(sstable_entry, key)
+            if value is not None:
+                if value == TOMBSTONE:
+                    print(f"GET: '{key}' encontrado como TOMBSTONE em SSTable. Não existe.")
+                    return None
+                print(f"GET: '{key}' encontrado em SSTable.")
+                return value
+            
+        print(f"GET: Chave '{key}' não encontrada em nenhum lugar.")
+        return None
+
+    def delete(self, key):
+        key = str(key)
+        print(f"\nDELETE: Marcando chave '{key}' para exclusão.")
+        self.wal.append("DELETE", key, TOMBSTONE)
+        self.memtable.put(key, TOMBSTONE) # Marca no MemTable como tombstone
+        if self.memtable.is_full():
+            self._flush_memtable_to_sstable()
+
+    def compact_all_data(self):
+        """Método público para forçar a compactação de todos os SSTables."""
+        # Garante que qualquer coisa no memtable seja descarregada primeiro
+        if len(self.memtable) > 0:
+            print("\nCompactação Manual: Descarregando MemTable antes de compactar todos os SSTables.")
+            self._flush_memtable_to_sstable()
+        
+        self.sstable_manager.compact_segments()
+
+    def close(self):
+        """Garanta que todos os dados do MemTable sejam descarregados antes de fechar."""
+        if len(self.memtable) > 0:
+            print("\nFechando DB: Descarregando MemTable restante...")
+            self._flush_memtable_to_sstable()
+        print("--- Banco de Dados Fechado ---")
