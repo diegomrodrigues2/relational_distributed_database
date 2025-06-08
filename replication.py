@@ -1,6 +1,36 @@
 import os
 import shutil
+import multiprocessing
+import urllib.request
+import urllib.parse
 from lsm_db import SimpleLSMDB, TOMBSTONE
+from replica_server import run_server
+
+
+class HTTPReplicaClient:
+    """Cliente simples para interagir com um replica_server."""
+
+    def __init__(self, host: str, port: int) -> None:
+        self.base = f"http://{host}:{port}"
+
+    def put(self, key, value):
+        params = urllib.parse.urlencode({"key": key, "value": value})
+        url = f"{self.base}/put?{params}"
+        req = urllib.request.Request(url, method="POST")
+        urllib.request.urlopen(req)
+
+    def delete(self, key):
+        params = urllib.parse.urlencode({"key": key})
+        url = f"{self.base}/delete?{params}"
+        req = urllib.request.Request(url, method="POST")
+        urllib.request.urlopen(req)
+
+    def get(self, key):
+        params = urllib.parse.urlencode({"key": key})
+        url = f"{self.base}/get?{params}"
+        with urllib.request.urlopen(url) as resp:
+            data = resp.read().decode()
+        return data if data else None
 
 class ReplicationManager:
     """
@@ -19,12 +49,22 @@ class ReplicationManager:
         leader_path = os.path.join(self.base_path, "leader")
         self.leader = SimpleLSMDB(db_path=leader_path)
         
-        # 2. Inicializar os Seguidores
+        # 2. Inicializar os Seguidores em processos separados
         self._all_followers = []
+        self._follower_processes = []
+        base_port = 9000
         for i in range(num_followers):
             follower_path = os.path.join(self.base_path, f"follower_{i}")
-            follower_instance = SimpleLSMDB(db_path=follower_path)
-            self._all_followers.append(follower_instance)
+            port = base_port + i
+            p = multiprocessing.Process(target=run_server, args=(follower_path, 'localhost', port), daemon=True)
+            p.start()
+            client = HTTPReplicaClient('localhost', port)
+            self._all_followers.append(client)
+            self._follower_processes.append(p)
+
+        # dá tempo para os servidores iniciarem
+        import time
+        time.sleep(1)
 
         # A lista `online_followers` contém os seguidores que estão ativos
         self.online_followers = list(self._all_followers)
@@ -111,4 +151,10 @@ class ReplicationManager:
                 print(f"\n*** SIMULAÇÃO: Seguidor {follower_id} está agora ONLINE. Ele pode ter dados desatualizados. ***")
             else:
                 print(f"\n*** SIMULAÇÃO: Seguidor {follower_id} já estava online. ***")
+
+    def shutdown(self):
+        """Encerra todos os processos de seguidores."""
+        for p in getattr(self, '_follower_processes', []):
+            if p.is_alive():
+                p.terminate()
 
