@@ -1,36 +1,38 @@
 # py_distributed_database
 
-Este projeto demonstra de forma simplificada um banco de dados baseado em **Log-Structured Merge Tree (LSM)** com replicação assíncrona. A comunicação entre nós utiliza **gRPC** para reduzir a latência. O código implementa conceitos de WAL, MemTable, SSTables e compactação, além de um gerenciador de réplica com um líder e seguidores que podem ficar offline.
+Este projeto demonstra uma implementação simplificada de um banco de dados distribuído em Python. A combinação de uma LSM Tree local e a replicação assíncrona entre nós usando gRPC ilustra conceitos presentes em sistemas de banco de dados modernos.
 
-## Como executar
+## Principais componentes
 
-O projeto utiliza Python 3 e requer as bibliotecas `grpcio` e `grpcio-tools` listadas em `requirements.txt`. Para ver um exemplo rápido de uso, execute:
+- **Write-Ahead Log (WAL)** – registra cada operação de escrita antes que seja aplicada, garantindo durabilidade.
+- **MemTable** – estrutura em memória baseada em Árvore Rubro-Negra para inserções e leituras rápidas.
+- **SSTables** – arquivos ordenados e imutáveis no disco que armazenam os dados de forma permanente, incluindo tombstones para deleções.
+- **Compactação** – mescla SSTables mais antigas, removendo registros obsoletos e otimizando a leitura.
+- **Replicador líder-seguidor** – o líder recebe as escritas e as propaga para os seguidores por gRPC sem esperar confirmação (replicação assíncrona).
+- **Heartbeat** – monitora a disponibilidade dos nós e desconecta seguidores inativos.
 
-```bash
-python main.py
-```
+## Executando
 
-O script inicializa um pequeno cluster, grava uma chave e exibe a leitura do líder e de um seguidor.
+1. Instale as dependências:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Rode o exemplo principal:
+   ```bash
+   python main.py
+   ```
+   O script inicializa um pequeno cluster com um líder e dois seguidores, grava uma chave e realiza a leitura no líder e em um dos seguidores para evidenciar a replicação.
 
-Os arquivos de definição do gRPC encontram-se no diretório `replica/`.
+## Testes
 
-## Heartbeat
-
-O gerenciador implementa um mecanismo simples de heartbeat para detectar falhas.
-Cada seguidor executa um pequeno servidor gRPC que recebe `Ping` do líder e também envia heartbeats periodicamente.
-Se um lado deixar de receber heartbeats por alguns segundos, o nó é considerado offline.
-
-## Rodando os testes
-
-
-Os testes unitários ficam no diretório `tests`. Para executá-los utilize:
-
+Para rodar a bateria de testes unitários:
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-## Requisitos
+## Estrutura dos arquivos
 
-- Python 3.x
-- grpcio
-- grpcio-tools
+- `main.py` – exemplo de inicialização do `ReplicationManager`.
+- `lsm_db.py`, `mem_table.py`, `wal.py` e `sstable.py` – compõem a LSM Tree.
+- `replication.py` e diretório `replica/` – implementação do cluster e serviços gRPC.
+- `tests/` – testes unitários do projeto.
