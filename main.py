@@ -72,7 +72,8 @@ def test_replication():
     final_val_f1 = cluster.get("user:123:name", read_from_leader=False, follower_id=1)
     print(f"\nVerificação final do Seguidor 1 para 'user:123:name': {final_val_f1}")
     assert final_val_f1 == "Alice"
-    print("\nSimulação concluída com sucesso!")    
+    print("\nSimulação concluída com sucesso!")
+    cluster.shutdown()
 
 
 def test_simple_lsm_database():
