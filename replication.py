@@ -1,40 +1,32 @@
 import os
 import shutil
 import multiprocessing
-import urllib.request
-import urllib.parse
-from lsm_db import SimpleLSMDB, TOMBSTONE
-from replica_server import run_server
+import grpc
+from lsm_db import SimpleLSMDB
+from replica.grpc_server import run_server
+from replica import replication_pb2
+from replica import replication_pb2_grpc
 
 
-class HTTPReplicaClient:
-    """Cliente simples para interagir com um replica_server."""
+class GRPCReplicaClient:
+    """Cliente gRPC para interagir com uma réplica."""
 
     def __init__(self, host: str, port: int) -> None:
-        """Configura o endereço base do servidor."""
-        self.base = f"http://{host}:{port}"
+        channel = grpc.insecure_channel(f"{host}:{port}")
+        self.stub = replication_pb2_grpc.ReplicaStub(channel)
 
     def put(self, key, value):
-        """Envia PUT ao servidor."""
-        params = urllib.parse.urlencode({"key": key, "value": value})
-        url = f"{self.base}/put?{params}"
-        req = urllib.request.Request(url, method="POST")
-        urllib.request.urlopen(req)
+        request = replication_pb2.KeyValue(key=key, value=value)
+        self.stub.Put(request)
 
     def delete(self, key):
-        """Envia DELETE ao servidor."""
-        params = urllib.parse.urlencode({"key": key})
-        url = f"{self.base}/delete?{params}"
-        req = urllib.request.Request(url, method="POST")
-        urllib.request.urlopen(req)
+        request = replication_pb2.KeyRequest(key=key)
+        self.stub.Delete(request)
 
     def get(self, key):
-        """Executa GET no servidor."""
-        params = urllib.parse.urlencode({"key": key})
-        url = f"{self.base}/get?{params}"
-        with urllib.request.urlopen(url) as resp:
-            data = resp.read().decode()
-        return data if data else None
+        request = replication_pb2.KeyRequest(key=key)
+        response = self.stub.Get(request)
+        return response.value if response.value else None
 
 class ReplicationManager:
     """Gerencia um cluster com replicação assíncrona."""
@@ -60,7 +52,7 @@ class ReplicationManager:
             port = base_port + i
             p = multiprocessing.Process(target=run_server, args=(follower_path, 'localhost', port), daemon=True)
             p.start()
-            client = HTTPReplicaClient('localhost', port)
+            client = GRPCReplicaClient('localhost', port)
             self._all_followers.append(client)
             self._follower_processes.append(p)
 

@@ -1,16 +1,18 @@
 # py_distributed_database
 
-Este projeto demonstra de forma simplificada um banco de dados baseado em **Log-Structured Merge Tree (LSM)** com replicação assíncrona. O código implementa conceitos de WAL, MemTable, SSTables e compactação, além de um gerenciador de réplica com um líder e seguidores que podem ficar offline.
+Este projeto demonstra de forma simplificada um banco de dados baseado em **Log-Structured Merge Tree (LSM)** com replicação assíncrona. A comunicação entre nós utiliza **gRPC** para reduzir a latência. O código implementa conceitos de WAL, MemTable, SSTables e compactação, além de um gerenciador de réplica com um líder e seguidores que podem ficar offline.
 
 ## Como executar
 
-O projeto utiliza apenas Python 3, sem dependências externas. Para ver um exemplo rápido de uso, execute:
+O projeto utiliza Python 3 e requer as bibliotecas `grpcio` e `grpcio-tools` listadas em `requirements.txt`. Para ver um exemplo rápido de uso, execute:
 
 ```bash
 python main.py
 ```
 
 O script inicializa um pequeno cluster, grava uma chave e exibe a leitura do líder e de um seguidor.
+
+Os arquivos de definição do gRPC encontram-se no diretório `replica/`.
 
 ## Rodando os testes
 
@@ -22,4 +24,6 @@ python -m unittest discover -s tests -v
 
 ## Requisitos
 
-- Python 3.x (bibliotecas padrão)
+- Python 3.x
+- grpcio
+- grpcio-tools
