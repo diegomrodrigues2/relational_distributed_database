@@ -1,4 +1,5 @@
 import os
+import threading
 from mem_table import MemTable
 from sstable import SSTableManager, TOMBSTONE
 from wal import WriteAheadLog
@@ -16,8 +17,27 @@ class SimpleLSMDB:
         self.memtable = MemTable(max_memtable_size)
         self.wal = WriteAheadLog(self.wal_file)
         self.sstable_manager = SSTableManager(self.sstable_dir)
+        self._compaction_thread = None
         self._recover_from_wal()
         print(f"\n--- Banco de Dados Iniciado em {self.db_path} ---")
+
+    def _start_compaction_async(self):
+        """Inicia a compactação em uma thread de forma assíncrona."""
+        if self._compaction_thread and self._compaction_thread.is_alive():
+            return
+
+        def _run():
+            self.sstable_manager.compact_segments()
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        self._compaction_thread = t
+
+    def wait_for_compaction(self):
+        """Aguarda qualquer compactação assíncrona finalizar."""
+        if self._compaction_thread:
+            self._compaction_thread.join()
+            self._compaction_thread = None
 
     def _recover_from_wal(self):
         """Recupera o MemTable a partir do WAL."""
@@ -53,12 +73,12 @@ class SimpleLSMDB:
         self.memtable.clear()
         self.wal.clear()
         print("  FLUSH: MemTable descarregado e WAL limpo.")
+
+        # Inicia compactação de forma assíncrona
+        self._start_compaction_async()
         
         # DISCUSSÃO SOBRE COMPACTAÇÃO:
-        # A compactação deve ser assíncrona em um BD real.
-        # Por simplicidade didática, vamos chamá-la de forma síncrona aqui,
-        # mas na prática, seria um thread ou processo em segundo plano.
-        # self.sstable_manager.compact_segments() # Descomente para ver a compactação automática
+        # A compactação agora é executada assíncronamente em _start_compaction_async.
 
     def put(self, key, value):
         """Insere ou atualiza uma chave."""
@@ -113,7 +133,12 @@ class SimpleLSMDB:
         if len(self.memtable) > 0:
             print("\nCompactação Manual: Descarregando MemTable antes de compactar todos os SSTables.")
             self._flush_memtable_to_sstable()
-        
+            # Aguarda a compactação automática disparada pelo flush
+            self.wait_for_compaction()
+
+        # Garante que não há compacções em andamento antes da manual
+        self.wait_for_compaction()
+
         self.sstable_manager.compact_segments()
 
     def close(self):
@@ -121,4 +146,6 @@ class SimpleLSMDB:
         if len(self.memtable) > 0:
             print("\nFechando DB: Descarregando MemTable restante...")
             self._flush_memtable_to_sstable()
+        # Garante que a compactação assíncrona termine antes de fechar
+        self.wait_for_compaction()
         print("--- Banco de Dados Fechado ---")
