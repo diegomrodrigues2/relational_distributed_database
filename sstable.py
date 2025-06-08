@@ -119,7 +119,7 @@ class SSTableManager:
                 if current_key == key:
                     if value == TOMBSTONE:
                         print(f"  SSTableManager: Encontrado tombstone para '{key}'.")
-                        return None # Chave foi deletada
+                        return TOMBSTONE # Chave foi deletada
                     print(f"  SSTableManager: '{key}' encontrado em {os.path.basename(sstable_path)}.")
                     return value
                 elif current_key > key:
