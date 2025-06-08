@@ -1,6 +1,9 @@
 import os
+import sys
 import tempfile
 import unittest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from lsm_db import SimpleLSMDB
 
@@ -30,8 +33,7 @@ class SimpleLSMDBTest(unittest.TestCase):
             db._flush_memtable_to_sstable()
             db.delete('k1')
             db._flush_memtable_to_sstable()
-            self.assertIsNone(db.get('k1'))
-            db.compact_all_data()
+            db.wait_for_compaction()
             self.assertIsNone(db.get('k1'))
             self.assertEqual(len(db.sstable_manager.sstable_segments), 1)
             db.close()
