@@ -23,9 +23,19 @@ message ValueResponse {
 // Mensagem vazia usada em operacoes sem retorno
 message Empty {}
 
+// Mensagem simples para o mecanismo de heartbeat
+message Heartbeat {
+  string node_id = 1;
+}
+
 // Servico disponibilizado por cada seguidor
 service Replica {
   rpc Put(KeyValue) returns (Empty);
   rpc Delete(KeyRequest) returns (Empty);
   rpc Get(KeyRequest) returns (ValueResponse);
+}
+
+// Servico dedicado para heartbeat
+service HeartbeatService {
+  rpc Ping(Heartbeat) returns (Empty);
 }
