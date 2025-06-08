@@ -76,9 +76,6 @@ class SimpleLSMDB:
 
         # Inicia compactação de forma assíncrona
         self._start_compaction_async()
-        
-        # DISCUSSÃO SOBRE COMPACTAÇÃO:
-        # A compactação agora é executada assíncronamente em _start_compaction_async.
 
     def put(self, key, value):
         """Insere ou atualiza uma chave."""
