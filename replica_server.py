@@ -5,7 +5,9 @@ from lsm_db import SimpleLSMDB
 db_instance = None
 
 class DBRequestHandler(BaseHTTPRequestHandler):
+    """Manipula requisições HTTP do banco."""
     def do_GET(self):
+        """Processa requisições GET."""
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == '/get':
             params = urllib.parse.parse_qs(parsed.query)
@@ -24,6 +26,7 @@ class DBRequestHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
+        """Processa requisições POST."""
         parsed = urllib.parse.urlparse(self.path)
         params = urllib.parse.parse_qs(parsed.query)
         if parsed.path == '/put':
@@ -48,6 +51,7 @@ class DBRequestHandler(BaseHTTPRequestHandler):
 
 
 def run_server(db_path, host='localhost', port=8000):
+    """Inicializa servidor HTTP para uma réplica."""
     global db_instance
     db_instance = SimpleLSMDB(db_path=db_path)
     server = HTTPServer((host, port), DBRequestHandler)

@@ -11,21 +11,25 @@ class HTTPReplicaClient:
     """Cliente simples para interagir com um replica_server."""
 
     def __init__(self, host: str, port: int) -> None:
+        """Configura o endereço base do servidor."""
         self.base = f"http://{host}:{port}"
 
     def put(self, key, value):
+        """Envia PUT ao servidor."""
         params = urllib.parse.urlencode({"key": key, "value": value})
         url = f"{self.base}/put?{params}"
         req = urllib.request.Request(url, method="POST")
         urllib.request.urlopen(req)
 
     def delete(self, key):
+        """Envia DELETE ao servidor."""
         params = urllib.parse.urlencode({"key": key})
         url = f"{self.base}/delete?{params}"
         req = urllib.request.Request(url, method="POST")
         urllib.request.urlopen(req)
 
     def get(self, key):
+        """Executa GET no servidor."""
         params = urllib.parse.urlencode({"key": key})
         url = f"{self.base}/get?{params}"
         with urllib.request.urlopen(url) as resp:
@@ -33,11 +37,9 @@ class HTTPReplicaClient:
         return data if data else None
 
 class ReplicationManager:
-    """
-    Gerencia um cluster com um líder e múltiplos seguidores,
-    implementando replicação assíncrona.
-    """
+    """Gerencia um cluster com replicação assíncrona."""
     def __init__(self, base_path: str = "base_path", num_followers: int = 2) -> None:
+        """Cria líder e seguidores para o cluster."""
         print(f"--- Iniciando Gerenciador de Replicação com {num_followers} seguidores ---")
         self.base_path = base_path
         # Garante um ambiente limpo para o teste
@@ -70,10 +72,7 @@ class ReplicationManager:
         self.online_followers = list(self._all_followers)
 
     def _replicate_operation(self, operation, key, value):
-        """
-        Envia a operação para todos os seguidores online.
-        Em um sistema real, isso seria uma chamada de rede não bloqueante.
-        """
+        """Replica a operação para seguidores online."""
         print(f"  REPLICATING: Enviando '{operation}({key})' para {len(self.online_followers)} seguidores online.")
         for i, follower in enumerate(self.online_followers):
             try:
@@ -86,10 +85,7 @@ class ReplicationManager:
                 print(f"    -> FALHA na réplica para Seguidor {i}: {e}")
 
     def put(self, key, value):
-        """
-        Ponto de entrada para escritas. A operação é enviada ao líder
-        e depois replicada assincronamente.
-        """
+        """Escreve no líder e replica a operação."""
         print(f"\n>>> MANAGER: Recebido PUT('{key}', '{value}')")
         
         # 1. Escreve no líder. Esta é a única operação que o cliente espera.
@@ -103,7 +99,7 @@ class ReplicationManager:
         return "OK (acknowledged by leader)"
 
     def delete(self, key):
-        """Ponto de entrada para exclusões."""
+        """Exclui chave via líder e replica."""
         print(f"\n>>> MANAGER: Recebido DELETE('{key}')")
         self.leader.delete(key)
         print(">>> MANAGER: Exclusão no Líder concluída e confirmada.")
@@ -112,10 +108,7 @@ class ReplicationManager:
         return "OK (acknowledged by leader)"
 
     def get(self, key, read_from_leader=True, follower_id=0):
-        """
-        Ponto de entrada para leituras. Pode ler do líder ou de um seguidor.
-        Ler de um seguidor pode retornar dados desatualizados (stale data).
-        """
+        """Lê chave do líder ou de um seguidor."""
         if read_from_leader:
             print(f"\n>>> MANAGER: Lendo '{key}' do LÍDER.")
             return self.leader.get(key)
@@ -143,7 +136,7 @@ class ReplicationManager:
                 print(f"\n*** SIMULAÇÃO: Seguidor {follower_id} já estava offline. ***")
     
     def bring_follower_online(self, follower_id):
-        """Simula a volta de um seguidor (sem recuperação de dados perdidos)."""
+        """Reativa um seguidor sem recuperar dados."""
         if follower_id < len(self._all_followers):
             follower_to_enable = self._all_followers[follower_id]
             if follower_to_enable not in self.online_followers:

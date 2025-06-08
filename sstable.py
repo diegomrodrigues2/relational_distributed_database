@@ -5,6 +5,7 @@ SSTABLE_SPARSE_INDEX_INTERVAL = 100 # Intervalo para o índice esparso (a cada 1
 TOMBSTONE = "__TOMBSTONE__" # Marcador para exclusão
 
 def bisect_left(array, value):
+    """Retorna o índice de inserção ordenada."""
     left = 0
     right = len(array)
 
@@ -21,6 +22,7 @@ def bisect_left(array, value):
 class SSTableManager:
 
     def __init__(self, sstable_dir: str) -> None:
+        """Gerencia arquivos SSTable no disco."""
         self.sstable_dir = sstable_dir
         self.sstable_segments = []
 
@@ -28,7 +30,7 @@ class SSTableManager:
         print(f"SSTableManager inicializado. {len(self.sstable_segments)} SSTables existentes carregados.")
 
     def _load_existing_sstables(self):
-        """Carrega todos os SSTables existentes e seus índices esparsos na inicialização."""
+        """Carrega SSTables existentes e seus índices."""
         files = sorted(os.listdir(self.sstable_dir))
         for filename in files:
             if filename.endswith(".txt"):
@@ -46,7 +48,7 @@ class SSTableManager:
         print(f"  SSTableManager: Carregou {len(self.sstable_segments)} SSTables do disco.")
 
     def _build_sparse_index(self, sstable_path):
-        """Cria um índice esparso para um SSTable."""
+        """Cria índice esparso para um SSTable."""
         sparse_index = []
         with open(sstable_path, 'r') as file:
             offset = 0
@@ -64,6 +66,7 @@ class SSTableManager:
         return sparse_index
     
     def write_sstable(self, sorted_items):
+        """Escreve itens ordenados em novo SSTable."""
         timestamp = int(time.time() * 1000)
         sstable_filename = f"sstable_{timestamp}.txt"
         sstable_path = os.path.join(self.sstable_dir, sstable_filename)
@@ -80,10 +83,7 @@ class SSTableManager:
         return sstable_path
 
     def get_from_sstable(self, sstable_entry, key):
-        """
-        Procura uma chave em um SSTable específico.
-        Usa o índice esparso para pular para a região correta.
-        """
+        """Busca chave em um SSTable usando o índice esparso."""
         _, sstable_path, sparse_index = sstable_entry
         print(f"  SSTableManager: Buscando '{key}' em {os.path.basename(sstable_path)}...")
 
@@ -131,11 +131,7 @@ class SSTableManager:
         return None
 
     def compact_segments(self):
-        """
-        Compacta e funde segmentos de SSTable.
-        Para fins didáticos, vamos compactar todos os SSTables existentes em um novo.
-        Em um sistema real, haveria estratégias mais complexas (size-tiered, leveled).
-        """
+        """Compacta todos os SSTables em um novo."""
         if len(self.sstable_segments) <= 1:
             print("  SSTableManager: Não há segmentos suficientes para compactar.")
             return
