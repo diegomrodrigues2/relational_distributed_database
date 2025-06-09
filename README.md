@@ -11,6 +11,7 @@ Este projeto demonstra uma implementação simplificada de um banco de dados dis
 - **Replicador líder-seguidor** – o líder recebe as escritas e as propaga para os seguidores por gRPC sem esperar confirmação (replicação assíncrona).
 - **Heartbeat com failover sequencial** – monitora a disponibilidade dos nós e promove o próximo seguidor se o líder falhar.
 - **Encerramento limpo** – o cluster pode ser iniciado e finalizado repetidamente sem deixar processos órfãos.
+- **Driver** – interface opcional que direciona leituras de forma a garantir "read-your-own-writes" e leituras monotônicas para cada usuário.
 
 ## Executando
 
@@ -24,6 +25,18 @@ Este projeto demonstra uma implementação simplificada de um banco de dados dis
    ```
    O script inicializa um pequeno cluster com um líder e dois seguidores, grava uma chave e realiza a leitura no líder e em um dos seguidores para evidenciar a replicação.
 Para simular failover automatico, invoque `cluster.simulate_leader_failure()` no exemplo.
+
+Se desejar garantias de consistência para cada usuário, utilize o `Driver`:
+```python
+from replication import ReplicationManager
+from driver import Driver
+
+cluster = ReplicationManager(num_followers=2)
+driver = Driver(cluster)
+driver.put("alice", "k", "v")
+value = driver.get("alice", "k")
+cluster.shutdown()
+```
 
 ## Testes
 
