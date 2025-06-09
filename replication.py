@@ -3,10 +3,11 @@ import shutil
 import multiprocessing
 import grpc
 from lsm_db import SimpleLSMDB
-from replica.grpc_server import run_server
+from replica.grpc_server import run_server, HeartbeatService
 from concurrent import futures
 import threading
 import time
+from grpc_health.v1 import health, health_pb2_grpc, health_pb2
 from replica import replication_pb2
 from replica import replication_pb2_grpc
 
@@ -44,14 +45,20 @@ class GRPCReplicaClient:
 def _start_leader_heartbeat_server(host: str, port: int, manager):
     """Inicia um pequeno servidor gRPC para receber heartbeats dos seguidores."""
 
-    class LeaderHBServicer(replication_pb2_grpc.HeartbeatServiceServicer):
-        def Ping(self, request, context):
-            # Registra o horário do último heartbeat recebido de cada seguidor
-            manager.last_heartbeat_from[request.node_id] = time.time()
-            return replication_pb2.Empty()
+    class ManagerNode:
+        def __init__(self, mgr):
+            self._mgr = mgr
+
+        def record_heartbeat(self, node_id: str):
+            self._mgr.last_heartbeat_from[node_id] = time.time()
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
-    replication_pb2_grpc.add_HeartbeatServiceServicer_to_server(LeaderHBServicer(), server)
+    replication_pb2_grpc.add_HeartbeatServiceServicer_to_server(
+        HeartbeatService(ManagerNode(manager)), server
+    )
+    health_servicer = health.HealthServicer()
+    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
     server.add_insecure_port(f"{host}:{port}")
     server.start()
     print(f"Heartbeat server do líder escutando em {host}:{port}")
