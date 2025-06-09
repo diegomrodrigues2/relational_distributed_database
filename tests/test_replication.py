@@ -2,6 +2,8 @@ import os
 import sys
 import tempfile
 import unittest
+import multiprocessing
+import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -45,6 +47,15 @@ class ReplicationManagerTest(unittest.TestCase):
             v_f1 = cluster.get('post', read_from_leader=False, follower_id=1)
             self.assertEqual(v_f1, 'y')
             cluster.shutdown()
+
+    def test_multiple_start_stop_no_zombies(self):
+        for _ in range(3):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                cluster = ReplicationManager(base_path=tmpdir, num_followers=2)
+                cluster.put('z', '1')
+                cluster.shutdown()
+            time.sleep(0.5)
+            self.assertEqual(len(multiprocessing.active_children()), 0)
 
 if __name__ == '__main__':
     unittest.main()
