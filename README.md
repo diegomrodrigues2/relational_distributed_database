@@ -9,7 +9,8 @@ Este projeto demonstra uma implementação simplificada de um banco de dados dis
 - **SSTables** – arquivos ordenados e imutáveis no disco que armazenam os dados de forma permanente, incluindo tombstones para deleções.
 - **Compactação** – mescla SSTables mais antigas, removendo registros obsoletos e otimizando a leitura.
 - **Replicador líder-seguidor** – o líder recebe as escritas e as propaga para os seguidores por gRPC sem esperar confirmação (replicação assíncrona).
-- **Heartbeat** – monitora a disponibilidade dos nós e desconecta seguidores inativos.
+- **Heartbeat com failover sequencial** – monitora a disponibilidade dos nós e promove o próximo seguidor se o líder falhar.
+- **Encerramento limpo** – o cluster pode ser iniciado e finalizado repetidamente sem deixar processos órfãos.
 
 ## Executando
 
@@ -22,6 +23,7 @@ Este projeto demonstra uma implementação simplificada de um banco de dados dis
    python main.py
    ```
    O script inicializa um pequeno cluster com um líder e dois seguidores, grava uma chave e realiza a leitura no líder e em um dos seguidores para evidenciar a replicação.
+Para simular failover automatico, invoque `cluster.simulate_leader_failure()` no exemplo.
 
 ## Testes
 
