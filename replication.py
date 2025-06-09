@@ -226,7 +226,7 @@ class ReplicationManager:
             # Aguarda parada do servidor de heartbeat para evitar threads
             # pendentes que podem causar falhas ao final dos testes
             self._leader_hb_server.stop(0).wait()
-        # Aguarda termino das threads auxiliares
+        # Aguarda término das threads de heartbeat e monitoramento
         for t in getattr(self, '_threads', []):
             t.join(timeout=1)
         for p in getattr(self, '_follower_processes', []):
