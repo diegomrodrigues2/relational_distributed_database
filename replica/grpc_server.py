@@ -1,95 +1,143 @@
-"""Servidor gRPC simplificado para expor operacoes do banco de dados.
+"""Reusable gRPC node server used by leader and followers."""
 
-Esta implementacao eh utilizada pelos seguidores no processo de replicacao.
-"""
-
-import grpc
-from concurrent import futures
 import threading
 import time
+from concurrent import futures
+
+import grpc
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+
 from lsm_db import SimpleLSMDB
 from . import replication_pb2
 from . import replication_pb2_grpc
 
 
-db_instance = None
-last_leader_heartbeat = time.time()
-
 class ReplicaService(replication_pb2_grpc.ReplicaServicer):
-    """gRPC service exposing the database operations."""
+    """gRPC service exposing database operations."""
+
+    def __init__(self, node):
+        self._node = node
+
     def Put(self, request, context):
-        db_instance.put(request.key, request.value)
+        self._node.db.put(request.key, request.value)
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
-        db_instance.delete(request.key)
+        self._node.db.delete(request.key)
         return replication_pb2.Empty()
 
     def Get(self, request, context):
-        value = db_instance.get(request.key)
+        value = self._node.db.get(request.key)
         if value is None:
             value = ""
         return replication_pb2.ValueResponse(value=value)
 
 
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
-    """Servico simples para heartbeat."""
+    """Heartbeat service shared by leader and followers."""
+
+    def __init__(self, node):
+        self._node = node
 
     def Ping(self, request, context):
-        global last_leader_heartbeat
-        # Quando o líder envia um heartbeat, registramos a hora
-        if request.node_id == 'leader':
-            last_leader_heartbeat = time.time()
+        if request.node_id == "leader":
+            self._node.last_leader_heartbeat = time.time()
+        else:
+            self._node.record_heartbeat(request.node_id)
         return replication_pb2.Empty()
 
 
-def run_server(db_path, host='localhost', port=8000, leader_host=None, leader_port=None, node_id='follower'):
-    """Inicializa o servidor gRPC do seguidor e threads de heartbeat."""
+class NodeServer:
+    """Encapsulates gRPC server and heartbeat logic for a replica node."""
 
-    global db_instance
-    db_instance = SimpleLSMDB(db_path=db_path)
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    replication_pb2_grpc.add_ReplicaServicer_to_server(ReplicaService(), server)
-    replication_pb2_grpc.add_HeartbeatServiceServicer_to_server(HeartbeatService(), server)
-    server.add_insecure_port(f'{host}:{port}')
-    server.start()
-    print(f'gRPC node server running on {host}:{port}')
+    def __init__(self, db_path, host="localhost", port=8000,
+                 leader_host=None, leader_port=None, node_id="follower"):
+        self.db = SimpleLSMDB(db_path=db_path)
+        self.host = host
+        self.port = port
+        self.node_id = node_id
+        self.leader_host = leader_host
+        self.leader_port = leader_port
 
-    # Se informado, inicia thread que envia heartbeats ao líder
-    if leader_host and leader_port:
-        channel = grpc.insecure_channel(f'{leader_host}:{leader_port}')
+        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        replication_pb2_grpc.add_ReplicaServicer_to_server(
+            ReplicaService(self), self.server
+        )
+        replication_pb2_grpc.add_HeartbeatServiceServicer_to_server(
+            HeartbeatService(self), self.server
+        )
+
+        self.health_servicer = health.HealthServicer()
+        health_pb2_grpc.add_HealthServicer_to_server(
+            self.health_servicer, self.server
+        )
+        self.health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+
+        self.server.add_insecure_port(f"{host}:{port}")
+        self._stop = threading.Event()
+        self.last_leader_heartbeat = time.time()
+        self._heartbeat_callbacks = {}
+
+    def record_heartbeat(self, node_id):
+        """Called when a follower heartbeat is received."""
+        self._heartbeat_callbacks[node_id] = time.time()
+
+    def start(self):
+        self.server.start()
+        if self.leader_host and self.leader_port:
+            self._start_heartbeat_sender()
+        self._start_leader_monitor()
+        self.server.wait_for_termination()
+
+    # internal helpers -----------------------------------------------------
+    def _start_heartbeat_sender(self):
+        channel = grpc.insecure_channel(f"{self.leader_host}:{self.leader_port}")
         stub = replication_pb2_grpc.HeartbeatServiceStub(channel)
+        req = replication_pb2.Heartbeat(node_id=self.node_id)
 
-        def _send_heartbeat():
-            req = replication_pb2.Heartbeat(node_id=node_id)
-            while True:
+        def _loop():
+            while not self._stop.is_set():
                 try:
                     stub.Ping(req)
-                except Exception as e:
-                    print(f'Falha ao enviar heartbeat ao líder: {e}')
+                except Exception as exc:
+                    print(f"Falha ao enviar heartbeat ao líder: {exc}")
                 time.sleep(1)
 
-        threading.Thread(target=_send_heartbeat, daemon=True).start()
+        threading.Thread(target=_loop, daemon=True).start()
 
-    # Monitora recebimento de heartbeat do líder
-    def _check_leader():
-        while True:
-            time.sleep(2)
-            if time.time() - last_leader_heartbeat > 3:
-                print('Líder inativo para este seguidor.')
+    def _start_leader_monitor(self):
+        def _loop():
+            while not self._stop.is_set():
+                time.sleep(2)
+                if time.time() - self.last_leader_heartbeat > 3:
+                    print("Líder inativo para este seguidor.")
 
-    threading.Thread(target=_check_leader, daemon=True).start()
+        threading.Thread(target=_loop, daemon=True).start()
 
-    server.wait_for_termination()
+    def stop(self):
+        self._stop.set()
+        self.server.stop(0).wait()
 
-if __name__ == '__main__':
+
+def run_server(db_path, host="localhost", port=8000,
+               leader_host=None, leader_port=None, node_id="follower"):
+    """Compatibility wrapper used in tests to start a node server."""
+    node = NodeServer(db_path, host, port, leader_host, leader_port, node_id)
+    node.start()
+
+
+if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='Run gRPC replica server')
-    parser.add_argument('--path', required=True, help='Database path')
-    parser.add_argument('--host', default='0.0.0.0')
-    parser.add_argument('--port', type=int, default=8000)
-    parser.add_argument('--leader_host', default=None)
-    parser.add_argument('--leader_port', type=int, default=None)
-    parser.add_argument('--node_id', default='follower')
+
+    parser = argparse.ArgumentParser(description="Run gRPC replica server")
+    parser.add_argument("--path", required=True, help="Database path")
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--leader_host", default=None)
+    parser.add_argument("--leader_port", type=int, default=None)
+    parser.add_argument("--node_id", default="follower")
     args = parser.parse_args()
-    run_server(args.path, args.host, args.port, args.leader_host, args.leader_port, args.node_id)
+
+    run_server(args.path, args.host, args.port,
+               args.leader_host, args.leader_port, args.node_id)
+
