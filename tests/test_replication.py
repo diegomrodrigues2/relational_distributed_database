@@ -33,5 +33,18 @@ class ReplicationManagerTest(unittest.TestCase):
             self.assertIsNone(cluster.get('k2', False, 1))
             cluster.shutdown()
 
+    def test_leader_failover(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = ReplicationManager(base_path=tmpdir, num_followers=2)
+            cluster.put('pre', 'x')
+            cluster.simulate_leader_failure()
+            cluster.put('post', 'y')
+            v_leader = cluster.get('post', read_from_leader=True)
+            self.assertEqual(v_leader, 'y')
+            # follower 1 should also have the data
+            v_f1 = cluster.get('post', read_from_leader=False, follower_id=1)
+            self.assertEqual(v_f1, 'y')
+            cluster.shutdown()
+
 if __name__ == '__main__':
     unittest.main()

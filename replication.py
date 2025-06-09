@@ -89,11 +89,13 @@ class ReplicationManager:
         self.last_heartbeat_from = {}
         self._leader_hb_server = None
         self._stopped = False
+        self._leader_alive = True
+        self.current_leader = 'manager'
 
         for i in range(num_followers):
             follower_path = os.path.join(self.base_path, f"follower_{i}")
             port = base_port + i
-            p = multiprocessing.Process(target=run_server, args=(follower_path, 'localhost', port, 'localhost', self.leader_hb_port, f'follower_{i}'), daemon=True)
+            p = multiprocessing.Process(target=run_server, args=(follower_path, 'localhost', port, 'localhost', self.leader_hb_port, f'follower_{i}', i, 'follower'), daemon=True)
             p.start()
             client = GRPCReplicaClient('localhost', port)
             self._all_followers.append(client)
@@ -124,7 +126,12 @@ class ReplicationManager:
     def _replicate_operation(self, operation, key, value):
         """Replica a operação para seguidores online."""
         print(f"  REPLICATING: Enviando '{operation}({key})' para {len(self.online_followers)} seguidores online.")
+        current_leader_obj = None
+        if self.current_leader != 'manager':
+            current_leader_obj = self._all_followers[self.current_leader]
         for i, follower in enumerate(self.online_followers):
+            if follower is current_leader_obj:
+                continue
             try:
                 if operation == "PUT":
                     follower.put(key, value)
@@ -137,9 +144,12 @@ class ReplicationManager:
     def put(self, key, value):
         """Escreve no líder e replica a operação."""
         print(f"\n>>> MANAGER: Recebido PUT('{key}', '{value}')")
-        
-        # 1. Escreve no líder. Esta é a única operação que o cliente espera.
-        self.leader.put(key, value)
+
+        # 1. Escreve no líder atual.
+        if self.current_leader == 'manager':
+            self.leader.put(key, value)
+        else:
+            self._all_followers[self.current_leader].put(key, value)
         print(">>> MANAGER: Escrita no Líder concluída e confirmada para o cliente (simulado).")
         
         # 2. Replicação assíncrona: A função retorna ao cliente antes que isso termine.
@@ -151,7 +161,10 @@ class ReplicationManager:
     def delete(self, key):
         """Exclui chave via líder e replica."""
         print(f"\n>>> MANAGER: Recebido DELETE('{key}')")
-        self.leader.delete(key)
+        if self.current_leader == 'manager':
+            self.leader.delete(key)
+        else:
+            self._all_followers[self.current_leader].delete(key)
         print(">>> MANAGER: Exclusão no Líder concluída e confirmada.")
         
         self._replicate_operation("DELETE", key, None) # Valor não importa para delete
@@ -161,7 +174,10 @@ class ReplicationManager:
         """Lê chave do líder ou de um seguidor."""
         if read_from_leader:
             print(f"\n>>> MANAGER: Lendo '{key}' do LÍDER.")
-            return self.leader.get(key)
+            if self.current_leader == 'manager':
+                return self.leader.get(key)
+            else:
+                return self._all_followers[self.current_leader].get(key)
         else:
             if follower_id < len(self._all_followers):
                 follower = self._all_followers[follower_id]
@@ -195,6 +211,14 @@ class ReplicationManager:
             else:
                 print(f"\n*** SIMULAÇÃO: Seguidor {follower_id} já estava online. ***")
 
+    def simulate_leader_failure(self):
+        """Simula a queda do líder atual."""
+        print("\n*** SIMULAÇÃO: Líder caiu. ***")
+        self._leader_alive = False
+        self.current_leader = 0  # primeiro seguidor assume
+        # aguarda deteção pelos seguidores
+        time.sleep(4)
+
     def shutdown(self):
         """Encerra todos os processos de seguidores."""
         self._stopped = True
@@ -215,10 +239,11 @@ class ReplicationManager:
     # --- Métodos auxiliares para heartbeat ---
     def _send_heartbeat_loop(self, follower, idx):
         while not self._stopped:
-            try:
-                follower.heartbeat('leader')
-            except Exception as e:
-                print(f'Falha ao enviar heartbeat para seguidor {idx}: {e}')
+            if self._leader_alive:
+                try:
+                    follower.heartbeat('leader')
+                except Exception as e:
+                    print(f'Falha ao enviar heartbeat para seguidor {idx}: {e}')
             time.sleep(1)
 
     def _monitor_followers(self):
