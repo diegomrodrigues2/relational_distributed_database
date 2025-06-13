@@ -27,6 +27,7 @@ flowchart LR
     BServer -- Replicação --> CServer
     CServer -- Replicação --> AServer
     CServer -- Replicação --> BServer
+    BServer -. FetchUpdates .-> AServer
 ```
 
 Cada instância contém seu próprio clock lógico e armazena `(valor, timestamp)`. Ao receber uma atualização de outro nó, compara os timestamps: se o recebido for maior, a escrita substitui a local; caso contrário, é descartada.
@@ -85,6 +86,29 @@ Se um nó ficar offline, ele pode recuperar as mudanças perdidas ao reprovar o 
 - **Driver opcional** – encaminha requisições para garantir "read your own writes".
 - **Log de replicação** – armazena operações geradas localmente até que todos os pares confirmem o recebimento.
 - **Vetor de versões** – cada nó mantém `last_seen` (origem → último contador) para aplicar cada operação exatamente uma vez.
+
+## Sincronização offline e anti-entropia
+
+Para tolerar falhas temporárias de nós, o sistema oferece uma sincronização **pull**.
+Ao reiniciar, um nó executa o RPC `FetchUpdates` enviando seu vetor `last_seen` e
+recebe de volta as operações pendentes. Um processo em segundo plano repete esse
+procedimento periodicamente para corrigir possíveis divergências (anti-entropia).
+
+```mermaid
+sequenceDiagram
+    participant NodeB
+    participant NodeA
+    NodeB->>NodeA: FetchUpdates(last_seen)
+    NodeA-->>NodeB: operações pendentes
+    NodeB->>NodeB: aplica operações
+```
+
+- O *replication log* é persistido em `replication_log.json` e reenviado em lotes
+  para os pares.
+- Caso um destino esteja inacessível, as operações ficam armazenadas como
+  **hints** e são entregues assim que o peer responde (hinted handoff).
+- Hashes de segmentos baseados em **Merkle trees** permitem pular dados já
+  sincronizados durante a troca de atualizações.
 
 ## Executando
 
