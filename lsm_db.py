@@ -4,8 +4,10 @@ from mem_table import MemTable
 from sstable import SSTableManager, TOMBSTONE
 from wal import WriteAheadLog
 
+
 class SimpleLSMDB:
     """Banco de dados simples baseado em LSM."""
+
     def __init__(self, db_path: str = "simple_db_data", max_memtable_size: int = 1000):
         """Inicializa estruturas e carrega dados do WAL."""
         self.db_path = db_path
@@ -24,7 +26,7 @@ class SimpleLSMDB:
     def _start_compaction_async(self):
         """Inicia a compactação em uma thread de forma assíncrona."""
         if self._compaction_thread and self._compaction_thread.is_alive():
-            return
+            self._compaction_thread.join()
 
         def _run():
             self.sstable_manager.compact_segments()
@@ -52,8 +54,12 @@ class SimpleLSMDB:
             if entry_type == "PUT":
                 self.memtable.put(key, value_tuple)
             elif entry_type == "DELETE":
-                self.memtable.put(key, (TOMBSTONE, ts))  # DELETE é um PUT de um TOMBSTONE
-        print(f"Recuperação do WAL concluída. MemTable agora tem {len(self.memtable)} itens.")
+                self.memtable.put(
+                    key, (TOMBSTONE, ts)
+                )  # DELETE é um PUT de um TOMBSTONE
+        print(
+            f"Recuperação do WAL concluída. MemTable agora tem {len(self.memtable)} itens."
+        )
 
     def _flush_memtable_to_sstable(self):
         """Descarrega o MemTable para SSTable e limpa o WAL."""
@@ -61,18 +67,18 @@ class SimpleLSMDB:
             print("  FLUSH: MemTable está vazio, nada para descarregar.")
             return
 
-        print("  FLUSH: MemTable cheio ou trigger de flush manual. Descarregando para SSTable...")
-        
+        print(
+            "  FLUSH: MemTable cheio ou trigger de flush manual. Descarregando para SSTable..."
+        )
+
         # Prepara os dados para o SSTable (ordenados por chave)
         # Cada valor no MemTable é uma tupla (valor, timestamp). Para o
         # SSTable, persistimos apenas o valor.
-        sorted_data = [
-            (k, v[0]) for k, v in self.memtable.get_sorted_items()
-        ]
-        
+        sorted_data = [(k, v[0]) for k, v in self.memtable.get_sorted_items()]
+
         # Escreve o SSTable
         self.sstable_manager.write_sstable(sorted_data)
-        
+
         # Limpa o MemTable e o WAL (os dados agora estão em disco)
         self.memtable.clear()
         self.wal.clear()
@@ -91,6 +97,7 @@ class SimpleLSMDB:
         value = str(value)
         if timestamp is None:
             import time
+
             timestamp = int(time.time() * 1000)
         self.wal.append("PUT", key, value, timestamp)
         self.memtable.put(key, (value, timestamp))
@@ -101,13 +108,15 @@ class SimpleLSMDB:
         """Retorna o valor mais recente de uma chave."""
         key = str(key)
         print(f"\nGET: Buscando chave '{key}'")
-        
+
         # 1. Tenta encontrar no MemTable (mais recente)
         record = self.memtable.get(key)
         if record is not None:
             value, ts = record
             if value == TOMBSTONE:
-                print(f"GET: '{key}' encontrado como TOMBSTONE no MemTable. Não existe.")
+                print(
+                    f"GET: '{key}' encontrado como TOMBSTONE no MemTable. Não existe."
+                )
                 return None
             print(f"GET: '{key}' encontrado no MemTable.")
             return value
@@ -119,11 +128,13 @@ class SimpleLSMDB:
             value = self.sstable_manager.get_from_sstable(sstable_entry, key)
             if value is not None:
                 if value == TOMBSTONE:
-                    print(f"GET: '{key}' encontrado como TOMBSTONE em SSTable. Não existe.")
+                    print(
+                        f"GET: '{key}' encontrado como TOMBSTONE em SSTable. Não existe."
+                    )
                     return None
                 print(f"GET: '{key}' encontrado em SSTable.")
                 return value
-            
+
         print(f"GET: Chave '{key}' não encontrada em nenhum lugar.")
         return None
 
@@ -155,9 +166,12 @@ class SimpleLSMDB:
         print(f"\nDELETE: Marcando chave '{key}' para exclusão.")
         if timestamp is None:
             import time
+
             timestamp = int(time.time() * 1000)
         self.wal.append("DELETE", key, TOMBSTONE, timestamp)
-        self.memtable.put(key, (TOMBSTONE, timestamp))  # Marca no MemTable como tombstone
+        self.memtable.put(
+            key, (TOMBSTONE, timestamp)
+        )  # Marca no MemTable como tombstone
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
 
@@ -165,7 +179,9 @@ class SimpleLSMDB:
         """Força a compactação de todos os SSTables."""
         # Garante que qualquer coisa no memtable seja descarregada primeiro
         if len(self.memtable) > 0:
-            print("\nCompactação Manual: Descarregando MemTable antes de compactar todos os SSTables.")
+            print(
+                "\nCompactação Manual: Descarregando MemTable antes de compactar todos os SSTables."
+            )
             self._flush_memtable_to_sstable()
             # Aguarda a compactação automática disparada pelo flush
             self.wait_for_compaction()
