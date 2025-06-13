@@ -10,6 +10,7 @@ import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 from lamport import LamportClock
+from vector_clock import VectorClock
 from lsm_db import SimpleLSMDB
 from . import replication_pb2, replication_pb2_grpc
 from .client import GRPCReplicaClient
@@ -203,6 +204,7 @@ class NodeServer:
         self.server.add_insecure_port(f"{host}:{port}")
 
         self.clock = LamportClock()
+        self.vector_clock = VectorClock()
         self.local_seq = 0
         self.last_seen: dict[str, int] = {}
         self.replication_log: dict[str, tuple] = {}
@@ -263,6 +265,7 @@ class NodeServer:
             with open(path, "r", encoding="utf-8") as f:
                 try:
                     self.last_seen = json.load(f)
+                    self.vector_clock.merge(VectorClock(self.last_seen))
                 except Exception:
                     self.last_seen = {}
 
@@ -320,9 +323,10 @@ class NodeServer:
 
     def next_op_id(self) -> str:
         """Return next operation identifier."""
-        self.local_seq += 1
-        self.last_seen[self.node_id] = self.local_seq
-        return f"{self.node_id}:{self.local_seq}"
+        seq = self.vector_clock.increment(self.node_id)
+        self.local_seq = seq
+        self.last_seen[self.node_id] = seq
+        return f"{self.node_id}:{seq}"
 
     def cleanup_replication_log(self) -> None:
         """Remove acknowledged operations from replication_log."""
