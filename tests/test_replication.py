@@ -87,9 +87,10 @@ class ReplicationManagerTest(unittest.TestCase):
                 db_path = os.path.join(tmpdir, "node_1")
                 cluster.nodes[1].stop()
 
-                cluster.nodes[0].client.put(
-                    "key", "offline", timestamp=1, node_id=cluster.nodes[0].node_id
-                )
+                with self.assertRaises(Exception):
+                    cluster.nodes[0].client.put(
+                        "key", "offline", timestamp=1, node_id=cluster.nodes[0].node_id
+                    )
                 time.sleep(0.5)
 
                 # Restart node 1
@@ -124,9 +125,10 @@ class ReplicationManagerTest(unittest.TestCase):
                 db_path = os.path.join(tmpdir, "node_1")
                 cluster.nodes[1].stop()
 
-                cluster.nodes[0].client.put(
-                    "k", "v1", timestamp=1, node_id=cluster.nodes[0].node_id
-                )
+                with self.assertRaises(Exception):
+                    cluster.nodes[0].client.put(
+                        "k", "v1", timestamp=1, node_id=cluster.nodes[0].node_id
+                    )
                 time.sleep(0.5)
 
                 peers = [("localhost", 9000), ("localhost", 9001)]
@@ -154,9 +156,10 @@ class ReplicationManagerTest(unittest.TestCase):
                 db_path = os.path.join(tmpdir, "node_1")
                 cluster.nodes[1].stop()
 
-                cluster.nodes[0].client.put(
-                    "hint", "v1", timestamp=1, node_id=cluster.nodes[0].node_id
-                )
+                with self.assertRaises(Exception):
+                    cluster.nodes[0].client.put(
+                        "hint", "v1", timestamp=1, node_id=cluster.nodes[0].node_id
+                    )
                 time.sleep(0.5)
 
                 hints_file = os.path.join(tmpdir, "node_0", "hints.json")
