@@ -257,7 +257,7 @@ class NodeServer:
         port=8000,
         node_id="node",
         peers=None,
-        ring=None,
+        hash_ring=None,
         replication_factor: int = 3,
         consistency_mode: str = "lww",
         anti_entropy_interval: float = 5.0,
@@ -270,7 +270,7 @@ class NodeServer:
         self.port = port
         self.node_id = node_id
         self.peers = peers or []
-        self.ring = ring
+        self.hash_ring = hash_ring
         self.replication_factor = replication_factor
         self.consistency_mode = consistency_mode
         self.crdt_config = crdt_config or {}
@@ -664,7 +664,7 @@ def run_server(
     port=8000,
     node_id="node",
     peers=None,
-    ring=None,
+    hash_ring=None,
     replication_factor: int = 3,
     *,
     consistency_mode: str = "lww",
@@ -675,7 +675,7 @@ def run_server(
         port,
         node_id=node_id,
         peers=peers,
-        ring=ring,
+        hash_ring=hash_ring,
         replication_factor=replication_factor,
         consistency_mode=consistency_mode,
     )
