@@ -2,6 +2,8 @@
 
 import threading
 import time
+import json
+import os
 from concurrent import futures
 
 import grpc
@@ -86,6 +88,7 @@ class NodeServer:
     replication_log: dict[str, tuple]
 
     def __init__(self, db_path, host="localhost", port=8000, node_id="node", peers=None):
+        self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
         self.host = host
         self.port = port
@@ -112,6 +115,26 @@ class NodeServer:
             if ph == self.host and pp == self.port:
                 continue
             self.peer_clients.append(GRPCReplicaClient(ph, pp))
+
+    # persistence helpers ------------------------------------------------
+    def _last_seen_file(self) -> str:
+        return os.path.join(self.db_path, "last_seen.json")
+
+    def load_last_seen(self) -> None:
+        """Load last_seen from JSON file if available."""
+        path = self._last_seen_file()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                try:
+                    self.last_seen = json.load(f)
+                except Exception:
+                    self.last_seen = {}
+
+    def save_last_seen(self) -> None:
+        """Persist last_seen to JSON file."""
+        path = self._last_seen_file()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.last_seen, f)
 
     def next_op_id(self) -> str:
         """Return next operation identifier."""
@@ -144,10 +167,12 @@ class NodeServer:
 
     # lifecycle -----------------------------------------------------------
     def start(self):
+        self.load_last_seen()
         self.server.start()
         self.server.wait_for_termination()
 
     def stop(self):
+        self.save_last_seen()
         for c in self.peer_clients:
             c.close()
         self.server.stop(0).wait()
