@@ -20,13 +20,19 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node = node
 
     def Put(self, request, context):
+        """Apply a write only if it is newer than the stored record."""
         self._node.clock.update(request.timestamp)
-        self._node.db.put(request.key, request.value, timestamp=request.timestamp)
+        _, current_ts = self._node.db.get_record(request.key)
+        if current_ts is None or request.timestamp > current_ts:
+            self._node.db.put(request.key, request.value, timestamp=request.timestamp)
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
+        """Create a tombstone only for newer delete operations."""
+        _, current_ts = self._node.db.get_record(request.key)
         ts = self._node.clock.tick()
-        self._node.db.delete(request.key, timestamp=ts)
+        if current_ts is None or ts > current_ts:
+            self._node.db.delete(request.key, timestamp=ts)
         return replication_pb2.Empty()
 
     def Get(self, request, context):
