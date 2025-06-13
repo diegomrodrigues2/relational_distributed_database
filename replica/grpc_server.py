@@ -49,6 +49,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 request.value,
                 request.timestamp,
             )
+            self._node.save_replication_log()
             self._node.replicate(
                 "PUT", request.key, request.value, request.timestamp, op_id=op_id
             )
@@ -77,6 +78,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         if request.node_id == self._node.node_id and apply_update:
             op_id = self._node.next_op_id()
             self._node.replication_log[op_id] = (request.key, None, request.timestamp)
+            self._node.save_replication_log()
             self._node.replicate(
                 "DELETE", request.key, None, request.timestamp, op_id=op_id
             )
@@ -208,6 +210,8 @@ class NodeServer:
             self.client_map[f"{ph}:{pp}"] = c
 
         self.hints: dict[str, list[tuple]] = {}
+        self._replog_fp = None
+        self._replog_lock = threading.Lock()
 
     # persistence helpers ------------------------------------------------
     def _last_seen_file(self) -> str:
@@ -215,6 +219,9 @@ class NodeServer:
 
     def _hints_file(self) -> str:
         return os.path.join(self.db_path, "hints.json")
+
+    def _replication_log_file(self) -> str:
+        return os.path.join(self.db_path, "replication_log.json")
 
     def load_last_seen(self) -> None:
         """Load last_seen from JSON file if available."""
@@ -237,6 +244,22 @@ class NodeServer:
                 except Exception:
                     self.hints = {}
 
+    def load_replication_log(self) -> None:
+        """Load replication log from disk if available and open file handle."""
+        path = self._replication_log_file()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                try:
+                    data = json.load(f)
+                    self.replication_log = {k: tuple(v) for k, v in data.items()}
+                except Exception:
+                    self.replication_log = {}
+        os.makedirs(self.db_path, exist_ok=True)
+        if not os.path.exists(path):
+            open(path, "w", encoding="utf-8").close()
+        self._replog_fp = open(path, "r+", encoding="utf-8")
+        self._persist_replication_log()
+
     def save_last_seen(self) -> None:
         """Persist last_seen to JSON file."""
         path = self._last_seen_file()
@@ -248,6 +271,19 @@ class NodeServer:
         path = self._hints_file()
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.hints, f)
+
+    def _persist_replication_log(self) -> None:
+        if not self._replog_fp:
+            return
+        with self._replog_lock:
+            self._replog_fp.seek(0)
+            json.dump(self.replication_log, self._replog_fp)
+            self._replog_fp.truncate()
+            self._replog_fp.flush()
+            os.fsync(self._replog_fp.fileno())
+
+    def save_replication_log(self) -> None:
+        self._persist_replication_log()
 
     def next_op_id(self) -> str:
         """Return next operation identifier."""
@@ -266,6 +302,8 @@ class NodeServer:
         ]
         for op_id in to_remove:
             self.replication_log.pop(op_id, None)
+        if to_remove:
+            self.save_replication_log()
 
     def _replay_replication_log(self) -> None:
         """Resend operations from replication_log to peers in batches."""
@@ -417,6 +455,7 @@ class NodeServer:
 
     # lifecycle -----------------------------------------------------------
     def start(self):
+        self.load_replication_log()
         self.load_last_seen()
         self.load_hints()
         self.sync_from_peer()
@@ -429,6 +468,10 @@ class NodeServer:
     def stop(self):
         self.save_last_seen()
         self.save_hints()
+        self.save_replication_log()
+        if self._replog_fp:
+            self._replog_fp.close()
+            self._replog_fp = None
         self._cleanup_stop.set()
         self._replay_stop.set()
         self._anti_entropy_stop.set()
