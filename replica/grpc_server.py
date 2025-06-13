@@ -38,12 +38,20 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         if apply_update:
             _, current_ts = self._node.db.get_record(request.key)
             if current_ts is None or request.timestamp > current_ts:
-                self._node.db.put(request.key, request.value, timestamp=request.timestamp)
+                self._node.db.put(
+                    request.key, request.value, timestamp=request.timestamp
+                )
 
         if request.node_id == self._node.node_id and apply_update:
             op_id = self._node.next_op_id()
-            self._node.replication_log[op_id] = (request.key, request.value, request.timestamp)
-            self._node.replicate("PUT", request.key, request.value, request.timestamp, op_id=op_id)
+            self._node.replication_log[op_id] = (
+                request.key,
+                request.value,
+                request.timestamp,
+            )
+            self._node.replicate(
+                "PUT", request.key, request.value, request.timestamp, op_id=op_id
+            )
 
         return replication_pb2.Empty()
 
@@ -69,7 +77,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         if request.node_id == self._node.node_id and apply_update:
             op_id = self._node.next_op_id()
             self._node.replication_log[op_id] = (request.key, None, request.timestamp)
-            self._node.replicate("DELETE", request.key, None, request.timestamp, op_id=op_id)
+            self._node.replicate(
+                "DELETE", request.key, None, request.timestamp, op_id=op_id
+            )
 
         return replication_pb2.Empty()
 
@@ -87,7 +97,9 @@ class NodeServer:
     last_seen: dict[str, int]
     replication_log: dict[str, tuple]
 
-    def __init__(self, db_path, host="localhost", port=8000, node_id="node", peers=None):
+    def __init__(
+        self, db_path, host="localhost", port=8000, node_id="node", peers=None
+    ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
         self.host = host
@@ -112,6 +124,8 @@ class NodeServer:
         self.replication_log: dict[str, tuple] = {}
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = None
+        self._replay_stop = threading.Event()
+        self._replay_thread = None
         self.peer_clients = []
         for ph, pp in self.peers:
             if ph == self.host and pp == self.port:
@@ -156,16 +170,44 @@ class NodeServer:
         for op_id in to_remove:
             self.replication_log.pop(op_id, None)
 
+    def _replay_replication_log(self) -> None:
+        """Resend operations from replication_log to peers."""
+        for op_id, (key, value, ts) in list(self.replication_log.items()):
+            for client in self.peer_clients:
+                try:
+                    if value is None:
+                        client.delete(
+                            key, timestamp=ts, node_id=self.node_id, op_id=op_id
+                        )
+                    else:
+                        client.put(
+                            key, value, timestamp=ts, node_id=self.node_id, op_id=op_id
+                        )
+                except Exception:
+                    pass
+
     def _cleanup_loop(self) -> None:
         while not self._cleanup_stop.is_set():
             self.cleanup_replication_log()
             time.sleep(1)
+
+    def _replay_loop(self) -> None:
+        while not self._replay_stop.is_set():
+            self._replay_replication_log()
+            time.sleep(0.5)
 
     def _start_cleanup_thread(self) -> None:
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             return
         t = threading.Thread(target=self._cleanup_loop, daemon=True)
         self._cleanup_thread = t
+        t.start()
+
+    def _start_replay_thread(self) -> None:
+        if self._replay_thread and self._replay_thread.is_alive():
+            return
+        t = threading.Thread(target=self._replay_loop, daemon=True)
+        self._replay_thread = t
         t.start()
 
     # replication helpers -------------------------------------------------
@@ -189,6 +231,7 @@ class NodeServer:
                     )
             except Exception as exc:
                 print(f"Falha ao replicar: {exc}")
+
         for c in self.peer_clients:
             threading.Thread(target=_send, args=(c,), daemon=True).start()
 
@@ -196,14 +239,18 @@ class NodeServer:
     def start(self):
         self.load_last_seen()
         self._start_cleanup_thread()
+        self._start_replay_thread()
         self.server.start()
         self.server.wait_for_termination()
 
     def stop(self):
         self.save_last_seen()
         self._cleanup_stop.set()
+        self._replay_stop.set()
         if self._cleanup_thread:
             self._cleanup_thread.join()
+        if self._replay_thread:
+            self._replay_thread.join()
         for c in self.peer_clients:
             c.close()
         self.server.stop(0).wait()
@@ -212,4 +259,3 @@ class NodeServer:
 def run_server(db_path, host="localhost", port=8000, node_id="node", peers=None):
     node = NodeServer(db_path, host, port, node_id=node_id, peers=peers)
     node.start()
-

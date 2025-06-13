@@ -1,7 +1,12 @@
+import os
+import sys
 import tempfile
 import unittest
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from replica.grpc_server import NodeServer
+
 
 class ReplicationLogCleanupTest(unittest.TestCase):
     def test_cleanup_removes_old_entries(self):
@@ -20,6 +25,7 @@ class ReplicationLogCleanupTest(unittest.TestCase):
             self.assertNotIn("node:2", node.replication_log)
             self.assertNotIn("node:3", node.replication_log)
             node.stop()
+
 
 if __name__ == "__main__":
     unittest.main()
