@@ -9,6 +9,7 @@ message KeyRequest {
   string key = 1;
   int64 timestamp = 2;
   string node_id = 3;
+  string op_id = 4;
 }
 
 // Estrutura para enviar chave e valor de uma escrita
@@ -17,6 +18,7 @@ message KeyValue {
   string value = 2;
   int64 timestamp = 3;
   string node_id = 4;
+  string op_id = 5;
 }
 
 // Resposta que devolve um valor, vazio caso nao encontrado
