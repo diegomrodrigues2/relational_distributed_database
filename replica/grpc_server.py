@@ -37,16 +37,25 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 apply_update = False
 
         if apply_update:
+            if request.vector.items:
+                new_vc = VectorClock(dict(request.vector.items))
+            else:
+                new_vc = VectorClock({"ts": int(request.timestamp)})
             versions = self._node.db.get_record(request.key)
-            current_ts = None
-            if versions:
-                current_ts = max(v.clock.get("ts", 0) for _, v in versions)
-            if current_ts is None or request.timestamp > current_ts:
+            dominated = False
+            for _, vc in versions:
+                cmp = new_vc.compare(vc)
+                if cmp == "<":
+                    dominated = True
+                    break
+            if not dominated:
                 self._node.db.put(
                     request.key,
                     request.value,
-                    timestamp=request.timestamp,
+                    vector_clock=new_vc,
                 )
+            else:
+                apply_update = False
 
         if apply_update:
             op_id = request.op_id
@@ -64,6 +73,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 request.value,
                 request.timestamp,
                 op_id=op_id,
+                vector=new_vc.clock,
                 skip_id=request.node_id,
             )
 
@@ -84,12 +94,21 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 apply_update = False
 
         if apply_update:
+            if request.vector.items:
+                new_vc = VectorClock(dict(request.vector.items))
+            else:
+                new_vc = VectorClock({"ts": int(request.timestamp)})
             versions = self._node.db.get_record(request.key)
-            current_ts = None
-            if versions:
-                current_ts = max(v.clock.get("ts", 0) for _, v in versions)
-            if current_ts is None or request.timestamp > current_ts:
-                self._node.db.delete(request.key, timestamp=request.timestamp)
+            dominated = False
+            for _, vc in versions:
+                cmp = new_vc.compare(vc)
+                if cmp == "<":
+                    dominated = True
+                    break
+            if not dominated:
+                self._node.db.delete(request.key, vector_clock=new_vc)
+            else:
+                apply_update = False
 
         if apply_update:
             op_id = request.op_id
@@ -103,6 +122,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 None,
                 request.timestamp,
                 op_id=op_id,
+                vector=new_vc.clock,
                 skip_id=request.node_id,
             )
 
@@ -393,7 +413,7 @@ class NodeServer:
         t.start()
 
     # replication helpers -------------------------------------------------
-    def replicate(self, op, key, value, timestamp, op_id="", skip_id=None):
+    def replicate(self, op, key, value, timestamp, op_id="", vector=None, skip_id=None):
         def _send(client, peer_id):
             try:
                 if op == "PUT":
@@ -403,6 +423,7 @@ class NodeServer:
                         timestamp=timestamp,
                         node_id=self.node_id,
                         op_id=op_id,
+                        vector=vector,
                     )
                 else:
                     client.delete(
@@ -410,6 +431,7 @@ class NodeServer:
                         timestamp=timestamp,
                         node_id=self.node_id,
                         op_id=op_id,
+                        vector=vector,
                     )
             except Exception as exc:
                 print(f"Falha ao replicar: {exc}")
