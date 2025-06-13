@@ -42,16 +42,23 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     request.key, request.value, timestamp=request.timestamp
                 )
 
-        if request.node_id == self._node.node_id and apply_update:
-            op_id = self._node.next_op_id()
-            self._node.replication_log[op_id] = (
+        if apply_update:
+            op_id = request.op_id
+            if not op_id:
+                op_id = self._node.next_op_id()
+                self._node.replication_log[op_id] = (
+                    request.key,
+                    request.value,
+                    request.timestamp,
+                )
+                self._node.save_replication_log()
+            self._node.replicate(
+                "PUT",
                 request.key,
                 request.value,
                 request.timestamp,
-            )
-            self._node.save_replication_log()
-            self._node.replicate(
-                "PUT", request.key, request.value, request.timestamp, op_id=op_id
+                op_id=op_id,
+                skip_id=request.node_id,
             )
 
         return replication_pb2.Empty()
@@ -75,12 +82,19 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if current_ts is None or request.timestamp > current_ts:
                 self._node.db.delete(request.key, timestamp=request.timestamp)
 
-        if request.node_id == self._node.node_id and apply_update:
-            op_id = self._node.next_op_id()
-            self._node.replication_log[op_id] = (request.key, None, request.timestamp)
-            self._node.save_replication_log()
+        if apply_update:
+            op_id = request.op_id
+            if not op_id:
+                op_id = self._node.next_op_id()
+                self._node.replication_log[op_id] = (request.key, None, request.timestamp)
+                self._node.save_replication_log()
             self._node.replicate(
-                "DELETE", request.key, None, request.timestamp, op_id=op_id
+                "DELETE",
+                request.key,
+                None,
+                request.timestamp,
+                op_id=op_id,
+                skip_id=request.node_id,
             )
 
         return replication_pb2.Empty()
@@ -366,7 +380,7 @@ class NodeServer:
         t.start()
 
     # replication helpers -------------------------------------------------
-    def replicate(self, op, key, value, timestamp, op_id=""):
+    def replicate(self, op, key, value, timestamp, op_id="", skip_id=""):
         def _send(client, peer_id):
             try:
                 if op == "PUT":
@@ -392,7 +406,13 @@ class NodeServer:
                 self.save_hints()
 
         for host, port, peer_id, client in self._iter_peers():
-            threading.Thread(target=_send, args=(client, f"{host}:{port}"), daemon=True).start()
+            if skip_id and (peer_id == skip_id or f"{host}:{port}" == skip_id):
+                continue
+            threading.Thread(
+                target=_send,
+                args=(client, f"{host}:{port}"),
+                daemon=True,
+            ).start()
 
     def sync_from_peer(self) -> None:
         """Exchange updates with all peers."""
