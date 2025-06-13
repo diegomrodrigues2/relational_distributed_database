@@ -25,7 +25,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         if current_ts is None or request.timestamp > current_ts:
             self._node.db.put(request.key, request.value, timestamp=request.timestamp)
         if request.node_id == self._node.node_id:
-            self._node.replicate("PUT", request.key, request.value, request.timestamp)
+            op_id = self._node.next_op_id()
+            self._node.replication_log[op_id] = (request.key, request.value, request.timestamp)
+            self._node.replicate("PUT", request.key, request.value, request.timestamp, op_id=op_id)
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
@@ -34,7 +36,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         if current_ts is None or request.timestamp > current_ts:
             self._node.db.delete(request.key, timestamp=request.timestamp)
         if request.node_id == self._node.node_id:
-            self._node.replicate("DELETE", request.key, None, request.timestamp)
+            op_id = self._node.next_op_id()
+            self._node.replication_log[op_id] = (request.key, None, request.timestamp)
+            self._node.replicate("DELETE", request.key, None, request.timestamp, op_id=op_id)
         return replication_pb2.Empty()
 
     def Get(self, request, context):
@@ -79,14 +83,30 @@ class NodeServer:
                 continue
             self.peer_clients.append(GRPCReplicaClient(ph, pp))
 
+    def next_op_id(self) -> str:
+        """Return next operation identifier."""
+        self.local_seq += 1
+        return f"{self.node_id}:{self.local_seq}"
+
     # replication helpers -------------------------------------------------
-    def replicate(self, op, key, value, timestamp):
+    def replicate(self, op, key, value, timestamp, op_id=""):
         def _send(client):
             try:
                 if op == "PUT":
-                    client.put(key, value, timestamp=timestamp, node_id=self.node_id)
+                    client.put(
+                        key,
+                        value,
+                        timestamp=timestamp,
+                        node_id=self.node_id,
+                        op_id=op_id,
+                    )
                 else:
-                    client.delete(key, timestamp=timestamp, node_id=self.node_id)
+                    client.delete(
+                        key,
+                        timestamp=timestamp,
+                        node_id=self.node_id,
+                        op_id=op_id,
+                    )
             except Exception as exc:
                 print(f"Falha ao replicar para {client.channel.target}: {exc}")
         for c in self.peer_clients:
