@@ -135,6 +135,59 @@ value = driver.get("alice", "k")
 cluster.shutdown()
 ```
 
+## Topologia de replicação
+
+A classe `NodeCluster` possui o parâmetro opcional `topology` que define
+quais nós replicam entre si. Se ele for omitido, o cluster forma uma
+malha completa (all‑to‑all), preservando o comportamento original.
+
+O dicionário passado em `topology` usa o índice de cada nó como chave e
+uma lista de destinos como valor.
+
+### Configuração em anel
+
+```python
+from replication import NodeCluster
+
+ring = {
+    0: [1],
+    1: [2],
+    2: [0],
+}
+cluster = NodeCluster("/tmp/ring", num_nodes=3, topology=ring)
+```
+
+```mermaid
+graph LR
+    0 --> 1
+    1 --> 2
+    2 --> 0
+```
+
+### Configuração em estrela
+
+```python
+from replication import NodeCluster
+
+star = {
+    0: [1, 2, 3],
+    1: [0],
+    2: [0],
+    3: [0],
+}
+cluster = NodeCluster("/tmp/star", num_nodes=4, topology=star)
+```
+
+```mermaid
+graph LR
+    0 --> 1
+    0 --> 2
+    0 --> 3
+    1 --> 0
+    2 --> 0
+    3 --> 0
+```
+
 ## Testes
 
 Execute a bateria de testes para validar o sistema:
