@@ -41,21 +41,35 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 new_vc = VectorClock(dict(request.vector.items))
             else:
                 new_vc = VectorClock({"ts": int(request.timestamp)})
-            versions = self._node.db.get_record(request.key)
-            dominated = False
-            for _, vc in versions:
-                cmp = new_vc.compare(vc)
-                if cmp == "<":
-                    dominated = True
-                    break
-            if not dominated:
+            if request.key in self._node.crdts:
+                crdt = self._node.crdts[request.key]
+                try:
+                    other_data = json.loads(request.value) if request.value else {}
+                except Exception:
+                    other_data = {}
+                other = type(crdt).from_dict(request.node_id, other_data)
+                crdt.merge(other)
                 self._node.db.put(
                     request.key,
-                    request.value,
+                    json.dumps(crdt.to_dict()),
                     vector_clock=new_vc,
                 )
             else:
-                apply_update = False
+                versions = self._node.db.get_record(request.key)
+                dominated = False
+                for _, vc in versions:
+                    cmp = new_vc.compare(vc)
+                    if cmp == "<":
+                        dominated = True
+                        break
+                if not dominated:
+                    self._node.db.put(
+                        request.key,
+                        request.value,
+                        vector_clock=new_vc,
+                    )
+                else:
+                    apply_update = False
 
         if apply_update:
             op_id = request.op_id
@@ -212,6 +226,7 @@ class NodeServer:
         peers=None,
         anti_entropy_interval: float = 5.0,
         max_batch_size: int = 50,
+        crdt_config: dict | None = None,
     ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
@@ -219,6 +234,7 @@ class NodeServer:
         self.port = port
         self.node_id = node_id
         self.peers = peers or []
+        self.crdt_config = crdt_config or {}
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         self.service = ReplicaService(self)
@@ -264,6 +280,21 @@ class NodeServer:
         self.hints: dict[str, list[tuple]] = {}
         self._replog_fp = None
         self._replog_lock = threading.Lock()
+
+        # Initialize CRDT instances for configured keys
+        self.crdts = {}
+        from crdt import GCounter, ORSet
+        for key, typ in self.crdt_config.items():
+            if typ == "gcounter" or typ == GCounter:
+                cls = GCounter if typ == "gcounter" else typ
+            elif typ == "orset" or typ == ORSet:
+                cls = ORSet if typ == "orset" else typ
+            else:
+                cls = typ
+            try:
+                self.crdts[key] = cls(self.node_id)
+            except Exception:
+                self.crdts[key] = cls
 
     def _iter_peers(self):
         """Yield tuples of (host, port, node_id, client) for all peers."""
@@ -356,6 +387,28 @@ class NodeServer:
         self.local_seq = seq
         self.last_seen[self.node_id] = seq
         return f"{self.node_id}:{seq}"
+
+    def apply_crdt(self, key: str, op) -> None:
+        """Apply a local CRDT operation and replicate the new state."""
+        if key not in self.crdts:
+            raise KeyError(key)
+        crdt = self.crdts[key]
+        crdt.apply(op)
+        state_json = json.dumps(crdt.to_dict())
+        ts = int(time.time() * 1000)
+        vc = VectorClock({"ts": ts})
+        self.db.put(key, state_json, vector_clock=vc)
+        op_id = self.next_op_id()
+        self.replication_log[op_id] = (key, state_json, ts)
+        self.save_replication_log()
+        self.replicate(
+            "PUT",
+            key,
+            state_json,
+            ts,
+            op_id=op_id,
+            vector=vc.clock,
+        )
 
     def cleanup_replication_log(self) -> None:
         """Remove acknowledged operations from replication_log."""
