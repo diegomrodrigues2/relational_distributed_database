@@ -1,9 +1,38 @@
 import os
+import json
 import threading
+import time
 from mem_table import MemTable
 from sstable import SSTableManager, TOMBSTONE
 from wal import WriteAheadLog
 from merkle import compute_segment_hashes
+from vector_clock import VectorClock
+
+
+def _merge_version_lists(current, new_list):
+    """Merge new version tuples into existing ones using vector clocks."""
+    if not current:
+        return list(new_list)
+    result = list(current)
+    for val, vc in new_list:
+        add_new = True
+        updated = []
+        for c_val, c_vc in result:
+            cmp = vc.compare(c_vc)
+            if cmp == ">":
+                # nova versão domina existente
+                continue
+            if cmp == "<":
+                add_new = False
+                updated.append((c_val, c_vc))
+            else:
+                if vc.clock == c_vc.clock and val == c_val:
+                    add_new = False
+                updated.append((c_val, c_vc))
+        if add_new:
+            updated.append((val, vc))
+        result = updated
+    return result
 
 
 class SimpleLSMDB:
@@ -47,18 +76,9 @@ class SimpleLSMDB:
         """Recupera o MemTable a partir do WAL."""
         print("Iniciando recuperação do WAL...")
         wal_entries = self.wal.read_all()
-        # Aplica as entradas do WAL no MemTable, garantindo a última escrita para cada chave
-        for ts, entry_type, key, value_tuple in wal_entries:
-            # Em uma recuperação real, você também precisaria verificar se o SSTable mais recente
-            # já contém essa entrada para evitar reprocessar dados já persistidos.
-            # Para simplicidade didática, assumimos que o WAL contém apenas dados que ainda
-            # não foram descarregados para o SSTable.
-            if entry_type == "PUT":
-                self.memtable.put(key, value_tuple)
-            elif entry_type == "DELETE":
-                self.memtable.put(
-                    key, (TOMBSTONE, ts)
-                )  # DELETE é um PUT de um TOMBSTONE
+        for _, entry_type, key, value_tuple in wal_entries:
+            # Assumimos que o WAL contém apenas dados não persistidos.
+            self.memtable.put(key, value_tuple)
         print(
             f"Recuperação do WAL concluída. MemTable agora tem {len(self.memtable)} itens."
         )
@@ -73,10 +93,12 @@ class SimpleLSMDB:
             "  FLUSH: MemTable cheio ou trigger de flush manual. Descarregando para SSTable..."
         )
 
-        # Prepara os dados para o SSTable (ordenados por chave)
-        # Cada valor no MemTable é uma tupla (valor, timestamp). Para o
-        # SSTable, persistimos apenas o valor.
-        sorted_data = [(k, v[0]) for k, v in self.memtable.get_sorted_items()]
+        # Prepara os dados para o SSTable (ordenados por chave). Pode haver
+        # múltiplas versões por chave.
+        sorted_data = []
+        for k, versions in self.memtable.get_sorted_items():
+            for val, vc in versions:
+                sorted_data.append((k, val, vc))
 
         # Escreve o SSTable
         self.sstable_manager.write_sstable(sorted_data)
@@ -90,91 +112,73 @@ class SimpleLSMDB:
         self._start_compaction_async()
         self.segment_hashes = compute_segment_hashes(self)
 
-    def put(self, key, value, timestamp=None):
-        """Insere ou atualiza uma chave.
-
-        ``timestamp`` pode ser informado para manter a ordem entre réplicas.
-        Se ``None``, o horário atual é utilizado.
-        """
+    def put(self, key, value, *, timestamp=None, vector_clock=None):
+        """Insere ou atualiza uma chave."""
         key = str(key)
         value = str(value)
-        if timestamp is None:
-            import time
-
-            timestamp = int(time.time() * 1000)
-        self.wal.append("PUT", key, value, timestamp)
-        self.memtable.put(key, (value, timestamp))
+        if vector_clock is None:
+            if timestamp is None:
+                timestamp = int(time.time() * 1000)
+            vector_clock = VectorClock({"ts": int(timestamp)})
+        self.wal.append("PUT", key, value, vector_clock)
+        self.memtable.put(key, (value, vector_clock))
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
 
     def get(self, key):
-        """Retorna o valor mais recente de uma chave."""
+        """Retorna o(s) valor(es) associado(s) à chave."""
         key = str(key)
         print(f"\nGET: Buscando chave '{key}'")
 
-        # 1. Tenta encontrar no MemTable (mais recente)
+        versions = []
         record = self.memtable.get(key)
-        if record is not None:
-            value, ts = record
-            if value == TOMBSTONE:
-                print(
-                    f"GET: '{key}' encontrado como TOMBSTONE no MemTable. Não existe."
-                )
-                return None
-            print(f"GET: '{key}' encontrado no MemTable.")
-            return value
+        if record:
+            versions = _merge_version_lists(versions, record)
 
-        # 2. Se não encontrado, procura nos SSTables, do mais novo para o mais antigo
-        # Percorre a lista de SSTables do mais novo para o mais antigo
-        # (A lista sstable_segments é ordenada do mais antigo para o mais novo, então invertemos)
         for sstable_entry in reversed(self.sstable_manager.sstable_segments):
-            value = self.sstable_manager.get_from_sstable(sstable_entry, key)
-            if value is not None:
-                if value == TOMBSTONE:
-                    print(
-                        f"GET: '{key}' encontrado como TOMBSTONE em SSTable. Não existe."
-                    )
-                    return None
-                print(f"GET: '{key}' encontrado em SSTable.")
-                return value
+            rec = self.sstable_manager.get_from_sstable(sstable_entry, key)
+            if rec:
+                versions = _merge_version_lists(versions, rec)
 
-        print(f"GET: Chave '{key}' não encontrada em nenhum lugar.")
-        return None
+        versions = [v for v in versions if v[0] != TOMBSTONE]
+
+        if not versions:
+            print(f"GET: Chave '{key}' não encontrada em nenhum lugar.")
+            return None
+
+        if len(versions) == 1:
+            print(f"GET: '{key}' encontrado.")
+            return versions[0][0]
+
+        print(f"GET: '{key}' possui múltiplas versões.")
+        return [v for v, _ in versions]
 
     def get_record(self, key):
-        """Retorna ``(valor, timestamp)`` se presente.
-
-        Caso a informação venha de um SSTable, o timestamp será ``None``.
-        """
+        """Retorna lista de ``(valor, vector_clock)`` se presente."""
         key = str(key)
+        versions = []
         record = self.memtable.get(key)
-        if record is not None:
-            value, ts = record
-            if value == TOMBSTONE:
-                return None, ts
-            return value, ts
+        if record:
+            versions = _merge_version_lists(versions, record)
 
         for sstable_entry in reversed(self.sstable_manager.sstable_segments):
-            value = self.sstable_manager.get_from_sstable(sstable_entry, key)
-            if value is not None:
-                if value == TOMBSTONE:
-                    return None, None
-                return value, None
+            rec = self.sstable_manager.get_from_sstable(sstable_entry, key)
+            if rec:
+                versions = _merge_version_lists(versions, rec)
 
-        return None, None
+        versions = [v for v in versions if v[0] != TOMBSTONE]
+        return versions
 
-    def delete(self, key, timestamp=None):
+    def delete(self, key, *, timestamp=None, vector_clock=None):
         """Marca uma chave como removida."""
         key = str(key)
         print(f"\nDELETE: Marcando chave '{key}' para exclusão.")
-        if timestamp is None:
-            import time
-
-            timestamp = int(time.time() * 1000)
-        self.wal.append("DELETE", key, TOMBSTONE, timestamp)
-        self.memtable.put(
-            key, (TOMBSTONE, timestamp)
-        )  # Marca no MemTable como tombstone
+        if vector_clock is None:
+            if timestamp is None:
+                timestamp = int(time.time() * 1000)
+            vector_clock = VectorClock({"ts": int(timestamp)})
+        self.wal.append("DELETE", key, TOMBSTONE, vector_clock)
+        self.memtable.put(key, (TOMBSTONE, vector_clock))
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
 
@@ -200,17 +204,27 @@ class SimpleLSMDB:
 
     def get_segment_items(self, segment_id):
         if segment_id == "memtable":
-            return [(k, v[0], v[1]) for k, v in self.memtable.get_sorted_items()]
+            res = []
+            for k, versions in self.memtable.get_sorted_items():
+                for val, vc in versions:
+                    res.append((k, val, vc))
+            return res
         for ts, path, _ in self.sstable_manager.sstable_segments:
             name = os.path.basename(path)
             if name == segment_id:
                 items = []
                 with open(path, "r", encoding="utf-8") as f:
                     for line in f:
-                        if ":" not in line:
+                        line = line.strip()
+                        if not line:
                             continue
-                        k, v = line.strip().split(":", 1)
-                        items.append((k, v, None))
+                        try:
+                            data = json.loads(line)
+                            items.append(
+                                (data.get("key"), data.get("value"), VectorClock(data.get("vector", {})))
+                            )
+                        except json.JSONDecodeError:
+                            continue
                 return items
         return []
 

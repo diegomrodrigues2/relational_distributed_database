@@ -37,10 +37,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 apply_update = False
 
         if apply_update:
-            _, current_ts = self._node.db.get_record(request.key)
+            versions = self._node.db.get_record(request.key)
+            current_ts = None
+            if versions:
+                current_ts = max(v.clock.get("ts", 0) for _, v in versions)
             if current_ts is None or request.timestamp > current_ts:
                 self._node.db.put(
-                    request.key, request.value, timestamp=request.timestamp
+                    request.key,
+                    request.value,
+                    timestamp=request.timestamp,
                 )
 
         if apply_update:
@@ -79,7 +84,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 apply_update = False
 
         if apply_update:
-            _, current_ts = self._node.db.get_record(request.key)
+            versions = self._node.db.get_record(request.key)
+            current_ts = None
+            if versions:
+                current_ts = max(v.clock.get("ts", 0) for _, v in versions)
             if current_ts is None or request.timestamp > current_ts:
                 self._node.db.delete(request.key, timestamp=request.timestamp)
 
@@ -152,12 +160,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             for seg, h in local_hashes.items():
                 if remote_hashes.get(seg) == h:
                     continue
-                for k, v, ts in self._node.db.get_segment_items(seg):
+                for k, v, vc in self._node.db.get_segment_items(seg):
+                    ts_val = vc.clock.get("ts", 0) if vc is not None else 0
                     ops.append(
                         replication_pb2.Operation(
                             key=k,
                             value=v if v is not None else "",
-                            timestamp=ts if ts is not None else 0,
+                            timestamp=ts_val,
                             node_id=self._node.node_id,
                             op_id="",
                             delete=v is None,

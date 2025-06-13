@@ -6,6 +6,7 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from lsm_db import SimpleLSMDB
+from vector_clock import VectorClock
 
 class SimpleLSMDBTest(unittest.TestCase):
     def test_put_get_and_flush(self):
@@ -52,9 +53,11 @@ class SimpleLSMDBTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             db = SimpleLSMDB(db_path=tmpdir, max_memtable_size=10)
             db.put('k1', 'v1')
-            value, ts = db.get_record('k1')
+            records = db.get_record('k1')
+            self.assertEqual(len(records), 1)
+            value, vc = records[0]
             self.assertEqual(value, 'v1')
-            self.assertIsInstance(ts, int)
+            self.assertIsInstance(vc, VectorClock)
             db.close()
 
 if __name__ == '__main__':
