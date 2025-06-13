@@ -149,11 +149,11 @@ class MemTable:
 
     # API pública compatível
     def put(self, key, value):
-        """Insere ou atualiza um par chave-valor."""
+        """Insere ou atualiza um par ``(valor, timestamp)``."""
         self._tree.insert(key, value)
 
     def get(self, key):
-        """Retorna valor associado à chave."""
+        """Retorna ``(valor, timestamp)`` associado à chave."""
         return self._tree.search(key)
 
     def is_full(self):
