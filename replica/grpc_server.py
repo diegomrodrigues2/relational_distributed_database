@@ -380,7 +380,7 @@ class NodeServer:
         t.start()
 
     # replication helpers -------------------------------------------------
-    def replicate(self, op, key, value, timestamp, op_id="", skip_id=""):
+    def replicate(self, op, key, value, timestamp, op_id="", skip_id=None):
         def _send(client, peer_id):
             try:
                 if op == "PUT":
@@ -406,8 +406,13 @@ class NodeServer:
                 self.save_hints()
 
         for host, port, peer_id, client in self._iter_peers():
-            if skip_id and (peer_id == skip_id or f"{host}:{port}" == skip_id):
-                continue
+            if skip_id is not None:
+                if self.clients_by_id:
+                    if peer_id == skip_id:
+                        continue
+                else:
+                    if f"{host}:{port}" == skip_id:
+                        continue
             threading.Thread(
                 target=_send,
                 args=(client, f"{host}:{port}"),
