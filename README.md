@@ -1,32 +1,90 @@
 # py_distributed_database
 
-Este projeto demonstra uma implementação simplificada de um banco de dados distribuído em Python. A combinação de uma LSM Tree local e a replicação assíncrona entre nós usando gRPC ilustra conceitos presentes em sistemas de banco de dados modernos.
+Este projeto demonstra uma implementação didática de um banco de dados distribuído escrito em Python. Cada nó utiliza uma LSM Tree para armazenamento local e replica suas operações para os pares via gRPC. O protocolo de replicação segue o modelo **multi‑líder all‑to‑all** com resolução de conflitos baseada em **Last Write Wins (LWW)** usando relógios de **Lamport**.
+
+## Visão geral da arquitetura
+
+```mermaid
+flowchart LR
+    subgraph Node_A["Nó A"]
+        ADB["LSM DB"]
+        AClock["Lamport Clock"]
+        AServer["gRPC Server"]
+    end
+    subgraph Node_B["Nó B"]
+        BDB["LSM DB"]
+        BClock["Lamport Clock"]
+        BServer["gRPC Server"]
+    end
+    subgraph Node_C["Nó C"]
+        CDB["LSM DB"]
+        CClock["Lamport Clock"]
+        CServer["gRPC Server"]
+    end
+    AServer -- Replicação --> BServer
+    AServer -- Replicação --> CServer
+    BServer -- Replicação --> AServer
+    BServer -- Replicação --> CServer
+    CServer -- Replicação --> AServer
+    CServer -- Replicação --> BServer
+```
+
+Cada instância contém seu próprio clock lógico e armazena `(valor, timestamp)`. Ao receber uma atualização de outro nó, compara os timestamps: se o recebido for maior, a escrita substitui a local; caso contrário, é descartada.
+
+## Fluxo de escrita
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant NodeA
+    participant NodeB
+    participant NodeC
+
+    Client->>NodeA: PUT(key, value)
+    NodeA->>NodeA: tick clock + grava local
+    NodeA-->>NodeB: replicate(key, value, ts)
+    NodeA-->>NodeC: replicate(key, value, ts)
+    NodeB->>NodeB: update(ts)
+    alt ts maior que local
+        NodeB->>NodeB: aplica escrita
+    else
+        NodeB->>NodeB: descarta
+    end
+    NodeC->>NodeC: update(ts)
+    alt ts maior que local
+        NodeC->>NodeC: aplica escrita
+    else
+        NodeC->>NodeC: descarta
+    end
+```
+
+A mesma regra vale para deleções, que são propagadas como *tombstones*. Isso garante **convergência eventual** de todos os nós.
 
 ## Principais componentes
 
-- **Write-Ahead Log (WAL)** – registra cada operação de escrita antes que seja aplicada, garantindo durabilidade.
-- **MemTable** – estrutura em memória baseada em Árvore Rubro-Negra para inserções e leituras rápidas.
-- **SSTables** – arquivos ordenados e imutáveis no disco que armazenam os dados de forma permanente, incluindo tombstones para deleções.
-- **Compactação** – mescla SSTables mais antigas, removendo registros obsoletos e otimizando a leitura.
-- **Replicação multi-líder** – qualquer nó pode aceitar escritas e propaga-las para os pares de forma assíncrona via gRPC.
-- **Marcação temporal** – as mensagens carregam `timestamp` e `node_id` para resolver conflitos.
-- **Encerramento limpo** – o cluster pode ser iniciado e finalizado repetidamente sem deixar processos órfãos.
-- **Encerramento limpo** – o cluster pode ser iniciado e finalizado repetidamente sem deixar processos órfãos.
-- **Driver** – interface opcional que direciona leituras de forma a garantir "read-your-own-writes" e leituras monotônicas para cada usuário.
+- **Write-Ahead Log (WAL)** – registra cada operação antes que seja aplicada, garantindo durabilidade.
+- **MemTable** – estrutura em memória (Árvore Rubro-Negra) para escritas rápidas.
+- **SSTables** – arquivos imutáveis que armazenam os dados permanentemente.
+- **Compactação** – remove registros obsoletos ao mesclar SSTables.
+- **Lamport Clock** – contador lógico usado para ordenar operações entre nós.
+- **Replicação multi-líder** – qualquer nó pode aceitar escritas e replicá-las para todos os outros de forma assíncrona.
+- **Driver opcional** – encaminha requisições para garantir "read your own writes".
 
 ## Executando
 
-1. Instale as dependências:
+1. Instale as dependências
    ```bash
    pip install -r requirements.txt
    ```
-2. Rode o exemplo principal:
+2. Inicie o exemplo
    ```bash
    python main.py
    ```
-  O script inicializa um pequeno cluster com múltiplos nós capazes de escrever e replica as operações entre eles.
+   O script cria um cluster local com múltiplos nós e replica as operações entre eles.
 
-Se desejar garantias de consistência para cada usuário, utilize o `Driver`:
+Para consistência por usuário, utilize o `Driver`:
+
 ```python
 from replication import NodeCluster
 from driver import Driver
@@ -40,14 +98,14 @@ cluster.shutdown()
 
 ## Testes
 
-Para rodar a bateria de testes unitários:
+Execute a bateria de testes para validar o sistema:
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-## Estrutura dos arquivos
+## Estrutura de arquivos
 
 - `main.py` – exemplo de inicialização do cluster.
-- `lsm_db.py`, `mem_table.py`, `wal.py` e `sstable.py` – compõem a LSM Tree.
-- `replication.py` e diretório `replica/` – implementação do cluster e serviços gRPC.
-- `tests/` – testes unitários do projeto.
+- `lsm_db.py`, `mem_table.py`, `wal.py`, `sstable.py` – implementação da LSM Tree.
+- `replication.py` e `replica/` – lógica de replicação gRPC e serviços.
+- `tests/` – casos de teste.
