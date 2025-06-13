@@ -506,7 +506,30 @@ class NodeServer:
 
     # replication helpers -------------------------------------------------
     def replicate(self, op, key, value, timestamp, op_id="", vector=None, skip_id=None):
-        def _send(client, peer_id):
+        """Synchronously replicate an operation to responsible peers."""
+
+        # Determine peers responsible for this key according to the hash ring.
+        if self.hash_ring and self.clients_by_id:
+            pref_nodes = self.hash_ring.get_preference_list(key, self.replication_factor)
+            peer_list = []
+            for node_id in pref_nodes:
+                if node_id == self.node_id:
+                    continue
+                client = self.clients_by_id.get(node_id)
+                if client:
+                    peer_list.append((client.host, client.port, node_id, client))
+        else:
+            peer_list = list(self._iter_peers())
+
+        errors = []
+        for host, port, peer_id, client in peer_list:
+            if skip_id is not None:
+                if self.clients_by_id:
+                    if peer_id == skip_id:
+                        continue
+                else:
+                    if f"{host}:{port}" == skip_id:
+                        continue
             try:
                 if op == "PUT":
                     client.put(
@@ -527,24 +550,15 @@ class NodeServer:
                     )
             except Exception as exc:
                 print(f"Falha ao replicar: {exc}")
-                self.hints.setdefault(peer_id, []).append(
+                addr_id = f"{host}:{port}"
+                self.hints.setdefault(addr_id, []).append(
                     [op_id, op, key, value, timestamp]
                 )
                 self.save_hints()
+                errors.append(exc)
 
-        for host, port, peer_id, client in self._iter_peers():
-            if skip_id is not None:
-                if self.clients_by_id:
-                    if peer_id == skip_id:
-                        continue
-                else:
-                    if f"{host}:{port}" == skip_id:
-                        continue
-            threading.Thread(
-                target=_send,
-                args=(client, f"{host}:{port}"),
-                daemon=True,
-            ).start()
+        if errors:
+            raise RuntimeError("replication failed")
 
     def sync_from_peer(self) -> None:
         """Exchange updates with all peers."""
@@ -584,7 +598,10 @@ class NodeServer:
                         node_id=op.node_id,
                         op_id=op.op_id,
                     )
-                    self.service.Delete(req_del, None)
+                    try:
+                        self.service.Delete(req_del, None)
+                    except Exception:
+                        pass
                 else:
                     req_put = replication_pb2.KeyValue(
                         key=op.key,
@@ -593,7 +610,10 @@ class NodeServer:
                         node_id=op.node_id,
                         op_id=op.op_id,
                     )
-                    self.service.Put(req_put, None)
+                    try:
+                        self.service.Put(req_put, None)
+                    except Exception:
+                        pass
 
             # attempt to flush hinted handoff operations
             addr_id = f"{host}:{port}"
