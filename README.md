@@ -61,6 +61,19 @@ sequenceDiagram
 
 A mesma regra vale para deleções, que são propagadas como *tombstones*. Isso garante **convergência eventual** de todos os nós.
 
+## Idempotência e prevenção de duplicatas
+
+Cada escrita replicada possui um identificador único `op_id` no formato `"<node>:<seq>"`.
+Os nós mantêm um **vetor de versões** (`last_seen`) com o maior contador aplicado de cada origem.
+Quando uma atualização chega:
+
+1. Extrai-se a origem e o contador do `op_id`.
+2. Se o contador é maior que `last_seen[origem]`, a operação é aplicada e o valor é atualizado.
+3. Caso contrário, ela é ignorada, garantindo **idempotência**.
+
+Operações originadas localmente são armazenadas em um **log de replicação** até que todos os pares as recebam.
+Se um nó ficar offline, ele pode recuperar as mudanças perdidas ao reprovar o log quando voltar.
+
 ## Principais componentes
 
 - **Write-Ahead Log (WAL)** – registra cada operação antes que seja aplicada, garantindo durabilidade.
@@ -70,6 +83,8 @@ A mesma regra vale para deleções, que são propagadas como *tombstones*. Isso 
 - **Lamport Clock** – contador lógico usado para ordenar operações entre nós.
 - **Replicação multi-líder** – qualquer nó pode aceitar escritas e replicá-las para todos os outros de forma assíncrona.
 - **Driver opcional** – encaminha requisições para garantir "read your own writes".
+- **Log de replicação** – armazena operações geradas localmente até que todos os pares confirmem o recebimento.
+- **Vetor de versões** – cada nó mantém `last_seen` (origem → último contador) para aplicar cada operação exatamente uma vez.
 
 ## Executando
 
