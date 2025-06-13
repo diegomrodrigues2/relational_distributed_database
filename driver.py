@@ -5,9 +5,16 @@ from replication import NodeCluster
 class Driver:
     """Interface entre usuários e o cluster garantindo certas consistências."""
 
-    def __init__(self, cluster: NodeCluster, read_your_writes_timeout: int = 5) -> None:
+    def __init__(
+        self,
+        cluster: NodeCluster,
+        read_your_writes_timeout: int = 5,
+        *,
+        consistency_mode: str = "lww",
+    ) -> None:
         """Cria o driver e prepara o dicionário de sessões."""
         self.cluster = cluster
+        self.consistency_mode = consistency_mode
         self.read_your_writes_timeout = read_your_writes_timeout
         self._sessions = {}
 

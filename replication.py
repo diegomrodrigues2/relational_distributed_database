@@ -39,7 +39,14 @@ class ClusterNode:
 class NodeCluster:
     """Launches multiple nodes that replicate to each other."""
 
-    def __init__(self, base_path: str, num_nodes: int = 3, topology: dict[int, list[int]] | None = None):
+    def __init__(
+        self,
+        base_path: str,
+        num_nodes: int = 3,
+        topology: dict[int, list[int]] | None = None,
+        *,
+        consistency_mode: str = "lww",
+    ):
         self.base_path = base_path
         if os.path.exists(base_path):
             shutil.rmtree(base_path)
@@ -47,6 +54,7 @@ class NodeCluster:
 
         base_port = 9000
         self.nodes = []
+        self.consistency_mode = consistency_mode
         peers = [
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
@@ -66,6 +74,7 @@ class NodeCluster:
             p = multiprocessing.Process(
                 target=run_server,
                 args=(db_path, "localhost", port, node_id, peers_i),
+                kwargs={"consistency_mode": self.consistency_mode},
                 daemon=True,
             )
             p.start()
