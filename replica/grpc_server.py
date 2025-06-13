@@ -202,16 +202,35 @@ class NodeServer:
         self.max_batch_size = max_batch_size
         self.peer_clients = []
         self.client_map = {}
-        for ph, pp in self.peers:
+        self.clients_by_id = {}
+        for peer in self.peers:
+            if len(peer) == 2:
+                ph, pp = peer
+                pid = f"{ph}:{pp}"
+            else:
+                ph, pp, pid = peer
             if ph == self.host and pp == self.port:
                 continue
             c = GRPCReplicaClient(ph, pp)
             self.peer_clients.append(c)
             self.client_map[f"{ph}:{pp}"] = c
+            self.clients_by_id[pid] = c
 
         self.hints: dict[str, list[tuple]] = {}
         self._replog_fp = None
         self._replog_lock = threading.Lock()
+
+    def _iter_peers(self):
+        """Yield tuples of (host, port, node_id, client) for all peers."""
+        if self.clients_by_id:
+            return [
+                (c.host, c.port, node_id, c)
+                for node_id, c in self.clients_by_id.items()
+            ]
+        return [
+            (c.host, c.port, f"{c.host}:{c.port}", c)
+            for c in self.peer_clients
+        ]
 
     # persistence helpers ------------------------------------------------
     def _last_seen_file(self) -> str:
@@ -371,13 +390,13 @@ class NodeServer:
                 )
                 self.save_hints()
 
-        for c in self.peer_clients:
-            pid = f"{c.host}:{c.port}"
-            threading.Thread(target=_send, args=(c, pid), daemon=True).start()
+        for host, port, peer_id, client in self._iter_peers():
+            threading.Thread(target=_send, args=(client, f"{host}:{port}"), daemon=True).start()
 
     def sync_from_peer(self) -> None:
         """Exchange updates with all peers."""
-        if not self.peer_clients:
+        peer_list = list(self._iter_peers())
+        if not peer_list:
             return
 
         pending_ops = []
@@ -395,8 +414,7 @@ class NodeServer:
 
         hashes = self.db.segment_hashes
 
-        for client in self.peer_clients:
-            peer_id = f"{client.host}:{client.port}"
+        for host, port, peer_id, client in peer_list:
             try:
                 resp = client.fetch_updates(self.last_seen, pending_ops, hashes)
             except Exception:
@@ -425,7 +443,8 @@ class NodeServer:
                     self.service.Put(req_put, None)
 
             # attempt to flush hinted handoff operations
-            hints = self.hints.get(peer_id, [])
+            addr_id = f"{host}:{port}"
+            hints = self.hints.get(addr_id, [])
             if hints:
                 remaining = []
                 for h_op_id, h_op, h_key, h_val, h_ts in hints:
@@ -448,9 +467,9 @@ class NodeServer:
                     except Exception:
                         remaining.append((h_op_id, h_op, h_key, h_val, h_ts))
                 if remaining:
-                    self.hints[peer_id] = [list(r) for r in remaining]
+                    self.hints[addr_id] = [list(r) for r in remaining]
                 else:
-                    self.hints.pop(peer_id, None)
+                    self.hints.pop(addr_id, None)
                 self.save_hints()
 
     # lifecycle -----------------------------------------------------------
@@ -481,7 +500,7 @@ class NodeServer:
             self._replay_thread.join()
         if self._anti_entropy_thread:
             self._anti_entropy_thread.join()
-        for c in self.peer_clients:
+        for _, _, _, c in self._iter_peers():
             c.close()
         self.server.stop(0).wait()
 

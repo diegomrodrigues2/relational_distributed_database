@@ -47,7 +47,10 @@ class NodeCluster:
 
         base_port = 9000
         self.nodes = []
-        peers = [("localhost", base_port + i) for i in range(num_nodes)]
+        peers = [
+            ("localhost", base_port + i, f"node_{i}")
+            for i in range(num_nodes)
+        ]
 
         for i in range(num_nodes):
             node_id = f"node_{i}"
