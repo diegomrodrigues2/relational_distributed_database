@@ -8,9 +8,9 @@ Este projeto demonstra uma implementação simplificada de um banco de dados dis
 - **MemTable** – estrutura em memória baseada em Árvore Rubro-Negra para inserções e leituras rápidas.
 - **SSTables** – arquivos ordenados e imutáveis no disco que armazenam os dados de forma permanente, incluindo tombstones para deleções.
 - **Compactação** – mescla SSTables mais antigas, removendo registros obsoletos e otimizando a leitura.
-- **Replicador líder-seguidor** – o líder recebe as escritas e as propaga para os seguidores por gRPC sem esperar confirmação (replicação assíncrona).
-- **Marcação temporal** – a estrutura `KeyValue` definida no proto inclui um campo `timestamp` (`int64`) para registrar quando cada escrita ocorreu.
-- **Heartbeat com failover sequencial** – monitora a disponibilidade dos nós e promove o próximo seguidor se o líder falhar.
+- **Replicação multi-líder** – qualquer nó pode aceitar escritas e propaga-las para os pares de forma assíncrona via gRPC.
+- **Marcação temporal** – as mensagens carregam `timestamp` e `node_id` para resolver conflitos.
+- **Encerramento limpo** – o cluster pode ser iniciado e finalizado repetidamente sem deixar processos órfãos.
 - **Encerramento limpo** – o cluster pode ser iniciado e finalizado repetidamente sem deixar processos órfãos.
 - **Driver** – interface opcional que direciona leituras de forma a garantir "read-your-own-writes" e leituras monotônicas para cada usuário.
 
@@ -24,15 +24,14 @@ Este projeto demonstra uma implementação simplificada de um banco de dados dis
    ```bash
    python main.py
    ```
-   O script inicializa um pequeno cluster com um líder e dois seguidores, grava uma chave e realiza a leitura no líder e em um dos seguidores para evidenciar a replicação.
-Para simular failover automatico, invoque `cluster.simulate_leader_failure()` no exemplo.
+  O script inicializa um pequeno cluster com múltiplos nós capazes de escrever e replica as operações entre eles.
 
 Se desejar garantias de consistência para cada usuário, utilize o `Driver`:
 ```python
-from replication import ReplicationManager
+from replication import NodeCluster
 from driver import Driver
 
-cluster = ReplicationManager(num_followers=2)
+cluster = NodeCluster(num_nodes=2)
 driver = Driver(cluster)
 driver.put("alice", "k", "v")
 value = driver.get("alice", "k")
@@ -48,7 +47,7 @@ python -m unittest discover -s tests -v
 
 ## Estrutura dos arquivos
 
-- `main.py` – exemplo de inicialização do `ReplicationManager`.
+- `main.py` – exemplo de inicialização do cluster.
 - `lsm_db.py`, `mem_table.py`, `wal.py` e `sstable.py` – compõem a LSM Tree.
 - `replication.py` e diretório `replica/` – implementação do cluster e serviços gRPC.
 - `tests/` – testes unitários do projeto.

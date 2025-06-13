@@ -33,12 +33,12 @@ class ReplicaServiceTimestampTest(unittest.TestCase):
 
             # node clock small -> delete ignored
             node.clock.time = 0
-            service.Delete(replication_pb2.KeyRequest(key="d"), None)
+            service.Delete(replication_pb2.KeyRequest(key="d", timestamp=0, node_id="test"), None)
             self.assertEqual(node.db.get("d"), "val")
 
             # node clock high -> delete applied
             node.clock.time = 100
-            service.Delete(replication_pb2.KeyRequest(key="d"), None)
+            service.Delete(replication_pb2.KeyRequest(key="d", timestamp=200, node_id="test"), None)
             self.assertIsNone(node.db.get("d"))
 
             node.db.close()
