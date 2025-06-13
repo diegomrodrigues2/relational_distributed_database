@@ -110,6 +110,8 @@ class NodeServer:
         self.local_seq = 0
         self.last_seen: dict[str, int] = {}
         self.replication_log: dict[str, tuple] = {}
+        self._cleanup_stop = threading.Event()
+        self._cleanup_thread = None
         self.peer_clients = []
         for ph, pp in self.peers:
             if ph == self.host and pp == self.port:
@@ -141,6 +143,31 @@ class NodeServer:
         self.local_seq += 1
         return f"{self.node_id}:{self.local_seq}"
 
+    def cleanup_replication_log(self) -> None:
+        """Remove acknowledged operations from replication_log."""
+        if not self.last_seen:
+            return
+        min_seen = min(self.last_seen.values())
+        to_remove = [
+            op_id
+            for op_id in list(self.replication_log.keys())
+            if int(op_id.split(":")[1]) <= int(min_seen)
+        ]
+        for op_id in to_remove:
+            self.replication_log.pop(op_id, None)
+
+    def _cleanup_loop(self) -> None:
+        while not self._cleanup_stop.is_set():
+            self.cleanup_replication_log()
+            time.sleep(1)
+
+    def _start_cleanup_thread(self) -> None:
+        if self._cleanup_thread and self._cleanup_thread.is_alive():
+            return
+        t = threading.Thread(target=self._cleanup_loop, daemon=True)
+        self._cleanup_thread = t
+        t.start()
+
     # replication helpers -------------------------------------------------
     def replicate(self, op, key, value, timestamp, op_id=""):
         def _send(client):
@@ -161,18 +188,22 @@ class NodeServer:
                         op_id=op_id,
                     )
             except Exception as exc:
-                print(f"Falha ao replicar para {client.channel.target}: {exc}")
+                print(f"Falha ao replicar: {exc}")
         for c in self.peer_clients:
             threading.Thread(target=_send, args=(c,), daemon=True).start()
 
     # lifecycle -----------------------------------------------------------
     def start(self):
         self.load_last_seen()
+        self._start_cleanup_thread()
         self.server.start()
         self.server.wait_for_termination()
 
     def stop(self):
         self.save_last_seen()
+        self._cleanup_stop.set()
+        if self._cleanup_thread:
+            self._cleanup_thread.join()
         for c in self.peer_clients:
             c.close()
         self.server.stop(0).wait()
