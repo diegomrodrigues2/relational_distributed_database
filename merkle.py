@@ -1,5 +1,6 @@
 """Merkle tree utilities for SimpleLSMDB."""
 import os
+import json
 import hashlib
 from typing import List, Tuple, Dict
 
@@ -29,7 +30,11 @@ def compute_segment_hashes(db) -> Dict[str, str]:
 
     # memtable
     if hasattr(db, "memtable"):
-        items = [(k, v[0]) for k, v in db.memtable.get_sorted_items()]
+        items = []
+        for k, versions in db.memtable.get_sorted_items():
+            for val, vc in versions:
+                if val != "__TOMBSTONE__":
+                    items.append((k, json.dumps(vc.clock) + ":" + val))
         hashes["memtable"] = merkle_root(items)
 
     if hasattr(db, "sstable_manager"):
@@ -39,10 +44,17 @@ def compute_segment_hashes(db) -> Dict[str, str]:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     for line in f:
-                        if ":" not in line:
+                        line = line.strip()
+                        if not line:
                             continue
-                        k, v = line.strip().split(":", 1)
-                        seg_items.append((k, v))
+                        try:
+                            data = json.loads(line)
+                            k = data.get("key")
+                            v = data.get("value")
+                            if v != "__TOMBSTONE__":
+                                seg_items.append((k, json.dumps(data.get("vector", {})) + ":" + v))
+                        except json.JSONDecodeError:
+                            continue
             except FileNotFoundError:
                 continue
             hashes[seg_id] = merkle_root(seg_items)

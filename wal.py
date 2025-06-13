@@ -1,5 +1,6 @@
 import os
-import time
+import json
+from vector_clock import VectorClock
 
 class WriteAheadLog(object):
     """Log de pré-escrita para garantir durabilidade."""
@@ -15,18 +16,18 @@ class WriteAheadLog(object):
             with open(self.wal_file_path, 'w') as f:
                 pass # Apenas cria o arquivo
     
-    def append(self, entry_type, key, value, timestamp=None):
-        """Adiciona registro ao WAL.
-
-        Se ``timestamp`` não for fornecido, usa o horário atual em
-        milissegundos. O timestamp é armazenado juntamente ao valor para
-        permitir ordenação entre réplicas.
-        """
-        if timestamp is None:
-            timestamp = int(time.time() * 1000)  # ms
-        entry = f"{timestamp}|{entry_type}|{key}|{value}"
-        with open(self.wal_file_path, 'a') as file:
-            file.write(entry + "\n")
+    def append(self, entry_type, key, value, vector_clock=None):
+        """Adiciona registro ao WAL com o vetor associado."""
+        if vector_clock is None:
+            vector_clock = VectorClock()
+        entry = {
+            "type": entry_type,
+            "key": key,
+            "value": value,
+            "vector": vector_clock.clock,
+        }
+        with open(self.wal_file_path, "a", encoding="utf-8") as file:
+            file.write(json.dumps(entry) + "\n")
 
     def read_all(self):
         """Retorna todas as entradas do WAL."""
@@ -34,13 +35,23 @@ class WriteAheadLog(object):
         if not os.path.exists(self.wal_file_path):
             return entries
 
-        with open(self.wal_file_path, 'r') as f:
+        with open(self.wal_file_path, "r", encoding="utf-8") as f:
             for line in f:
-                parts = line.strip().split('|', 3)
-                if len(parts) == 4:
-                    ts, entry_type, key, value = parts
-                    ts = int(ts)
-                    entries.append((ts, entry_type, key, (value, ts)))
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    entries.append(
+                        (
+                            0,
+                            data.get("type"),
+                            data.get("key"),
+                            (data.get("value"), VectorClock(data.get("vector", {}))),
+                        )
+                    )
+                except json.JSONDecodeError:
+                    continue
 
         return entries
     

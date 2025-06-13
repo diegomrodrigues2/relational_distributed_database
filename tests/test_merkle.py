@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from lsm_db import SimpleLSMDB
 from merkle import merkle_root, compute_segment_hashes
+import json
 from replica.grpc_server import ReplicaService, NodeServer
 from replica import replication_pb2
 
@@ -23,7 +24,12 @@ class MerkleUtilsTest(unittest.TestCase):
             self.assertEqual(len(seg_names), 1)
             hashes = db.segment_hashes
             self.assertNotEqual(before, hashes["memtable"])
-            expected = merkle_root([("a", "1"), ("b", "2")])
+            seg_items = [
+                (k, json.dumps(vc.clock) + ":" + v)
+                for k, v, vc in db.get_segment_items(seg_names[0])
+                if v != "__TOMBSTONE__"
+            ]
+            expected = merkle_root(seg_items)
             self.assertEqual(hashes[seg_names[0]], expected)
             db.close()
 

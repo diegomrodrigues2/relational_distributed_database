@@ -1,5 +1,7 @@
 import os
+import json
 import time
+from vector_clock import VectorClock
 
 SSTABLE_SPARSE_INDEX_INTERVAL = 100 # Intervalo para o índice esparso (a cada 100 linhas, por exemplo)
 TOMBSTONE = "__TOMBSTONE__" # Marcador para exclusão
@@ -18,6 +20,30 @@ def bisect_left(array, value):
             right = mid
     
     return left
+
+
+def _merge_version_lists(current, new_list):
+    if not current:
+        return list(new_list)
+    result = list(current)
+    for val, vc in new_list:
+        add_new = True
+        updated = []
+        for c_val, c_vc in result:
+            cmp = vc.compare(c_vc)
+            if cmp == ">":
+                continue
+            if cmp == "<":
+                add_new = False
+                updated.append((c_val, c_vc))
+            else:
+                if vc.clock == c_vc.clock and val == c_val:
+                    add_new = False
+                updated.append((c_val, c_vc))
+        if add_new:
+            updated.append((val, vc))
+        result = updated
+    return result
 
 class SSTableManager:
 
@@ -50,19 +76,20 @@ class SSTableManager:
     def _build_sparse_index(self, sstable_path):
         """Cria índice esparso para um SSTable."""
         sparse_index = []
-        with open(sstable_path, 'r') as file:
+        with open(sstable_path, "r", encoding="utf-8") as file:
             offset = 0
-            line_count = 0
             for idx, line in enumerate(file):
                 if idx % SSTABLE_SPARSE_INDEX_INTERVAL == 0:
-                    key_part = line.split(':', 1)[0]
-                    sparse_index.append({
-                        "key": key_part,
-                        "offset": offset 
-                    })
-                offset += len(line.encode('utf-8'))
-                line_count += 1
-        print(f"  SSTableManager: Índice esparso construído para {os.path.basename(sstable_path)} com {len(sparse_index)} entradas.")
+                    try:
+                        data = json.loads(line)
+                        key_part = data["key"]
+                    except Exception:
+                        key_part = ""
+                    sparse_index.append({"key": key_part, "offset": offset})
+                offset += len(line.encode("utf-8"))
+        print(
+            f"  SSTableManager: Índice esparso construído para {os.path.basename(sstable_path)} com {len(sparse_index)} entradas."
+        )
         return sparse_index
     
     def write_sstable(self, sorted_items):
@@ -71,9 +98,10 @@ class SSTableManager:
         sstable_filename = f"sstable_{timestamp}.txt"
         sstable_path = os.path.join(self.sstable_dir, sstable_filename)
 
-        with open(sstable_path, 'w') as f:
-            for key, value in sorted_items:
-                f.write(f"{key}:{value}\n")
+        with open(sstable_path, "w", encoding="utf-8") as f:
+            for key, value, vector in sorted_items:
+                entry = {"key": key, "value": value, "vector": vector.clock}
+                f.write(json.dumps(entry) + "\n")
 
         sparse_index = self._build_sparse_index(sstable_path)
         # Adiciona o novo SSTable ao final (ele é o mais recente)
@@ -87,7 +115,7 @@ class SSTableManager:
         _, sstable_path, sparse_index = sstable_entry
         print(f"  SSTableManager: Buscando '{key}' em {os.path.basename(sstable_path)}...")
 
-        with open(sstable_path, 'r') as f:
+        with open(sstable_path, 'r', encoding='utf-8') as f:
             start_offset = 0
             search_keys = [entry["key"] for entry in sparse_index]
 
@@ -111,17 +139,19 @@ class SSTableManager:
             # Varredura linear a partir do offset encontrado
             for line in f:
                 try:
-                    current_key, value = line.strip().split(':', 1)
-                except ValueError:
-                    # Linha malformada, pula ou trata erro
-                    continue 
+                    data = json.loads(line)
+                    current_key = data.get("key")
+                    value = data.get("value")
+                    vector = VectorClock(data.get("vector", {}))
+                except Exception:
+                    continue
 
                 if current_key == key:
                     if value == TOMBSTONE:
                         print(f"  SSTableManager: Encontrado tombstone para '{key}'.")
-                        return TOMBSTONE # Chave foi deletada
+                        return [(TOMBSTONE, vector)]
                     print(f"  SSTableManager: '{key}' encontrado em {os.path.basename(sstable_path)}.")
-                    return value
+                    return [(value, vector)]
                 elif current_key > key:
                     # Como o arquivo é ordenado, se a chave atual é maior que a chave buscada,
                     # a chave buscada não está neste SSTable.
@@ -141,7 +171,7 @@ class SSTableManager:
         # Para garantir que a versão mais recente prevaleça,
         # iteramos sobre os segmentos do mais novo para o mais antigo.
         # Assim, o último valor encontrado para uma chave será o mais recente.
-        merged_data = {} # Usaremos um dicionário para "last-write-wins"
+        merged_data = {}
 
         # Iterar do mais novo para o mais antigo para garantir que a versão mais recente seja mantida
         segments_to_merge = sorted(self.sstable_segments, key=lambda x: x[0], reverse=True)
@@ -149,29 +179,36 @@ class SSTableManager:
         for _, sstable_path, _ in segments_to_merge:
             print(f"    SSTableManager: Lendo {os.path.basename(sstable_path)} para compactação...")
 
-            with open(sstable_path, 'r') as f:
+            with open(sstable_path, 'r', encoding='utf-8') as f:
                 for line in f:
                     try:
-                        key, value = line.strip().split(':', 1)
-                        if key not in merged_data: # Adiciona apenas se não houver uma versão mais nova já processada
-                            merged_data[key] = value
-                    except ValueError:
-                        continue # Pula linhas malformadas
+                        data = json.loads(line)
+                        key = data.get('key')
+                        value = data.get('value')
+                        vc = VectorClock(data.get('vector', {}))
+                    except Exception:
+                        continue
+                    merged_data[key] = _merge_version_lists(merged_data.get(key, []), [(value, vc)])
 
         # Remove tombstones da lista final de dados
-        final_merged_data = {k: v for k, v in merged_data.items() if v != TOMBSTONE}
+        final_merged_data = {
+            k: [tpl for tpl in v if tpl[0] != TOMBSTONE] for k, v in merged_data.items()
+        }
 
-        # Converte para uma lista de tuplas e ordena por chave para o novo SSTable
-        sorted_merged_items = sorted(final_merged_data.items())
+        sorted_merged_items = []
+        for k, vers in sorted(final_merged_data.items()):
+            for val, vc in vers:
+                sorted_merged_items.append((k, val, vc))
 
         # Escreve o novo SSTable compactado
         new_timestamp = int(time.time() * 1000)
         new_sstable_filename = f"sstable_compacted_{new_timestamp}.txt"
         new_sstable_path = os.path.join(self.sstable_dir, new_sstable_filename)
 
-        with open(new_sstable_path, 'w') as f:
-            for key, value in sorted_merged_items:
-                f.write(f"{key}:{value}\n")
+        with open(new_sstable_path, 'w', encoding='utf-8') as f:
+            for key, value, vc in sorted_merged_items:
+                entry = {"key": key, "value": value, "vector": vc.clock}
+                f.write(json.dumps(entry) + "\n")
 
         new_sparse_index = self._build_sparse_index(new_sstable_path)
 

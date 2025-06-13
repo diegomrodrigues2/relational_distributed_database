@@ -1,3 +1,6 @@
+from vector_clock import VectorClock
+
+
 class RBNode:
     """Nó de uma Red‑Black Tree (Árvore Rubro‑Negra)."""
     __slots__ = ("key", "value", "left", "right", "parent", "red")
@@ -149,11 +152,42 @@ class MemTable:
 
     # API pública compatível
     def put(self, key, value):
-        """Insere ou atualiza um par ``(valor, timestamp)``."""
-        self._tree.insert(key, value)
+        """Insere ou atualiza entradas ``(valor, vector_clock)``.
+
+        Pode existir mais de uma versão por chave caso os vetores sejam
+        concorrentes. Quando uma nova versão domina outra existente, esta é
+        descartada. Se for dominada, a nova é ignorada.
+        """
+        val, vc = value
+        current = self._tree.search(key)
+        if current is None:
+            self._tree.insert(key, [(val, vc)])
+            return
+
+        new_list = []
+        add_new = True
+        for cur_val, cur_vc in current:
+            cmp = vc.compare(cur_vc)
+            if cmp == ">":
+                # nova versão é mais recente, descarta a antiga
+                continue
+            if cmp == "<":
+                # existente é mais recente
+                add_new = False
+                new_list.append((cur_val, cur_vc))
+                continue
+            # concorrentes ou iguais
+            if vc.clock == cur_vc.clock and val == cur_val:
+                add_new = False
+            new_list.append((cur_val, cur_vc))
+
+        if add_new:
+            new_list.append((val, vc))
+
+        self._tree.insert(key, new_list)
 
     def get(self, key):
-        """Retorna ``(valor, timestamp)`` associado à chave."""
+        """Retorna lista de ``(valor, vector_clock)`` para a chave."""
         return self._tree.search(key)
 
     def is_full(self):
