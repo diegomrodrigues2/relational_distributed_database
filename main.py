@@ -1,10 +1,10 @@
-from replication import ReplicationManager
+from replication import NodeCluster
 def main():
     """Exemplo simples de uso do banco de dados replicado."""
-    cluster = ReplicationManager(num_followers=2)
-    cluster.put("exemplo:chave", "valor")
-    print("Valor no líder:", cluster.get("exemplo:chave", read_from_leader=True))
-    print("Valor em um seguidor:", cluster.get("exemplo:chave", read_from_leader=False, follower_id=0))
+    cluster = NodeCluster(base_path="example_cluster", num_nodes=3)
+    cluster.put(0, "exemplo:chave", "valor")
+    print("Valor no nó 0:", cluster.get(0, "exemplo:chave"))
+    print("Valor no nó 1:", cluster.get(1, "exemplo:chave"))
     cluster.shutdown()
 
 

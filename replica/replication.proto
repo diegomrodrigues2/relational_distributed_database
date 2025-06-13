@@ -7,6 +7,8 @@ package replication;
 // Requisicao contendo apenas a chave da operacao
 message KeyRequest {
   string key = 1;
+  int64 timestamp = 2;
+  string node_id = 3;
 }
 
 // Estrutura para enviar chave e valor de uma escrita
@@ -14,6 +16,7 @@ message KeyValue {
   string key = 1;
   string value = 2;
   int64 timestamp = 3;
+  string node_id = 4;
 }
 
 // Resposta que devolve um valor, vazio caso nao encontrado

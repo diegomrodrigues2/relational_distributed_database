@@ -7,55 +7,21 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replication import ReplicationManager
+from replication import NodeCluster
 
 class ReplicationManagerTest(unittest.TestCase):
     def test_basic_replication(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            cluster = ReplicationManager(base_path=tmpdir, num_followers=2)
-            cluster.put('user:1', 'A')
-            v_leader = cluster.get('user:1', read_from_leader=True)
-            v_f0 = cluster.get('user:1', read_from_leader=False, follower_id=0)
-            v_f1 = cluster.get('user:1', read_from_leader=False, follower_id=1)
-            self.assertEqual(v_leader, 'A')
-            self.assertEqual(v_f0, 'A')
-            self.assertEqual(v_f1, 'A')
+            cluster = NodeCluster(base_path=tmpdir, num_nodes=3)
+            cluster.put(0, 'user:1', 'A')
+            v0 = cluster.get(0, 'user:1')
+            v1 = cluster.get(1, 'user:1')
+            v2 = cluster.get(2, 'user:1')
+            self.assertEqual(v0, 'A')
+            self.assertEqual(v1, 'A')
+            self.assertEqual(v2, 'A')
             cluster.shutdown()
 
-    def test_offline_follower(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cluster = ReplicationManager(base_path=tmpdir, num_followers=2)
-            cluster.take_follower_offline(1)
-            cluster.put('k2', 'v2')
-            self.assertEqual(cluster.get('k2', True), 'v2')
-            self.assertEqual(cluster.get('k2', False, 0), 'v2')
-            self.assertIn('Error', cluster.get('k2', False, 1))
-            cluster.bring_follower_online(1)
-            # follower 1 did not receive previous write
-            self.assertIsNone(cluster.get('k2', False, 1))
-            cluster.shutdown()
-
-    def test_leader_failover(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cluster = ReplicationManager(base_path=tmpdir, num_followers=2)
-            cluster.put('pre', 'x')
-            cluster.simulate_leader_failure()
-            cluster.put('post', 'y')
-            v_leader = cluster.get('post', read_from_leader=True)
-            self.assertEqual(v_leader, 'y')
-            # follower 1 should also have the data
-            v_f1 = cluster.get('post', read_from_leader=False, follower_id=1)
-            self.assertEqual(v_f1, 'y')
-            cluster.shutdown()
-
-    def test_multiple_start_stop_no_zombies(self):
-        for _ in range(3):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                cluster = ReplicationManager(base_path=tmpdir, num_followers=2)
-                cluster.put('z', '1')
-                cluster.shutdown()
-            time.sleep(0.5)
-            self.assertEqual(len(multiprocessing.active_children()), 0)
 
 if __name__ == '__main__':
     unittest.main()

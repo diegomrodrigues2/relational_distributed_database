@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11replication.proto\x12\x0breplication\"\x19\n\nKeyRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\"9\n\x08KeyValue\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\"\x1e\n\rValueResponse\x12\r\n\x05value\x18\x01 \x01(\t\"\x07\n\x05\x45mpty\"\x1c\n\tHeartbeat\x12\x0f\n\x07node_id\x18\x01 \x01(\t2\xae\x01\n\x07Replica\x12\x30\n\x03Put\x12\x15.replication.KeyValue\x1a\x12.replication.Empty\x12\x35\n\x06\x44\x65lete\x12\x17.replication.KeyRequest\x1a\x12.replication.Empty\x12:\n\x03Get\x12\x17.replication.KeyRequest\x1a\x1a.replication.ValueResponse2F\n\x10HeartbeatService\x12\x32\n\x04Ping\x12\x16.replication.Heartbeat\x1a\x12.replication.Emptyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11replication.proto\x12\x0breplication\"=\n\nKeyRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12\x0f\n\x07node_id\x18\x03 \x01(\t\"J\n\x08KeyValue\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\"\x1e\n\rValueResponse\x12\r\n\x05value\x18\x01 \x01(\t\"\x07\n\x05\x45mpty\"\x1c\n\tHeartbeat\x12\x0f\n\x07node_id\x18\x01 \x01(\t2\xae\x01\n\x07Replica\x12\x30\n\x03Put\x12\x15.replication.KeyValue\x1a\x12.replication.Empty\x12\x35\n\x06\x44\x65lete\x12\x17.replication.KeyRequest\x1a\x12.replication.Empty\x12:\n\x03Get\x12\x17.replication.KeyRequest\x1a\x1a.replication.ValueResponse2F\n\x10HeartbeatService\x12\x32\n\x04Ping\x12\x16.replication.Heartbeat\x1a\x12.replication.Emptyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,17 +32,17 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'replication_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_KEYREQUEST']._serialized_start=34
-  _globals['_KEYREQUEST']._serialized_end=59
-  _globals['_KEYVALUE']._serialized_start=61
-  _globals['_KEYVALUE']._serialized_end=118
-  _globals['_VALUERESPONSE']._serialized_start=120
-  _globals['_VALUERESPONSE']._serialized_end=150
-  _globals['_EMPTY']._serialized_start=152
-  _globals['_EMPTY']._serialized_end=159
-  _globals['_HEARTBEAT']._serialized_start=161
-  _globals['_HEARTBEAT']._serialized_end=189
-  _globals['_REPLICA']._serialized_start=192
-  _globals['_REPLICA']._serialized_end=366
-  _globals['_HEARTBEATSERVICE']._serialized_start=368
-  _globals['_HEARTBEATSERVICE']._serialized_end=438
+  _globals['_KEYREQUEST']._serialized_end=95
+  _globals['_KEYVALUE']._serialized_start=97
+  _globals['_KEYVALUE']._serialized_end=171
+  _globals['_VALUERESPONSE']._serialized_start=173
+  _globals['_VALUERESPONSE']._serialized_end=203
+  _globals['_EMPTY']._serialized_start=205
+  _globals['_EMPTY']._serialized_end=212
+  _globals['_HEARTBEAT']._serialized_start=214
+  _globals['_HEARTBEAT']._serialized_end=242
+  _globals['_REPLICA']._serialized_start=245
+  _globals['_REPLICA']._serialized_end=419
+  _globals['_HEARTBEATSERVICE']._serialized_start=421
+  _globals['_HEARTBEATSERVICE']._serialized_end=491
 # @@protoc_insertion_point(module_scope)
