@@ -20,8 +20,11 @@ class GRPCReplicaClient:
         self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
         self.hb_stub = replication_pb2_grpc.HeartbeatServiceStub(self.channel)
 
-    def put(self, key, value):
-        request = replication_pb2.KeyValue(key=key, value=value)
+    def put(self, key, value, timestamp=None):
+        if timestamp is None:
+            import time
+            timestamp = int(time.time() * 1000)
+        request = replication_pb2.KeyValue(key=key, value=value, timestamp=timestamp)
         self.stub.Put(request)
 
     def delete(self, key):

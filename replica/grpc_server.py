@@ -2,6 +2,7 @@
 
 import threading
 import time
+from lamport import LamportClock
 from concurrent import futures
 
 import grpc
@@ -19,11 +20,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node = node
 
     def Put(self, request, context):
-        self._node.db.put(request.key, request.value)
+        self._node.clock.update(request.timestamp)
+        self._node.db.put(request.key, request.value, timestamp=request.timestamp)
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
-        self._node.db.delete(request.key)
+        ts = self._node.clock.tick()
+        self._node.db.delete(request.key, timestamp=ts)
         return replication_pb2.Empty()
 
     def Get(self, request, context):
@@ -82,6 +85,7 @@ class NodeServer:
         self._hb_thread = None
         self.last_leader_heartbeat = time.time()
         self._heartbeat_callbacks = {}
+        self.clock = LamportClock()
 
     def record_heartbeat(self, node_id):
         """Called when a follower heartbeat is received."""
