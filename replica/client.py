@@ -5,6 +5,8 @@ from . import replication_pb2, replication_pb2_grpc
 class GRPCReplicaClient:
     """Simple gRPC client for replica nodes."""
     def __init__(self, host: str, port: int):
+        self.host = host
+        self.port = port
         self.channel = grpc.insecure_channel(f"{host}:{port}")
         self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
 

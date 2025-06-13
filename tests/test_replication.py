@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import multiprocessing
 import time
+import json
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -142,6 +143,45 @@ class ReplicationManagerTest(unittest.TestCase):
                 time.sleep(1.5)
 
                 v1 = cluster.get(1, "k")
+                self.assertEqual(v1, "v1")
+            finally:
+                cluster.shutdown()
+
+    def test_hinted_handoff(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = NodeCluster(base_path=tmpdir, num_nodes=2)
+            try:
+                db_path = os.path.join(tmpdir, "node_1")
+                cluster.nodes[1].stop()
+
+                cluster.nodes[0].client.put(
+                    "hint", "v1", timestamp=1, node_id=cluster.nodes[0].node_id
+                )
+                time.sleep(0.5)
+
+                hints_file = os.path.join(tmpdir, "node_0", "hints.json")
+                with open(hints_file, "r", encoding="utf-8") as f:
+                    hints = json.load(f)
+                self.assertTrue(any(hints.values()))
+
+                peers = [("localhost", 9000), ("localhost", 9001)]
+                p = multiprocessing.Process(
+                    target=run_server,
+                    args=(db_path, "localhost", 9001, "node_1", peers),
+                    daemon=True,
+                )
+                p.start()
+                time.sleep(1)
+                client = GRPCReplicaClient("localhost", 9001)
+                cluster.nodes[1] = ClusterNode("node_1", "localhost", 9001, p, client)
+
+                time.sleep(1.5)
+
+                with open(hints_file, "r", encoding="utf-8") as f:
+                    hints_after = json.load(f)
+                self.assertFalse(any(hints_after.values()))
+
+                v1 = cluster.get(1, "hint")
                 self.assertEqual(v1, "v1")
             finally:
                 cluster.shutdown()

@@ -199,14 +199,22 @@ class NodeServer:
         self.anti_entropy_interval = anti_entropy_interval
         self.max_batch_size = max_batch_size
         self.peer_clients = []
+        self.client_map = {}
         for ph, pp in self.peers:
             if ph == self.host and pp == self.port:
                 continue
-            self.peer_clients.append(GRPCReplicaClient(ph, pp))
+            c = GRPCReplicaClient(ph, pp)
+            self.peer_clients.append(c)
+            self.client_map[f"{ph}:{pp}"] = c
+
+        self.hints: dict[str, list[tuple]] = {}
 
     # persistence helpers ------------------------------------------------
     def _last_seen_file(self) -> str:
         return os.path.join(self.db_path, "last_seen.json")
+
+    def _hints_file(self) -> str:
+        return os.path.join(self.db_path, "hints.json")
 
     def load_last_seen(self) -> None:
         """Load last_seen from JSON file if available."""
@@ -218,11 +226,28 @@ class NodeServer:
                 except Exception:
                     self.last_seen = {}
 
+    def load_hints(self) -> None:
+        """Load hints from disk if present."""
+        path = self._hints_file()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                try:
+                    data = json.load(f)
+                    self.hints = {k: [tuple(op) for op in v] for k, v in data.items()}
+                except Exception:
+                    self.hints = {}
+
     def save_last_seen(self) -> None:
         """Persist last_seen to JSON file."""
         path = self._last_seen_file()
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.last_seen, f)
+
+    def save_hints(self) -> None:
+        """Persist hints to disk."""
+        path = self._hints_file()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.hints, f)
 
     def next_op_id(self) -> str:
         """Return next operation identifier."""
@@ -284,7 +309,7 @@ class NodeServer:
 
     # replication helpers -------------------------------------------------
     def replicate(self, op, key, value, timestamp, op_id=""):
-        def _send(client):
+        def _send(client, peer_id):
             try:
                 if op == "PUT":
                     client.put(
@@ -303,9 +328,14 @@ class NodeServer:
                     )
             except Exception as exc:
                 print(f"Falha ao replicar: {exc}")
+                self.hints.setdefault(peer_id, []).append(
+                    [op_id, op, key, value, timestamp]
+                )
+                self.save_hints()
 
         for c in self.peer_clients:
-            threading.Thread(target=_send, args=(c,), daemon=True).start()
+            pid = f"{c.host}:{c.port}"
+            threading.Thread(target=_send, args=(c, pid), daemon=True).start()
 
     def sync_from_peer(self) -> None:
         """Exchange updates with all peers."""
@@ -328,6 +358,7 @@ class NodeServer:
         hashes = self.db.segment_hashes
 
         for client in self.peer_clients:
+            peer_id = f"{client.host}:{client.port}"
             try:
                 resp = client.fetch_updates(self.last_seen, pending_ops, hashes)
             except Exception:
@@ -355,9 +386,39 @@ class NodeServer:
                     )
                     self.service.Put(req_put, None)
 
+            # attempt to flush hinted handoff operations
+            hints = self.hints.get(peer_id, [])
+            if hints:
+                remaining = []
+                for h_op_id, h_op, h_key, h_val, h_ts in hints:
+                    try:
+                        if h_op == "PUT":
+                            client.put(
+                                h_key,
+                                h_val,
+                                timestamp=h_ts,
+                                node_id=self.node_id,
+                                op_id=h_op_id,
+                            )
+                        else:
+                            client.delete(
+                                h_key,
+                                timestamp=h_ts,
+                                node_id=self.node_id,
+                                op_id=h_op_id,
+                            )
+                    except Exception:
+                        remaining.append((h_op_id, h_op, h_key, h_val, h_ts))
+                if remaining:
+                    self.hints[peer_id] = [list(r) for r in remaining]
+                else:
+                    self.hints.pop(peer_id, None)
+                self.save_hints()
+
     # lifecycle -----------------------------------------------------------
     def start(self):
         self.load_last_seen()
+        self.load_hints()
         self.sync_from_peer()
         self._start_cleanup_thread()
         self._start_replay_thread()
@@ -367,6 +428,7 @@ class NodeServer:
 
     def stop(self):
         self.save_last_seen()
+        self.save_hints()
         self._cleanup_stop.set()
         self._replay_stop.set()
         self._anti_entropy_stop.set()
