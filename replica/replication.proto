@@ -13,6 +13,7 @@ message KeyRequest {
 message KeyValue {
   string key = 1;
   string value = 2;
+  int64 timestamp = 3;
 }
 
 // Resposta que devolve um valor, vazio caso nao encontrado
