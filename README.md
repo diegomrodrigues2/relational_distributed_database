@@ -188,6 +188,58 @@ graph LR
     3 --> 0
 ```
 
+## Vector Clocks, CRDTs e modos de consistência
+
+Além do modo padrão **LWW**, o sistema suporta controle de concorrência usando
+**Vector Clocks** e estruturas **CRDT**.
+
+O parâmetro `consistency_mode` define o algoritmo utilizado por cada nó.
+Os valores possíveis são:
+
+- `"lww"` – Last Write Wins com relógios de Lamport (padrão);
+- `"vector"` – utiliza vetores de versão para detectar conflitos;
+- `"crdt"` – replica o estado serializado de CRDTs pré-configurados.
+
+Para iniciar um cluster no modo de vetores ou CRDTs:
+
+```python
+from replication import NodeCluster
+
+# cluster usando vetores de versão
+vector_cluster = NodeCluster("/tmp/vc", num_nodes=3, consistency_mode="vector")
+
+# cluster preparado para CRDTs (ex.: contadores)
+crdt_cluster = NodeCluster("/tmp/crdt", num_nodes=2, consistency_mode="crdt")
+```
+
+### Exemplo de contador CRDT
+
+Para manipular um contador grow-only (`GCounter`) é necessário criar os nós
+manualmente com `NodeServer` especificando `consistency_mode="crdt"` e o mapeamento
+`crdt_config` para as chaves desejadas:
+
+```python
+from tempfile import TemporaryDirectory
+from replica.grpc_server import NodeServer
+
+cfg = {"c": "gcounter"}
+
+with TemporaryDirectory() as dir_a, TemporaryDirectory() as dir_b:
+    node_a = NodeServer(dir_a, node_id="A", peers=[("localhost", 8001, "B")],
+                        consistency_mode="crdt", crdt_config=cfg)
+    node_b = NodeServer(dir_b, node_id="B", peers=[("localhost", 8000, "A")],
+                        consistency_mode="crdt", crdt_config=cfg)
+    node_a.start(); node_b.start()
+
+    node_a.apply_crdt("c", 1)
+    node_b.apply_crdt("c", 2)
+
+    print(node_a.crdts["c"].value)  # 3
+    print(node_b.crdts["c"].value)  # 3
+
+    node_a.stop(); node_b.stop()
+```
+
 ## Testes
 
 Execute a bateria de testes para validar o sistema:
