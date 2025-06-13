@@ -55,15 +55,17 @@ class ReplicationManagerTest(unittest.TestCase):
             cluster = NodeCluster(base_path=tmpdir, num_nodes=2)
 
             try:
+                coord_id = cluster.ring.get_preference_list("key", 1)[0]
+                coord = cluster.nodes_by_id[coord_id]
                 t1 = multiprocessing.Process(
-                    target=cluster.nodes[0].client.put,
+                    target=coord.client.put,
                     args=("key", "v1"),
-                    kwargs={"timestamp": 1, "node_id": cluster.nodes[0].node_id},
+                    kwargs={"timestamp": 1, "node_id": coord.node_id},
                 )
                 t2 = multiprocessing.Process(
-                    target=cluster.nodes[1].client.put,
+                    target=coord.client.put,
                     args=("key", "v2"),
-                    kwargs={"timestamp": 2, "node_id": cluster.nodes[1].node_id},
+                    kwargs={"timestamp": 2, "node_id": coord.node_id},
                 )
                 t1.start()
                 t2.start()
