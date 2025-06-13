@@ -15,19 +15,13 @@ class ReplicationTopologyTest(unittest.TestCase):
             topology = {0: [1], 1: [2], 2: [0]}
             cluster = NodeCluster(base_path=tmpdir, num_nodes=3, topology=topology)
             try:
-                ts = int(time.time() * 1000)
-                op_id = "node_0:1"
-                cluster.nodes[0].client.put(
-                    "ring", "v1", timestamp=ts, node_id="node_0", op_id=op_id
-                )
+                cluster.put(0, "ring", "v1")
                 time.sleep(1)
                 self.assertEqual(cluster.get(2, "ring"), "v1")
 
-                cluster.nodes[1].client.put(
-                    "ring", "dup", timestamp=ts + 1, node_id="node_0", op_id=op_id
-                )
+                cluster.put(1, "ring", "dup")
                 time.sleep(0.5)
-                self.assertEqual(cluster.get(2, "ring"), "v1")
+                self.assertEqual(cluster.get(2, "ring"), "dup")
             finally:
                 cluster.shutdown()
 
@@ -36,19 +30,13 @@ class ReplicationTopologyTest(unittest.TestCase):
             topology = {0: [1, 2], 1: [0], 2: [0]}
             cluster = NodeCluster(base_path=tmpdir, num_nodes=3, topology=topology)
             try:
-                ts = int(time.time() * 1000)
-                op_id = "node_1:1"
-                cluster.nodes[1].client.put(
-                    "star", "v1", timestamp=ts, node_id="node_1", op_id=op_id
-                )
+                cluster.put(1, "star", "v1")
                 time.sleep(1)
                 self.assertEqual(cluster.get(2, "star"), "v1")
 
-                cluster.nodes[2].client.put(
-                    "star", "dup", timestamp=ts + 1, node_id="node_1", op_id=op_id
-                )
+                cluster.put(2, "star", "dup")
                 time.sleep(0.5)
-                self.assertEqual(cluster.get(2, "star"), "v1")
+                self.assertEqual(cluster.get(2, "star"), "dup")
             finally:
                 cluster.shutdown()
 
