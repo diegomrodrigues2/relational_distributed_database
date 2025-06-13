@@ -307,6 +307,7 @@ class NodeServer:
     def next_op_id(self) -> str:
         """Return next operation identifier."""
         self.local_seq += 1
+        self.last_seen[self.node_id] = self.local_seq
         return f"{self.node_id}:{self.local_seq}"
 
     def cleanup_replication_log(self) -> None:
