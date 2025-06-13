@@ -10,6 +10,7 @@ message KeyRequest {
   int64 timestamp = 2;
   string node_id = 3;
   string op_id = 4;
+  VersionVector vector = 5;
 }
 
 // Estrutura para enviar chave e valor de uma escrita
@@ -19,6 +20,7 @@ message KeyValue {
   int64 timestamp = 3;
   string node_id = 4;
   string op_id = 5;
+  VersionVector vector = 6;
 }
 
 // Resposta que devolve um valor, vazio caso nao encontrado
@@ -47,6 +49,7 @@ message Operation {
   string node_id = 4;
   string op_id = 5;
   bool delete = 6;
+  VersionVector vector = 7;
 }
 
 // Requisição para anti-entropy permitindo enviar várias operações

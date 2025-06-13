@@ -10,26 +10,40 @@ class GRPCReplicaClient:
         self.channel = grpc.insecure_channel(f"{host}:{port}")
         self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
 
-    def put(self, key, value, timestamp=None, node_id="", op_id=""):
+    def put(self, key, value, timestamp=None, node_id="", op_id="", vector=None):
         if timestamp is None:
             timestamp = int(time.time() * 1000)
+        if vector is None:
+            vv = replication_pb2.VersionVector(items={})
+        elif isinstance(vector, replication_pb2.VersionVector):
+            vv = vector
+        else:
+            vv = replication_pb2.VersionVector(items=dict(vector))
         request = replication_pb2.KeyValue(
             key=key,
             value=value,
             timestamp=timestamp,
             node_id=node_id,
             op_id=op_id,
+            vector=vv,
         )
         self.stub.Put(request)
 
-    def delete(self, key, timestamp=None, node_id="", op_id=""):
+    def delete(self, key, timestamp=None, node_id="", op_id="", vector=None):
         if timestamp is None:
             timestamp = int(time.time() * 1000)
+        if vector is None:
+            vv = replication_pb2.VersionVector(items={})
+        elif isinstance(vector, replication_pb2.VersionVector):
+            vv = vector
+        else:
+            vv = replication_pb2.VersionVector(items=dict(vector))
         request = replication_pb2.KeyRequest(
             key=key,
             timestamp=timestamp,
             node_id=node_id,
             op_id=op_id,
+            vector=vv,
         )
         self.stub.Delete(request)
 
@@ -43,6 +57,9 @@ class GRPCReplicaClient:
         vv = replication_pb2.VersionVector(items=last_seen)
         ops = ops or []
         hashes = segment_hashes or {}
+        for op in ops:
+            if not op.vector.items:
+                op.vector.MergeFrom(vv)
         req = replication_pb2.FetchRequest(vector=vv, ops=ops, segment_hashes=hashes)
         return self.stub.FetchUpdates(req)
 
