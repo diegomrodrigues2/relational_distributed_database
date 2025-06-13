@@ -23,8 +23,8 @@ class ReplicaServiceCRDTTest(unittest.TestCase):
     def test_gcounter_replication(self):
         with tempfile.TemporaryDirectory() as dir_a, tempfile.TemporaryDirectory() as dir_b:
             cfg = {"c": "gcounter"}
-            node_a = NodeServer(db_path=dir_a, node_id="A", peers=[], crdt_config=cfg)
-            node_b = NodeServer(db_path=dir_b, node_id="B", peers=[], crdt_config=cfg)
+            node_a = NodeServer(db_path=dir_a, node_id="A", peers=[], crdt_config=cfg, consistency_mode="crdt")
+            node_b = NodeServer(db_path=dir_b, node_id="B", peers=[], crdt_config=cfg, consistency_mode="crdt")
             service_a = ReplicaService(node_a)
             service_b = ReplicaService(node_b)
 

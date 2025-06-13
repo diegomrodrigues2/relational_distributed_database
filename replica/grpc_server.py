@@ -41,7 +41,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 new_vc = VectorClock(dict(request.vector.items))
             else:
                 new_vc = VectorClock({"ts": int(request.timestamp)})
-            if request.key in self._node.crdts:
+
+            mode = self._node.consistency_mode
+
+            if mode == "crdt" and request.key in self._node.crdts:
                 crdt = self._node.crdts[request.key]
                 try:
                     other_data = json.loads(request.value) if request.value else {}
@@ -54,7 +57,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     json.dumps(crdt.to_dict()),
                     vector_clock=new_vc,
                 )
-            else:
+            elif mode in ("vector", "crdt"):
                 versions = self._node.db.get_record(request.key)
                 dominated = False
                 for _, vc in versions:
@@ -67,6 +70,21 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         request.key,
                         request.value,
                         vector_clock=new_vc,
+                    )
+                else:
+                    apply_update = False
+            else:  # lww
+                versions = self._node.db.get_record(request.key)
+                latest_ts = -1
+                for _, vc in versions:
+                    ts_val = vc.clock.get("ts", 0)
+                    if ts_val > latest_ts:
+                        latest_ts = ts_val
+                if int(request.timestamp) >= latest_ts:
+                    self._node.db.put(
+                        request.key,
+                        request.value,
+                        timestamp=int(request.timestamp),
                     )
                 else:
                     apply_update = False
@@ -112,17 +130,32 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 new_vc = VectorClock(dict(request.vector.items))
             else:
                 new_vc = VectorClock({"ts": int(request.timestamp)})
-            versions = self._node.db.get_record(request.key)
-            dominated = False
-            for _, vc in versions:
-                cmp = new_vc.compare(vc)
-                if cmp == "<":
-                    dominated = True
-                    break
-            if not dominated:
-                self._node.db.delete(request.key, vector_clock=new_vc)
-            else:
-                apply_update = False
+
+            mode = self._node.consistency_mode
+
+            if mode in ("vector", "crdt"):
+                versions = self._node.db.get_record(request.key)
+                dominated = False
+                for _, vc in versions:
+                    cmp = new_vc.compare(vc)
+                    if cmp == "<":
+                        dominated = True
+                        break
+                if not dominated:
+                    self._node.db.delete(request.key, vector_clock=new_vc)
+                else:
+                    apply_update = False
+            else:  # lww
+                versions = self._node.db.get_record(request.key)
+                latest_ts = -1
+                for _, vc in versions:
+                    ts_val = vc.clock.get("ts", 0)
+                    if ts_val > latest_ts:
+                        latest_ts = ts_val
+                if int(request.timestamp) >= latest_ts:
+                    self._node.db.delete(request.key, timestamp=int(request.timestamp))
+                else:
+                    apply_update = False
 
         if apply_update:
             op_id = request.op_id
@@ -224,6 +257,7 @@ class NodeServer:
         port=8000,
         node_id="node",
         peers=None,
+        consistency_mode: str = "lww",
         anti_entropy_interval: float = 5.0,
         max_batch_size: int = 50,
         crdt_config: dict | None = None,
@@ -234,6 +268,7 @@ class NodeServer:
         self.port = port
         self.node_id = node_id
         self.peers = peers or []
+        self.consistency_mode = consistency_mode
         self.crdt_config = crdt_config or {}
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
@@ -619,6 +654,21 @@ class NodeServer:
         self.server.stop(0).wait()
 
 
-def run_server(db_path, host="localhost", port=8000, node_id="node", peers=None):
-    node = NodeServer(db_path, host, port, node_id=node_id, peers=peers)
+def run_server(
+    db_path,
+    host="localhost",
+    port=8000,
+    node_id="node",
+    peers=None,
+    *,
+    consistency_mode: str = "lww",
+):
+    node = NodeServer(
+        db_path,
+        host,
+        port,
+        node_id=node_id,
+        peers=peers,
+        consistency_mode=consistency_mode,
+    )
     node.start()
