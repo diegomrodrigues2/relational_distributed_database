@@ -47,6 +47,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 class NodeServer:
     """Encapsulates gRPC server and replication logic for a node."""
 
+    local_seq: int
+    last_seen: dict[str, int]
+    replication_log: dict[str, tuple]
+
     def __init__(self, db_path, host="localhost", port=8000, node_id="node", peers=None):
         self.db = SimpleLSMDB(db_path=db_path)
         self.host = host
@@ -66,6 +70,9 @@ class NodeServer:
         self.server.add_insecure_port(f"{host}:{port}")
 
         self.clock = LamportClock()
+        self.local_seq = 0
+        self.last_seen: dict[str, int] = {}
+        self.replication_log: dict[str, tuple] = {}
         self.peer_clients = []
         for ph, pp in self.peers:
             if ph == self.host and pp == self.port:
