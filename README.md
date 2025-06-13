@@ -9,6 +9,7 @@ Este projeto demonstra uma implementação simplificada de um banco de dados dis
 - **SSTables** – arquivos ordenados e imutáveis no disco que armazenam os dados de forma permanente, incluindo tombstones para deleções.
 - **Compactação** – mescla SSTables mais antigas, removendo registros obsoletos e otimizando a leitura.
 - **Replicador líder-seguidor** – o líder recebe as escritas e as propaga para os seguidores por gRPC sem esperar confirmação (replicação assíncrona).
+- **Marcação temporal** – a estrutura `KeyValue` definida no proto inclui um campo `timestamp` (`int64`) para registrar quando cada escrita ocorreu.
 - **Heartbeat com failover sequencial** – monitora a disponibilidade dos nós e promove o próximo seguidor se o líder falhar.
 - **Encerramento limpo** – o cluster pode ser iniciado e finalizado repetidamente sem deixar processos órfãos.
 - **Driver** – interface opcional que direciona leituras de forma a garantir "read-your-own-writes" e leituras monotônicas para cada usuário.

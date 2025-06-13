@@ -5,7 +5,7 @@ import warnings
 
 from . import replication_pb2 as replication__pb2
 
-GRPC_GENERATED_VERSION = '1.72.1'
+GRPC_GENERATED_VERSION = '1.73.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
