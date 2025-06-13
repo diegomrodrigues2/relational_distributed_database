@@ -8,19 +8,26 @@ class GRPCReplicaClient:
         self.channel = grpc.insecure_channel(f"{host}:{port}")
         self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
 
-    def put(self, key, value, timestamp=None, node_id=""):
+    def put(self, key, value, timestamp=None, node_id="", op_id=""):
         if timestamp is None:
             timestamp = int(time.time() * 1000)
         request = replication_pb2.KeyValue(
-            key=key, value=value, timestamp=timestamp, node_id=node_id
+            key=key,
+            value=value,
+            timestamp=timestamp,
+            node_id=node_id,
+            op_id=op_id,
         )
         self.stub.Put(request)
 
-    def delete(self, key, timestamp=None, node_id=""):
+    def delete(self, key, timestamp=None, node_id="", op_id=""):
         if timestamp is None:
             timestamp = int(time.time() * 1000)
         request = replication_pb2.KeyRequest(
-            key=key, timestamp=timestamp, node_id=node_id
+            key=key,
+            timestamp=timestamp,
+            node_id=node_id,
+            op_id=op_id,
         )
         self.stub.Delete(request)
 
