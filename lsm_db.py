@@ -3,6 +3,7 @@ import threading
 from mem_table import MemTable
 from sstable import SSTableManager, TOMBSTONE
 from wal import WriteAheadLog
+from merkle import compute_segment_hashes
 
 
 class SimpleLSMDB:
@@ -22,6 +23,7 @@ class SimpleLSMDB:
         self._compaction_thread = None
         self._recover_from_wal()
         print(f"\n--- Banco de Dados Iniciado em {self.db_path} ---")
+        self.segment_hashes = compute_segment_hashes(self)
 
     def _start_compaction_async(self):
         """Inicia a compactação em uma thread de forma assíncrona."""
@@ -86,6 +88,7 @@ class SimpleLSMDB:
 
         # Inicia compactação de forma assíncrona
         self._start_compaction_async()
+        self.segment_hashes = compute_segment_hashes(self)
 
     def put(self, key, value, timestamp=None):
         """Insere ou atualiza uma chave.
@@ -190,6 +193,26 @@ class SimpleLSMDB:
         self.wait_for_compaction()
 
         self.sstable_manager.compact_segments()
+
+        self.segment_hashes = compute_segment_hashes(self)
+    def recalc_merkle(self):
+        self.segment_hashes = compute_segment_hashes(self)
+
+    def get_segment_items(self, segment_id):
+        if segment_id == "memtable":
+            return [(k, v[0], v[1]) for k, v in self.memtable.get_sorted_items()]
+        for ts, path, _ in self.sstable_manager.sstable_segments:
+            name = os.path.basename(path)
+            if name == segment_id:
+                items = []
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if ":" not in line:
+                            continue
+                        k, v = line.strip().split(":", 1)
+                        items.append((k, v, None))
+                return items
+        return []
 
     def close(self):
         """Descarrega dados pendentes e fecha o BD."""

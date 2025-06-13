@@ -36,11 +36,12 @@ class GRPCReplicaClient:
         response = self.stub.Get(request)
         return response.value if response.value else None
 
-    def fetch_updates(self, last_seen: dict, ops=None):
-        """Fetch updates from peer optionally sending our pending ops."""
+    def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None):
+        """Fetch updates from peer optionally sending our pending ops and hashes."""
         vv = replication_pb2.VersionVector(items=last_seen)
         ops = ops or []
-        req = replication_pb2.FetchRequest(vector=vv, ops=ops)
+        hashes = segment_hashes or {}
+        req = replication_pb2.FetchRequest(vector=vv, ops=ops, segment_hashes=hashes)
         return self.stub.FetchUpdates(req)
 
     def close(self):
