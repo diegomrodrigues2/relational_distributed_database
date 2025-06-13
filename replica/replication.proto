@@ -49,6 +49,12 @@ message Operation {
   bool delete = 6;
 }
 
+// Requisição para anti-entropy permitindo enviar várias operações
+message FetchRequest {
+  VersionVector vector = 1;
+  repeated Operation ops = 2;
+}
+
 // Lista de operações para sincronização
 message FetchResponse {
   repeated Operation ops = 1;
@@ -59,7 +65,7 @@ service Replica {
   rpc Put(KeyValue) returns (Empty);
   rpc Delete(KeyRequest) returns (Empty);
   rpc Get(KeyRequest) returns (ValueResponse);
-  rpc FetchUpdates(VersionVector) returns (FetchResponse);
+  rpc FetchUpdates(FetchRequest) returns (FetchResponse);
 }
 
 // Servico dedicado para heartbeat

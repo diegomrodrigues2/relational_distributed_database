@@ -52,7 +52,7 @@ class ReplicaStub(object):
                 _registered_method=True)
         self.FetchUpdates = channel.unary_unary(
                 '/replication.Replica/FetchUpdates',
-                request_serializer=replication__pb2.VersionVector.SerializeToString,
+                request_serializer=replication__pb2.FetchRequest.SerializeToString,
                 response_deserializer=replication__pb2.FetchResponse.FromString,
                 _registered_method=True)
 
@@ -105,7 +105,7 @@ def add_ReplicaServicer_to_server(servicer, server):
             ),
             'FetchUpdates': grpc.unary_unary_rpc_method_handler(
                     servicer.FetchUpdates,
-                    request_deserializer=replication__pb2.VersionVector.FromString,
+                    request_deserializer=replication__pb2.FetchRequest.FromString,
                     response_serializer=replication__pb2.FetchResponse.SerializeToString,
             ),
     }
@@ -216,7 +216,7 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/FetchUpdates',
-            replication__pb2.VersionVector.SerializeToString,
+            replication__pb2.FetchRequest.SerializeToString,
             replication__pb2.FetchResponse.FromString,
             options,
             channel_credentials,

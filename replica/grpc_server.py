@@ -90,8 +90,28 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.ValueResponse(value=value)
 
     def FetchUpdates(self, request, context):
-        """Return pending replication_log entries newer than caller's last_seen."""
-        last_seen = dict(request.items)
+        """Handle anti-entropy synchronization with a peer."""
+        last_seen = dict(request.vector.items)
+
+        for op in request.ops:
+            if op.delete:
+                req = replication_pb2.KeyRequest(
+                    key=op.key,
+                    timestamp=op.timestamp,
+                    node_id=op.node_id,
+                    op_id=op.op_id,
+                )
+                self.Delete(req, context)
+            else:
+                req = replication_pb2.KeyValue(
+                    key=op.key,
+                    value=op.value,
+                    timestamp=op.timestamp,
+                    node_id=op.node_id,
+                    op_id=op.op_id,
+                )
+                self.Put(req, context)
+
         ops = []
         for op_id, (key, value, ts) in self._node.replication_log.items():
             origin, seq = op_id.split(":")
@@ -108,6 +128,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         delete=value is None,
                     )
                 )
+
         return replication_pb2.FetchResponse(ops=ops)
 
 
@@ -119,7 +140,14 @@ class NodeServer:
     replication_log: dict[str, tuple]
 
     def __init__(
-        self, db_path, host="localhost", port=8000, node_id="node", peers=None
+        self,
+        db_path,
+        host="localhost",
+        port=8000,
+        node_id="node",
+        peers=None,
+        anti_entropy_interval: float = 5.0,
+        max_batch_size: int = 50,
     ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
@@ -148,6 +176,10 @@ class NodeServer:
         self._cleanup_thread = None
         self._replay_stop = threading.Event()
         self._replay_thread = None
+        self._anti_entropy_stop = threading.Event()
+        self._anti_entropy_thread = None
+        self.anti_entropy_interval = anti_entropy_interval
+        self.max_batch_size = max_batch_size
         self.peer_clients = []
         for ph, pp in self.peers:
             if ph == self.host and pp == self.port:
@@ -193,20 +225,8 @@ class NodeServer:
             self.replication_log.pop(op_id, None)
 
     def _replay_replication_log(self) -> None:
-        """Resend operations from replication_log to peers."""
-        for op_id, (key, value, ts) in list(self.replication_log.items()):
-            for client in self.peer_clients:
-                try:
-                    if value is None:
-                        client.delete(
-                            key, timestamp=ts, node_id=self.node_id, op_id=op_id
-                        )
-                    else:
-                        client.put(
-                            key, value, timestamp=ts, node_id=self.node_id, op_id=op_id
-                        )
-                except Exception:
-                    pass
+        """Resend operations from replication_log to peers in batches."""
+        self.sync_from_peer()
 
     def _cleanup_loop(self) -> None:
         while not self._cleanup_stop.is_set():
@@ -217,6 +237,11 @@ class NodeServer:
         while not self._replay_stop.is_set():
             self._replay_replication_log()
             time.sleep(0.5)
+
+    def _anti_entropy_loop(self) -> None:
+        while not self._anti_entropy_stop.is_set():
+            self.sync_from_peer()
+            time.sleep(self.anti_entropy_interval)
 
     def _start_cleanup_thread(self) -> None:
         if self._cleanup_thread and self._cleanup_thread.is_alive():
@@ -230,6 +255,13 @@ class NodeServer:
             return
         t = threading.Thread(target=self._replay_loop, daemon=True)
         self._replay_thread = t
+        t.start()
+
+    def _start_anti_entropy_thread(self) -> None:
+        if self._anti_entropy_thread and self._anti_entropy_thread.is_alive():
+            return
+        t = threading.Thread(target=self._anti_entropy_loop, daemon=True)
+        self._anti_entropy_thread = t
         t.start()
 
     # replication helpers -------------------------------------------------
@@ -258,33 +290,47 @@ class NodeServer:
             threading.Thread(target=_send, args=(c,), daemon=True).start()
 
     def sync_from_peer(self) -> None:
-        """Fetch missing updates from the first available peer."""
+        """Exchange updates with all peers."""
         if not self.peer_clients:
             return
-        client = self.peer_clients[0]
-        try:
-            vv = replication_pb2.VersionVector(items=self.last_seen)
-            resp = client.fetch_updates(vv)
+
+        pending_ops = []
+        for op_id, (key, value, ts) in list(self.replication_log.items())[: self.max_batch_size]:
+            pending_ops.append(
+                replication_pb2.Operation(
+                    key=key,
+                    value=value if value is not None else "",
+                    timestamp=ts,
+                    node_id=self.node_id,
+                    op_id=op_id,
+                    delete=value is None,
+                )
+            )
+
+        for client in self.peer_clients:
+            try:
+                resp = client.fetch_updates(self.last_seen, pending_ops)
+            except Exception:
+                continue
+
             for op in resp.ops:
                 if op.delete:
-                    req = replication_pb2.KeyRequest(
+                    req_del = replication_pb2.KeyRequest(
                         key=op.key,
                         timestamp=op.timestamp,
                         node_id=op.node_id,
                         op_id=op.op_id,
                     )
-                    self.service.Delete(req, None)
+                    self.service.Delete(req_del, None)
                 else:
-                    req = replication_pb2.KeyValue(
+                    req_put = replication_pb2.KeyValue(
                         key=op.key,
                         value=op.value,
                         timestamp=op.timestamp,
                         node_id=op.node_id,
                         op_id=op.op_id,
                     )
-                    self.service.Put(req, None)
-        except Exception:
-            pass
+                    self.service.Put(req_put, None)
 
     # lifecycle -----------------------------------------------------------
     def start(self):
@@ -292,6 +338,7 @@ class NodeServer:
         self.sync_from_peer()
         self._start_cleanup_thread()
         self._start_replay_thread()
+        self._start_anti_entropy_thread()
         self.server.start()
         self.server.wait_for_termination()
 
@@ -299,10 +346,13 @@ class NodeServer:
         self.save_last_seen()
         self._cleanup_stop.set()
         self._replay_stop.set()
+        self._anti_entropy_stop.set()
         if self._cleanup_thread:
             self._cleanup_thread.join()
         if self._replay_thread:
             self._replay_thread.join()
+        if self._anti_entropy_thread:
+            self._anti_entropy_thread.join()
         for c in self.peer_clients:
             c.close()
         self.server.stop(0).wait()
