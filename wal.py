@@ -15,9 +15,15 @@ class WriteAheadLog(object):
             with open(self.wal_file_path, 'w') as f:
                 pass # Apenas cria o arquivo
     
-    def append(self, entry_type, key, value):
-        """Adiciona registro ao WAL."""
-        timestamp = int(time.time() * 1000) # ms
+    def append(self, entry_type, key, value, timestamp=None):
+        """Adiciona registro ao WAL.
+
+        Se ``timestamp`` não for fornecido, usa o horário atual em
+        milissegundos. O timestamp é armazenado juntamente ao valor para
+        permitir ordenação entre réplicas.
+        """
+        if timestamp is None:
+            timestamp = int(time.time() * 1000)  # ms
         entry = f"{timestamp}|{entry_type}|{key}|{value}"
         with open(self.wal_file_path, 'a') as file:
             file.write(entry + "\n")
@@ -32,8 +38,9 @@ class WriteAheadLog(object):
             for line in f:
                 parts = line.strip().split('|', 3)
                 if len(parts) == 4:
-                    timestamp, entry_type, key, value = parts
-                    entries.append((int(timestamp), entry_type, key, value))
+                    ts, entry_type, key, value = parts
+                    ts = int(ts)
+                    entries.append((ts, entry_type, key, (value, ts)))
 
         return entries
     

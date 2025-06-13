@@ -23,8 +23,10 @@ class WriteAheadLogTest(unittest.TestCase):
             # Ensure read_all parses entries correctly
             entries = wal.read_all()
             self.assertEqual(len(entries), 2)
-            self.assertEqual(entries[0][1:], ("PUT", "k1", "v1"))
-            self.assertEqual(entries[1][1:], ("PUT", "k2", "v2"))
+            t1, e1, k1, v1 = entries[0]
+            t2, e2, k2, v2 = entries[1]
+            self.assertEqual((e1, k1, v1[0], v1[1]), ("PUT", "k1", "v1", t1))
+            self.assertEqual((e2, k2, v2[0], v2[1]), ("PUT", "k2", "v2", t2))
 
 if __name__ == "__main__":
     unittest.main()

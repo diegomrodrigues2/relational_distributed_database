@@ -48,5 +48,14 @@ class SimpleLSMDBTest(unittest.TestCase):
             self.assertEqual(db2.get('k1'), 'v1')
             db2.close()
 
+    def test_get_record(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db = SimpleLSMDB(db_path=tmpdir, max_memtable_size=10)
+            db.put('k1', 'v1')
+            value, ts = db.get_record('k1')
+            self.assertEqual(value, 'v1')
+            self.assertIsInstance(ts, int)
+            db.close()
+
 if __name__ == '__main__':
     unittest.main()

@@ -44,15 +44,15 @@ class SimpleLSMDB:
         print("Iniciando recuperação do WAL...")
         wal_entries = self.wal.read_all()
         # Aplica as entradas do WAL no MemTable, garantindo a última escrita para cada chave
-        for _, entry_type, key, value in wal_entries:
+        for ts, entry_type, key, value_tuple in wal_entries:
             # Em uma recuperação real, você também precisaria verificar se o SSTable mais recente
             # já contém essa entrada para evitar reprocessar dados já persistidos.
             # Para simplicidade didática, assumimos que o WAL contém apenas dados que ainda
             # não foram descarregados para o SSTable.
             if entry_type == "PUT":
-                self.memtable.put(key, value)
+                self.memtable.put(key, value_tuple)
             elif entry_type == "DELETE":
-                self.memtable.put(key, TOMBSTONE) # DELETE é um PUT de um TOMBSTONE
+                self.memtable.put(key, (TOMBSTONE, ts))  # DELETE é um PUT de um TOMBSTONE
         print(f"Recuperação do WAL concluída. MemTable agora tem {len(self.memtable)} itens.")
 
     def _flush_memtable_to_sstable(self):
@@ -64,7 +64,11 @@ class SimpleLSMDB:
         print("  FLUSH: MemTable cheio ou trigger de flush manual. Descarregando para SSTable...")
         
         # Prepara os dados para o SSTable (ordenados por chave)
-        sorted_data = self.memtable.get_sorted_items()
+        # Cada valor no MemTable é uma tupla (valor, timestamp). Para o
+        # SSTable, persistimos apenas o valor.
+        sorted_data = [
+            (k, v[0]) for k, v in self.memtable.get_sorted_items()
+        ]
         
         # Escreve o SSTable
         self.sstable_manager.write_sstable(sorted_data)
@@ -77,12 +81,19 @@ class SimpleLSMDB:
         # Inicia compactação de forma assíncrona
         self._start_compaction_async()
 
-    def put(self, key, value):
-        """Insere ou atualiza uma chave."""
+    def put(self, key, value, timestamp=None):
+        """Insere ou atualiza uma chave.
+
+        ``timestamp`` pode ser informado para manter a ordem entre réplicas.
+        Se ``None``, o horário atual é utilizado.
+        """
         key = str(key)
         value = str(value)
-        self.wal.append("PUT", key, value)
-        self.memtable.put(key, value)
+        if timestamp is None:
+            import time
+            timestamp = int(time.time() * 1000)
+        self.wal.append("PUT", key, value, timestamp)
+        self.memtable.put(key, (value, timestamp))
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
 
@@ -92,8 +103,9 @@ class SimpleLSMDB:
         print(f"\nGET: Buscando chave '{key}'")
         
         # 1. Tenta encontrar no MemTable (mais recente)
-        value = self.memtable.get(key)
-        if value is not None:
+        record = self.memtable.get(key)
+        if record is not None:
+            value, ts = record
             if value == TOMBSTONE:
                 print(f"GET: '{key}' encontrado como TOMBSTONE no MemTable. Não existe.")
                 return None
@@ -115,12 +127,37 @@ class SimpleLSMDB:
         print(f"GET: Chave '{key}' não encontrada em nenhum lugar.")
         return None
 
-    def delete(self, key):
+    def get_record(self, key):
+        """Retorna ``(valor, timestamp)`` se presente.
+
+        Caso a informação venha de um SSTable, o timestamp será ``None``.
+        """
+        key = str(key)
+        record = self.memtable.get(key)
+        if record is not None:
+            value, ts = record
+            if value == TOMBSTONE:
+                return None, ts
+            return value, ts
+
+        for sstable_entry in reversed(self.sstable_manager.sstable_segments):
+            value = self.sstable_manager.get_from_sstable(sstable_entry, key)
+            if value is not None:
+                if value == TOMBSTONE:
+                    return None, None
+                return value, None
+
+        return None, None
+
+    def delete(self, key, timestamp=None):
         """Marca uma chave como removida."""
         key = str(key)
         print(f"\nDELETE: Marcando chave '{key}' para exclusão.")
-        self.wal.append("DELETE", key, TOMBSTONE)
-        self.memtable.put(key, TOMBSTONE) # Marca no MemTable como tombstone
+        if timestamp is None:
+            import time
+            timestamp = int(time.time() * 1000)
+        self.wal.append("DELETE", key, TOMBSTONE, timestamp)
+        self.memtable.put(key, (TOMBSTONE, timestamp))  # Marca no MemTable como tombstone
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
 
