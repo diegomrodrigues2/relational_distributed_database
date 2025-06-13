@@ -36,9 +36,12 @@ class GRPCReplicaClient:
         response = self.stub.Get(request)
         return response.value if response.value else None
 
-    def fetch_updates(self, last_seen: dict):
+    def fetch_updates(self, last_seen: dict, ops=None):
+        """Fetch updates from peer optionally sending our pending ops."""
         vv = replication_pb2.VersionVector(items=last_seen)
-        return self.stub.FetchUpdates(vv)
+        ops = ops or []
+        req = replication_pb2.FetchRequest(vector=vv, ops=ops)
+        return self.stub.FetchUpdates(req)
 
     def close(self):
         self.channel.close()
