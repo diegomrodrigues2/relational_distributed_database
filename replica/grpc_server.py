@@ -21,24 +21,54 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
     def Put(self, request, context):
         self._node.clock.update(request.timestamp)
-        _, current_ts = self._node.db.get_record(request.key)
-        if current_ts is None or request.timestamp > current_ts:
-            self._node.db.put(request.key, request.value, timestamp=request.timestamp)
-        if request.node_id == self._node.node_id:
+
+        origem = seq = None
+        apply_update = True
+        if request.op_id:
+            origem, seq = request.op_id.split(":")
+            seq = int(seq)
+            last = self._node.last_seen.get(origem, 0)
+            if seq > last:
+                self._node.last_seen[origem] = seq
+            else:
+                apply_update = False
+
+        if apply_update:
+            _, current_ts = self._node.db.get_record(request.key)
+            if current_ts is None or request.timestamp > current_ts:
+                self._node.db.put(request.key, request.value, timestamp=request.timestamp)
+
+        if request.node_id == self._node.node_id and apply_update:
             op_id = self._node.next_op_id()
             self._node.replication_log[op_id] = (request.key, request.value, request.timestamp)
             self._node.replicate("PUT", request.key, request.value, request.timestamp, op_id=op_id)
+
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
         self._node.clock.update(request.timestamp)
-        _, current_ts = self._node.db.get_record(request.key)
-        if current_ts is None or request.timestamp > current_ts:
-            self._node.db.delete(request.key, timestamp=request.timestamp)
-        if request.node_id == self._node.node_id:
+
+        origem = seq = None
+        apply_update = True
+        if request.op_id:
+            origem, seq = request.op_id.split(":")
+            seq = int(seq)
+            last = self._node.last_seen.get(origem, 0)
+            if seq > last:
+                self._node.last_seen[origem] = seq
+            else:
+                apply_update = False
+
+        if apply_update:
+            _, current_ts = self._node.db.get_record(request.key)
+            if current_ts is None or request.timestamp > current_ts:
+                self._node.db.delete(request.key, timestamp=request.timestamp)
+
+        if request.node_id == self._node.node_id and apply_update:
             op_id = self._node.next_op_id()
             self._node.replication_log[op_id] = (request.key, None, request.timestamp)
             self._node.replicate("DELETE", request.key, None, request.timestamp, op_id=op_id)
+
         return replication_pb2.Empty()
 
     def Get(self, request, context):

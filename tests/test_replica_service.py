@@ -44,5 +44,46 @@ class ReplicaServiceTimestampTest(unittest.TestCase):
             node.db.close()
 
 
+class ReplicaServiceSequenceTest(unittest.TestCase):
+    def test_sequence_number_prevents_duplicates(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            req1 = replication_pb2.KeyValue(
+                key="k",
+                value="v1",
+                timestamp=10,
+                node_id="node_b",
+                op_id="node_b:1",
+            )
+            service.Put(req1, None)
+            self.assertEqual(node.db.get("k"), "v1")
+
+            # duplicate with same sequence should be ignored
+            dup = replication_pb2.KeyValue(
+                key="k",
+                value="v2",
+                timestamp=20,
+                node_id="node_b",
+                op_id="node_b:1",
+            )
+            service.Put(dup, None)
+            self.assertEqual(node.db.get("k"), "v1")
+
+            # higher sequence should be applied
+            req2 = replication_pb2.KeyValue(
+                key="k",
+                value="v2",
+                timestamp=20,
+                node_id="node_b",
+                op_id="node_b:2",
+            )
+            service.Put(req2, None)
+            self.assertEqual(node.db.get("k"), "v2")
+
+            node.db.close()
+
+
 if __name__ == "__main__":
     unittest.main()
