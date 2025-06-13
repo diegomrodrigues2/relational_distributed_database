@@ -36,5 +36,9 @@ class GRPCReplicaClient:
         response = self.stub.Get(request)
         return response.value if response.value else None
 
+    def fetch_updates(self, last_seen: dict):
+        vv = replication_pb2.VersionVector(items=last_seen)
+        return self.stub.FetchUpdates(vv)
+
     def close(self):
         self.channel.close()

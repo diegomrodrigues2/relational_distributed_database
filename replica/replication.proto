@@ -34,11 +34,32 @@ message Heartbeat {
   string node_id = 1;
 }
 
+// Vetor de versões enviado ao requisitar atualizações
+message VersionVector {
+  map<string, int64> items = 1;
+}
+
+// Representa uma operação pendente de replicação
+message Operation {
+  string key = 1;
+  string value = 2;
+  int64 timestamp = 3;
+  string node_id = 4;
+  string op_id = 5;
+  bool delete = 6;
+}
+
+// Lista de operações para sincronização
+message FetchResponse {
+  repeated Operation ops = 1;
+}
+
 // Servico disponibilizado por cada seguidor
 service Replica {
   rpc Put(KeyValue) returns (Empty);
   rpc Delete(KeyRequest) returns (Empty);
   rpc Get(KeyRequest) returns (ValueResponse);
+  rpc FetchUpdates(VersionVector) returns (FetchResponse);
 }
 
 // Servico dedicado para heartbeat

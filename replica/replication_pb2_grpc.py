@@ -50,6 +50,11 @@ class ReplicaStub(object):
                 request_serializer=replication__pb2.KeyRequest.SerializeToString,
                 response_deserializer=replication__pb2.ValueResponse.FromString,
                 _registered_method=True)
+        self.FetchUpdates = channel.unary_unary(
+                '/replication.Replica/FetchUpdates',
+                request_serializer=replication__pb2.VersionVector.SerializeToString,
+                response_deserializer=replication__pb2.FetchResponse.FromString,
+                _registered_method=True)
 
 
 class ReplicaServicer(object):
@@ -74,6 +79,12 @@ class ReplicaServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def FetchUpdates(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ReplicaServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -91,6 +102,11 @@ def add_ReplicaServicer_to_server(servicer, server):
                     servicer.Get,
                     request_deserializer=replication__pb2.KeyRequest.FromString,
                     response_serializer=replication__pb2.ValueResponse.SerializeToString,
+            ),
+            'FetchUpdates': grpc.unary_unary_rpc_method_handler(
+                    servicer.FetchUpdates,
+                    request_deserializer=replication__pb2.VersionVector.FromString,
+                    response_serializer=replication__pb2.FetchResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -175,6 +191,33 @@ class Replica(object):
             '/replication.Replica/Get',
             replication__pb2.KeyRequest.SerializeToString,
             replication__pb2.ValueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FetchUpdates(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/FetchUpdates',
+            replication__pb2.VersionVector.SerializeToString,
+            replication__pb2.FetchResponse.FromString,
             options,
             channel_credentials,
             insecure,

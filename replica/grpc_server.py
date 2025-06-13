@@ -89,6 +89,27 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             value = ""
         return replication_pb2.ValueResponse(value=value)
 
+    def FetchUpdates(self, request, context):
+        """Return pending replication_log entries newer than caller's last_seen."""
+        last_seen = dict(request.items)
+        ops = []
+        for op_id, (key, value, ts) in self._node.replication_log.items():
+            origin, seq = op_id.split(":")
+            seq = int(seq)
+            seen = last_seen.get(origin, 0)
+            if seq > seen:
+                ops.append(
+                    replication_pb2.Operation(
+                        key=key,
+                        value=value if value is not None else "",
+                        timestamp=ts,
+                        node_id=origin,
+                        op_id=op_id,
+                        delete=value is None,
+                    )
+                )
+        return replication_pb2.FetchResponse(ops=ops)
+
 
 class NodeServer:
     """Encapsulates gRPC server and replication logic for a node."""
@@ -108,8 +129,9 @@ class NodeServer:
         self.peers = peers or []
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        self.service = ReplicaService(self)
         replication_pb2_grpc.add_ReplicaServicer_to_server(
-            ReplicaService(self), self.server
+            self.service, self.server
         )
 
         self.health_servicer = health.HealthServicer()
@@ -235,9 +257,39 @@ class NodeServer:
         for c in self.peer_clients:
             threading.Thread(target=_send, args=(c,), daemon=True).start()
 
+    def sync_from_peer(self) -> None:
+        """Fetch missing updates from the first available peer."""
+        if not self.peer_clients:
+            return
+        client = self.peer_clients[0]
+        try:
+            vv = replication_pb2.VersionVector(items=self.last_seen)
+            resp = client.fetch_updates(vv)
+            for op in resp.ops:
+                if op.delete:
+                    req = replication_pb2.KeyRequest(
+                        key=op.key,
+                        timestamp=op.timestamp,
+                        node_id=op.node_id,
+                        op_id=op.op_id,
+                    )
+                    self.service.Delete(req, None)
+                else:
+                    req = replication_pb2.KeyValue(
+                        key=op.key,
+                        value=op.value,
+                        timestamp=op.timestamp,
+                        node_id=op.node_id,
+                        op_id=op.op_id,
+                    )
+                    self.service.Put(req, None)
+        except Exception:
+            pass
+
     # lifecycle -----------------------------------------------------------
     def start(self):
         self.load_last_seen()
+        self.sync_from_peer()
         self._start_cleanup_thread()
         self._start_replay_thread()
         self.server.start()
