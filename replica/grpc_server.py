@@ -92,6 +92,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def FetchUpdates(self, request, context):
         """Handle anti-entropy synchronization with a peer."""
         last_seen = dict(request.vector.items)
+        remote_hashes = dict(request.segment_hashes)
 
         for op in request.ops:
             if op.delete:
@@ -129,7 +130,24 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     )
                 )
 
-        return replication_pb2.FetchResponse(ops=ops)
+        local_hashes = self._node.db.segment_hashes
+        if remote_hashes:
+            for seg, h in local_hashes.items():
+                if remote_hashes.get(seg) == h:
+                    continue
+                for k, v, ts in self._node.db.get_segment_items(seg):
+                    ops.append(
+                        replication_pb2.Operation(
+                            key=k,
+                            value=v if v is not None else "",
+                            timestamp=ts if ts is not None else 0,
+                            node_id=self._node.node_id,
+                            op_id="",
+                            delete=v is None,
+                        )
+                    )
+
+        return replication_pb2.FetchResponse(ops=ops, segment_hashes=local_hashes)
 
 
 class NodeServer:
@@ -307,11 +325,16 @@ class NodeServer:
                 )
             )
 
+        hashes = self.db.segment_hashes
+
         for client in self.peer_clients:
             try:
-                resp = client.fetch_updates(self.last_seen, pending_ops)
+                resp = client.fetch_updates(self.last_seen, pending_ops, hashes)
             except Exception:
                 continue
+
+            if resp.segment_hashes:
+                self.db.segment_hashes = dict(resp.segment_hashes)
 
             for op in resp.ops:
                 if op.delete:

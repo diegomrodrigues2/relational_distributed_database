@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11replication.proto\x12\x0breplication\"L\n\nKeyRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12\x0f\n\x07node_id\x18\x03 \x01(\t\x12\r\n\x05op_id\x18\x04 \x01(\t\"Y\n\x08KeyValue\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\x12\r\n\x05op_id\x18\x05 \x01(\t\"\x1e\n\rValueResponse\x12\r\n\x05value\x18\x01 \x01(\t\"\x07\n\x05\x45mpty\"\x1c\n\tHeartbeat\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"s\n\rVersionVector\x12\x34\n\x05items\x18\x01 \x03(\x0b\x32%.replication.VersionVector.ItemsEntry\x1a,\n\nItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x03:\x02\x38\x01\"j\n\tOperation\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\x12\r\n\x05op_id\x18\x05 \x01(\t\x12\x0e\n\x06\x64\x65lete\x18\x06 \x01(\x08\"_\n\x0c\x46\x65tchRequest\x12*\n\x06vector\x18\x01 \x01(\x0b\x32\x1a.replication.VersionVector\x12#\n\x03ops\x18\x02 \x03(\x0b\x32\x16.replication.Operation\"4\n\rFetchResponse\x12#\n\x03ops\x18\x01 \x03(\x0b\x32\x16.replication.Operation2\xf5\x01\n\x07Replica\x12\x30\n\x03Put\x12\x15.replication.KeyValue\x1a\x12.replication.Empty\x12\x35\n\x06\x44\x65lete\x12\x17.replication.KeyRequest\x1a\x12.replication.Empty\x12:\n\x03Get\x12\x17.replication.KeyRequest\x1a\x1a.replication.ValueResponse\x12\x45\n\x0c\x46\x65tchUpdates\x12\x19.replication.FetchRequest\x1a\x1a.replication.FetchResponse2F\n\x10HeartbeatService\x12\x32\n\x04Ping\x12\x16.replication.Heartbeat\x1a\x12.replication.Emptyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11replication.proto\x12\x0breplication\"L\n\nKeyRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12\x0f\n\x07node_id\x18\x03 \x01(\t\x12\r\n\x05op_id\x18\x04 \x01(\t\"Y\n\x08KeyValue\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\x12\r\n\x05op_id\x18\x05 \x01(\t\"\x1e\n\rValueResponse\x12\r\n\x05value\x18\x01 \x01(\t\"\x07\n\x05\x45mpty\"\x1c\n\tHeartbeat\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"s\n\rVersionVector\x12\x34\n\x05items\x18\x01 \x03(\x0b\x32%.replication.VersionVector.ItemsEntry\x1a,\n\nItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x03:\x02\x38\x01\"j\n\tOperation\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\x12\r\n\x05op_id\x18\x05 \x01(\t\x12\x0e\n\x06\x64\x65lete\x18\x06 \x01(\x08\"\xdb\x01\n\x0c\x46\x65tchRequest\x12*\n\x06vector\x18\x01 \x01(\x0b\x32\x1a.replication.VersionVector\x12#\n\x03ops\x18\x02 \x03(\x0b\x32\x16.replication.Operation\x12\x44\n\x0esegment_hashes\x18\x03 \x03(\x0b\x32,.replication.FetchRequest.SegmentHashesEntry\x1a\x34\n\x12SegmentHashesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xb1\x01\n\rFetchResponse\x12#\n\x03ops\x18\x01 \x03(\x0b\x32\x16.replication.Operation\x12\x45\n\x0esegment_hashes\x18\x02 \x03(\x0b\x32-.replication.FetchResponse.SegmentHashesEntry\x1a\x34\n\x12SegmentHashesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x32\xf5\x01\n\x07Replica\x12\x30\n\x03Put\x12\x15.replication.KeyValue\x1a\x12.replication.Empty\x12\x35\n\x06\x44\x65lete\x12\x17.replication.KeyRequest\x1a\x12.replication.Empty\x12:\n\x03Get\x12\x17.replication.KeyRequest\x1a\x1a.replication.ValueResponse\x12\x45\n\x0c\x46\x65tchUpdates\x12\x19.replication.FetchRequest\x1a\x1a.replication.FetchResponse2F\n\x10HeartbeatService\x12\x32\n\x04Ping\x12\x16.replication.Heartbeat\x1a\x12.replication.Emptyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,6 +33,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_VERSIONVECTOR_ITEMSENTRY']._loaded_options = None
   _globals['_VERSIONVECTOR_ITEMSENTRY']._serialized_options = b'8\001'
+  _globals['_FETCHREQUEST_SEGMENTHASHESENTRY']._loaded_options = None
+  _globals['_FETCHREQUEST_SEGMENTHASHESENTRY']._serialized_options = b'8\001'
+  _globals['_FETCHRESPONSE_SEGMENTHASHESENTRY']._loaded_options = None
+  _globals['_FETCHRESPONSE_SEGMENTHASHESENTRY']._serialized_options = b'8\001'
   _globals['_KEYREQUEST']._serialized_start=34
   _globals['_KEYREQUEST']._serialized_end=110
   _globals['_KEYVALUE']._serialized_start=112
@@ -49,12 +53,16 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_VERSIONVECTOR_ITEMSENTRY']._serialized_end=389
   _globals['_OPERATION']._serialized_start=391
   _globals['_OPERATION']._serialized_end=497
-  _globals['_FETCHREQUEST']._serialized_start=499
-  _globals['_FETCHREQUEST']._serialized_end=594
-  _globals['_FETCHRESPONSE']._serialized_start=596
-  _globals['_FETCHRESPONSE']._serialized_end=648
-  _globals['_REPLICA']._serialized_start=651
-  _globals['_REPLICA']._serialized_end=896
-  _globals['_HEARTBEATSERVICE']._serialized_start=898
-  _globals['_HEARTBEATSERVICE']._serialized_end=968
+  _globals['_FETCHREQUEST']._serialized_start=500
+  _globals['_FETCHREQUEST']._serialized_end=719
+  _globals['_FETCHREQUEST_SEGMENTHASHESENTRY']._serialized_start=667
+  _globals['_FETCHREQUEST_SEGMENTHASHESENTRY']._serialized_end=719
+  _globals['_FETCHRESPONSE']._serialized_start=722
+  _globals['_FETCHRESPONSE']._serialized_end=899
+  _globals['_FETCHRESPONSE_SEGMENTHASHESENTRY']._serialized_start=667
+  _globals['_FETCHRESPONSE_SEGMENTHASHESENTRY']._serialized_end=719
+  _globals['_REPLICA']._serialized_start=902
+  _globals['_REPLICA']._serialized_end=1147
+  _globals['_HEARTBEATSERVICE']._serialized_start=1149
+  _globals['_HEARTBEATSERVICE']._serialized_end=1219
 # @@protoc_insertion_point(module_scope)

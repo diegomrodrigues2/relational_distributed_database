@@ -53,11 +53,13 @@ message Operation {
 message FetchRequest {
   VersionVector vector = 1;
   repeated Operation ops = 2;
+  map<string, string> segment_hashes = 3;
 }
 
 // Lista de operações para sincronização
 message FetchResponse {
   repeated Operation ops = 1;
+  map<string, string> segment_hashes = 2;
 }
 
 // Servico disponibilizado por cada seguidor

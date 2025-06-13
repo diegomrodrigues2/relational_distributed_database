@@ -132,9 +132,9 @@ class AntiEntropyLoopTest(unittest.TestCase):
             node_b.replication_log["B:1"] = ("k", "v", 5)
 
             class FakeClient:
-                def fetch_updates(self, last_seen, ops=None):
+                def fetch_updates(self, last_seen, ops=None, segment_hashes=None):
                     vv = replication_pb2.VersionVector(items=last_seen)
-                    req = replication_pb2.FetchRequest(vector=vv, ops=ops or [])
+                    req = replication_pb2.FetchRequest(vector=vv, ops=ops or [], segment_hashes=segment_hashes or {})
                     return service_b.FetchUpdates(req, None)
 
                 def close(self):
