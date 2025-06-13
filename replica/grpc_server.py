@@ -90,6 +90,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     apply_update = False
 
         if apply_update:
+            is_coordinator = True
+            if self._node.hash_ring is not None:
+                preferred = self._node.hash_ring.get_preference_list(
+                    request.key, 1
+                )
+                if preferred and preferred[0] != self._node.node_id:
+                    is_coordinator = False
             op_id = request.op_id
             if not op_id:
                 op_id = self._node.next_op_id()
@@ -99,15 +106,16 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     request.timestamp,
                 )
                 self._node.save_replication_log()
-            self._node.replicate(
-                "PUT",
-                request.key,
-                request.value,
-                request.timestamp,
-                op_id=op_id,
-                vector=new_vc.clock,
-                skip_id=request.node_id,
-            )
+            if is_coordinator:
+                self._node.replicate(
+                    "PUT",
+                    request.key,
+                    request.value,
+                    request.timestamp,
+                    op_id=op_id,
+                    vector=new_vc.clock,
+                    skip_id=request.node_id,
+                )
 
         return replication_pb2.Empty()
 
@@ -158,20 +166,28 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     apply_update = False
 
         if apply_update:
+            is_coordinator = True
+            if self._node.hash_ring is not None:
+                preferred = self._node.hash_ring.get_preference_list(
+                    request.key, 1
+                )
+                if preferred and preferred[0] != self._node.node_id:
+                    is_coordinator = False
             op_id = request.op_id
             if not op_id:
                 op_id = self._node.next_op_id()
                 self._node.replication_log[op_id] = (request.key, None, request.timestamp)
                 self._node.save_replication_log()
-            self._node.replicate(
-                "DELETE",
-                request.key,
-                None,
-                request.timestamp,
-                op_id=op_id,
-                vector=new_vc.clock,
-                skip_id=request.node_id,
-            )
+            if is_coordinator:
+                self._node.replicate(
+                    "DELETE",
+                    request.key,
+                    None,
+                    request.timestamp,
+                    op_id=op_id,
+                    vector=new_vc.clock,
+                    skip_id=request.node_id,
+                )
 
         return replication_pb2.Empty()
 
