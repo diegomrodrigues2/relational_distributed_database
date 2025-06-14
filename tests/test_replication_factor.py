@@ -20,7 +20,7 @@ class ReplicationFactorThreeTest(unittest.TestCase):
                 expected_nodes = set(cluster.ring.get_preference_list(key, 3))
                 found_nodes = set()
                 for node in cluster.nodes:
-                    val, _ = node.client.get(key)
+                    val, _, _ = node.client.get(key)
                     if val == "v1":
                         found_nodes.add(node.node_id)
                 self.assertEqual(found_nodes, expected_nodes)
