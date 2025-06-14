@@ -365,9 +365,12 @@ class NodeServer:
         self._anti_entropy_thread = None
         self._heartbeat_stop = threading.Event()
         self._heartbeat_thread = None
+        self._hinted_stop = threading.Event()
+        self._hinted_thread = None
         self.anti_entropy_interval = anti_entropy_interval
         self.heartbeat_interval = 1.0
         self.heartbeat_timeout = 3.0
+        self.hinted_handoff_interval = 1.0
         self.max_batch_size = max_batch_size
         self.peer_clients = []
         self.client_map = {}
@@ -568,6 +571,46 @@ class NodeServer:
                     self.peer_status[pid] = None
             time.sleep(self.heartbeat_interval)
 
+    def _hinted_handoff_loop(self) -> None:
+        while not self._hinted_stop.is_set():
+            updated = False
+            for peer_id, hints in list(self.hints.items()):
+                if self.peer_status.get(peer_id) is None:
+                    continue
+                client = self.clients_by_id.get(peer_id) or self.client_map.get(peer_id)
+                if not client:
+                    continue
+                remaining = []
+                for h_op_id, h_op, h_key, h_val, h_ts in hints:
+                    try:
+                        if h_op == "PUT":
+                            client.put(
+                                h_key,
+                                h_val,
+                                timestamp=h_ts,
+                                node_id=self.node_id,
+                                op_id=h_op_id,
+                                hinted_for="",
+                            )
+                        else:
+                            client.delete(
+                                h_key,
+                                timestamp=h_ts,
+                                node_id=self.node_id,
+                                op_id=h_op_id,
+                                hinted_for="",
+                            )
+                    except Exception:
+                        remaining.append((h_op_id, h_op, h_key, h_val, h_ts))
+                if remaining:
+                    self.hints[peer_id] = [list(r) for r in remaining]
+                else:
+                    self.hints.pop(peer_id, None)
+                updated = True
+            if updated:
+                self.save_hints()
+            time.sleep(self.hinted_handoff_interval)
+
     def _start_cleanup_thread(self) -> None:
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             return
@@ -594,6 +637,13 @@ class NodeServer:
             return
         t = threading.Thread(target=self._heartbeat_loop, daemon=True)
         self._heartbeat_thread = t
+        t.start()
+
+    def _start_hinted_handoff_thread(self) -> None:
+        if self._hinted_thread and self._hinted_thread.is_alive():
+            return
+        t = threading.Thread(target=self._hinted_handoff_loop, daemon=True)
+        self._hinted_thread = t
         t.start()
 
     # replication helpers -------------------------------------------------
@@ -820,6 +870,7 @@ class NodeServer:
         self._start_replay_thread()
         self._start_anti_entropy_thread()
         self._start_heartbeat_thread()
+        self._start_hinted_handoff_thread()
         self.server.start()
         self.server.wait_for_termination()
 
@@ -834,6 +885,7 @@ class NodeServer:
         self._replay_stop.set()
         self._anti_entropy_stop.set()
         self._heartbeat_stop.set()
+        self._hinted_stop.set()
         if self._cleanup_thread:
             self._cleanup_thread.join()
         if self._replay_thread:
@@ -842,6 +894,8 @@ class NodeServer:
             self._anti_entropy_thread.join()
         if self._heartbeat_thread:
             self._heartbeat_thread.join()
+        if self._hinted_thread:
+            self._hinted_thread.join()
         for _, _, _, c in self._iter_peers():
             c.close()
         self.server.stop(0).wait()
