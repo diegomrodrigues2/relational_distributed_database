@@ -9,6 +9,7 @@ class GRPCReplicaClient:
         self.port = port
         self.channel = grpc.insecure_channel(f"{host}:{port}")
         self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
+        self.heartbeat_stub = replication_pb2_grpc.HeartbeatServiceStub(self.channel)
 
     def put(self, key, value, timestamp=None, node_id="", op_id="", vector=None):
         if timestamp is None:
@@ -63,6 +64,11 @@ class GRPCReplicaClient:
                 op.vector.MergeFrom(vv)
         req = replication_pb2.FetchRequest(vector=vv, ops=ops, segment_hashes=hashes)
         return self.stub.FetchUpdates(req)
+
+    def ping(self, node_id: str = ""):
+        """Send a heartbeat ping to the remote peer."""
+        req = replication_pb2.Heartbeat(node_id=node_id)
+        self.heartbeat_stub.Ping(req)
 
     def close(self):
         self.channel.close()

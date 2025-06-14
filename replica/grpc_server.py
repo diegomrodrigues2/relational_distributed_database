@@ -275,6 +275,17 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.FetchResponse(ops=ops, segment_hashes=local_hashes)
 
 
+class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
+    """Simple heartbeat service used for peer liveness checks."""
+
+    def __init__(self, node):
+        self._node = node
+
+    def Ping(self, request, context):
+        """Respond to heartbeat ping with an empty message."""
+        return replication_pb2.Empty()
+
+
 class NodeServer:
     """Encapsulates gRPC server and replication logic for a node."""
 
@@ -316,6 +327,10 @@ class NodeServer:
         replication_pb2_grpc.add_ReplicaServicer_to_server(
             self.service, self.server
         )
+        self.heartbeat_service = HeartbeatService(self)
+        replication_pb2_grpc.add_HeartbeatServiceServicer_to_server(
+            self.heartbeat_service, self.server
+        )
 
         self.health_servicer = health.HealthServicer()
         health_pb2_grpc.add_HealthServicer_to_server(self.health_servicer, self.server)
@@ -334,11 +349,16 @@ class NodeServer:
         self._replay_thread = None
         self._anti_entropy_stop = threading.Event()
         self._anti_entropy_thread = None
+        self._heartbeat_stop = threading.Event()
+        self._heartbeat_thread = None
         self.anti_entropy_interval = anti_entropy_interval
+        self.heartbeat_interval = 1.0
+        self.heartbeat_timeout = 3.0
         self.max_batch_size = max_batch_size
         self.peer_clients = []
         self.client_map = {}
         self.clients_by_id = {}
+        self.peer_status: dict[str, float | None] = {}
         for peer in self.peers:
             if len(peer) == 2:
                 ph, pp = peer
@@ -351,6 +371,7 @@ class NodeServer:
             self.peer_clients.append(c)
             self.client_map[f"{ph}:{pp}"] = c
             self.clients_by_id[pid] = c
+            self.peer_status[pid] = None
 
         self.hints: dict[str, list[tuple]] = {}
         self._replog_fp = None
@@ -519,6 +540,20 @@ class NodeServer:
             self.sync_from_peer()
             time.sleep(self.anti_entropy_interval)
 
+    def _heartbeat_loop(self) -> None:
+        while not self._heartbeat_stop.is_set():
+            now = time.time()
+            for host, port, peer_id, client in self._iter_peers():
+                try:
+                    client.ping(self.node_id)
+                    self.peer_status[peer_id] = now
+                except Exception:
+                    pass
+            for pid, ts in list(self.peer_status.items()):
+                if ts is not None and now - ts > self.heartbeat_timeout:
+                    self.peer_status[pid] = None
+            time.sleep(self.heartbeat_interval)
+
     def _start_cleanup_thread(self) -> None:
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             return
@@ -538,6 +573,13 @@ class NodeServer:
             return
         t = threading.Thread(target=self._anti_entropy_loop, daemon=True)
         self._anti_entropy_thread = t
+        t.start()
+
+    def _start_heartbeat_thread(self) -> None:
+        if self._heartbeat_thread and self._heartbeat_thread.is_alive():
+            return
+        t = threading.Thread(target=self._heartbeat_loop, daemon=True)
+        self._heartbeat_thread = t
         t.start()
 
     # replication helpers -------------------------------------------------
@@ -709,6 +751,7 @@ class NodeServer:
         self._start_cleanup_thread()
         self._start_replay_thread()
         self._start_anti_entropy_thread()
+        self._start_heartbeat_thread()
         self.server.start()
         self.server.wait_for_termination()
 
@@ -722,12 +765,15 @@ class NodeServer:
         self._cleanup_stop.set()
         self._replay_stop.set()
         self._anti_entropy_stop.set()
+        self._heartbeat_stop.set()
         if self._cleanup_thread:
             self._cleanup_thread.join()
         if self._replay_thread:
             self._replay_thread.join()
         if self._anti_entropy_thread:
             self._anti_entropy_thread.join()
+        if self._heartbeat_thread:
+            self._heartbeat_thread.join()
         for _, _, _, c in self._iter_peers():
             c.close()
         self.server.stop(0).wait()
