@@ -26,6 +26,8 @@ message KeyValue {
 // Resposta que devolve um valor, vazio caso nao encontrado
 message ValueResponse {
   string value = 1;
+  int64 timestamp = 2;
+  VersionVector vector = 3;
 }
 
 // Mensagem vazia usada em operacoes sem retorno

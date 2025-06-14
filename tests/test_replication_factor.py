@@ -20,7 +20,8 @@ class ReplicationFactorThreeTest(unittest.TestCase):
                 expected_nodes = set(cluster.ring.get_preference_list(key, 3))
                 found_nodes = set()
                 for node in cluster.nodes:
-                    if node.client.get(key) == "v1":
+                    val, _ = node.client.get(key)
+                    if val == "v1":
                         found_nodes.add(node.node_id)
                 self.assertEqual(found_nodes, expected_nodes)
             finally:
@@ -35,8 +36,12 @@ class ReplicationFactorThreeTest(unittest.TestCase):
                 offline_id = pref_nodes[1]
                 cluster.nodes_by_id[offline_id].stop()
                 time.sleep(0.5)
-                with self.assertRaises(Exception):
-                    cluster.put(0, key, "v2")
+                cluster.put(0, key, "v2")
+                time.sleep(1)
+                for nid in pref_nodes:
+                    if nid == offline_id:
+                        continue
+                    self.assertEqual(cluster.nodes_by_id[nid].client.get(key)[0], "v2")
             finally:
                 cluster.shutdown()
 

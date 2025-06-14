@@ -198,10 +198,20 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.Empty()
 
     def Get(self, request, context):
-        value = self._node.db.get(request.key)
-        if value is None:
-            value = ""
-        return replication_pb2.ValueResponse(value=value)
+        records = self._node.db.get_record(request.key)
+        if not records:
+            return replication_pb2.ValueResponse(value="", timestamp=0)
+        latest_v = ""
+        latest_ts = -1
+        latest_vc = None
+        for val, vc in records:
+            ts = vc.clock.get("ts", 0) if vc is not None else 0
+            if ts > latest_ts:
+                latest_ts = ts
+                latest_v = val
+                latest_vc = vc
+        vector = replication_pb2.VersionVector(items=latest_vc.clock if latest_vc else {})
+        return replication_pb2.ValueResponse(value=latest_v, timestamp=latest_ts, vector=vector)
 
     def FetchUpdates(self, request, context):
         """Handle anti-entropy synchronization with a peer."""
@@ -281,6 +291,8 @@ class NodeServer:
         peers=None,
         hash_ring=None,
         replication_factor: int = 3,
+        write_quorum: int | None = None,
+        read_quorum: int | None = None,
         consistency_mode: str = "lww",
         anti_entropy_interval: float = 5.0,
         max_batch_size: int = 50,
@@ -294,6 +306,8 @@ class NodeServer:
         self.peers = peers or []
         self.hash_ring = hash_ring
         self.replication_factor = replication_factor
+        self.write_quorum = write_quorum or (replication_factor // 2 + 1)
+        self.read_quorum = read_quorum or (replication_factor // 2 + 1)
         self.consistency_mode = consistency_mode
         self.crdt_config = crdt_config or {}
 
@@ -544,42 +558,61 @@ class NodeServer:
             peer_list = list(self._iter_peers())
 
         errors = []
-        for host, port, peer_id, client in peer_list:
+        def do_rpc(params):
+            host, port, peer_id, client = params
             if skip_id is not None:
                 if self.clients_by_id:
                     if peer_id == skip_id:
-                        continue
+                        return False
                 else:
                     if f"{host}:{port}" == skip_id:
-                        continue
-            try:
-                if op == "PUT":
-                    client.put(
-                        key,
-                        value,
-                        timestamp=timestamp,
-                        node_id=self.node_id,
-                        op_id=op_id,
-                        vector=vector,
-                    )
-                else:
-                    client.delete(
-                        key,
-                        timestamp=timestamp,
-                        node_id=self.node_id,
-                        op_id=op_id,
-                        vector=vector,
-                    )
-            except Exception as exc:
-                print(f"Falha ao replicar: {exc}")
-                addr_id = f"{host}:{port}"
-                self.hints.setdefault(addr_id, []).append(
-                    [op_id, op, key, value, timestamp]
+                        return False
+            if op == "PUT":
+                client.put(
+                    key,
+                    value,
+                    timestamp=timestamp,
+                    node_id=self.node_id,
+                    op_id=op_id,
+                    vector=vector,
                 )
-                self.save_hints()
-                errors.append(exc)
+            else:
+                client.delete(
+                    key,
+                    timestamp=timestamp,
+                    node_id=self.node_id,
+                    op_id=op_id,
+                    vector=vector,
+                )
+            return True
 
-        if errors:
+        if not peer_list:
+            return
+
+        ack = 1  # local write
+        futures_map = {}
+        with futures.ThreadPoolExecutor(max_workers=len(peer_list)) as ex:
+            for p in peer_list:
+                fut = ex.submit(do_rpc, p)
+                futures_map[fut] = p
+            for fut in futures.as_completed(futures_map):
+                host, port, peer_id, _ = futures_map[fut]
+                try:
+                    res = fut.result()
+                    if res:
+                        ack += 1
+                except Exception as exc:
+                    print(f"Falha ao replicar: {exc}")
+                    addr_id = f"{host}:{port}"
+                    self.hints.setdefault(addr_id, []).append(
+                        [op_id, op, key, value, timestamp]
+                    )
+                    errors.append(exc)
+                if ack >= self.write_quorum:
+                    break
+
+        self.save_hints()
+        if ack < self.write_quorum:
             raise RuntimeError("replication failed")
 
     def sync_from_peer(self) -> None:
@@ -708,6 +741,8 @@ def run_server(
     peers=None,
     hash_ring=None,
     replication_factor: int = 3,
+    write_quorum: int | None = None,
+    read_quorum: int | None = None,
     *,
     consistency_mode: str = "lww",
 ):
@@ -719,6 +754,8 @@ def run_server(
         peers=peers,
         hash_ring=hash_ring,
         replication_factor=replication_factor,
+        write_quorum=write_quorum,
+        read_quorum=read_quorum,
         consistency_mode=consistency_mode,
     )
     node.start()

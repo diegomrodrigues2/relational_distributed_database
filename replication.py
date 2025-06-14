@@ -5,6 +5,7 @@ import time
 import shutil
 import multiprocessing
 from dataclasses import dataclass
+from concurrent import futures
 
 from replica.grpc_server import run_server
 from replica.client import GRPCReplicaClient
@@ -28,7 +29,8 @@ class ClusterNode:
         self.client.delete(key, timestamp=ts, node_id=self.node_id)
 
     def get(self, key):
-        return self.client.get(key)
+        value, _ = self.client.get(key)
+        return value
 
     def stop(self):
         if self.process.is_alive():
@@ -48,6 +50,8 @@ class NodeCluster:
         *,
         consistency_mode: str = "lww",
         replication_factor: int = 3,
+        write_quorum: int | None = None,
+        read_quorum: int | None = None,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -59,6 +63,8 @@ class NodeCluster:
         self.nodes_by_id: dict[str, ClusterNode] = {}
         self.consistency_mode = consistency_mode
         self.replication_factor = replication_factor
+        self.write_quorum = write_quorum or (replication_factor // 2 + 1)
+        self.read_quorum = read_quorum or (replication_factor // 2 + 1)
         self.ring = ConsistentHashRing()
         peers = [
             ("localhost", base_port + i, f"node_{i}")
@@ -88,6 +94,8 @@ class NodeCluster:
                     peers_i,
                     self.ring,
                     self.replication_factor,
+                    self.write_quorum,
+                    self.read_quorum,
                 ),
                 kwargs={"consistency_mode": self.consistency_mode},
                 daemon=True,
@@ -114,8 +122,25 @@ class NodeCluster:
         node.delete(key)
 
     def get(self, node_index: int, key: str):
-        node = self._coordinator(key)
-        return node.get(key)
+        pref_nodes = self.ring.get_preference_list(key, self.replication_factor)
+        nodes = [self.nodes_by_id[nid] for nid in pref_nodes]
+        responses = []
+        with futures.ThreadPoolExecutor(max_workers=len(nodes)) as ex:
+            future_map = {ex.submit(n.client.get, key): n.node_id for n in nodes}
+            for fut in futures.as_completed(future_map):
+                try:
+                    val, ts = fut.result()
+                except Exception:
+                    val = None
+                    ts = -1
+                if val is not None:
+                    responses.append((ts, val))
+                if len(responses) >= self.read_quorum:
+                    break
+        if not responses:
+            return None
+        _, value = max(responses, key=lambda x: x[0])
+        return value
 
     def shutdown(self):
         for n in self.nodes:

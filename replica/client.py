@@ -50,7 +50,8 @@ class GRPCReplicaClient:
     def get(self, key):
         request = replication_pb2.KeyRequest(key=key, timestamp=0, node_id="")
         response = self.stub.Get(request)
-        return response.value if response.value else None
+        value = response.value if response.value else None
+        return value, response.timestamp
 
     def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None):
         """Fetch updates from peer optionally sending our pending ops and hashes."""
