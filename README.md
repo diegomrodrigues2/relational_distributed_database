@@ -86,6 +86,9 @@ Se um nó ficar offline, ele pode recuperar as mudanças perdidas ao reprovar o 
 - **Driver opcional** – encaminha requisições para garantir "read your own writes".
 - **Log de replicação** – armazena operações geradas localmente até que todos os pares confirmem o recebimento.
 - **Vetor de versões** – cada nó mantém `last_seen` (origem → último contador) para aplicar cada operação exatamente uma vez.
+- **Heartbeat** – serviço `Ping` que monitora a disponibilidade dos peers.
+- **Sloppy quorum** – usa nós saudáveis extras quando os responsáveis originais estão off-line.
+- **Hinted handoff** – escritas destinadas a nós indisponíveis são salvas em substitutos e reenviadas em background.
 
 ## Sincronização offline e anti-entropia
 
@@ -105,8 +108,7 @@ sequenceDiagram
 
 - O *replication log* é persistido em `replication_log.json` e reenviado em lotes
   para os pares.
-- Caso um destino esteja inacessível, as operações ficam armazenadas como
-  **hints** e são entregues assim que o peer responde (hinted handoff).
+- Caso um destino esteja inacessível, outro nó saudável guarda a atualização com `hinted_for` e a entrega quando o peer volta (hinted handoff).
 - Hashes de segmentos baseados em **Merkle trees** permitem pular dados já
   sincronizados durante a troca de atualizações.
 
@@ -240,6 +242,21 @@ graph LR
     2 --> 0
     3 --> 0
 ```
+
+## Sloppy Quorum e Hinted Handoff
+
+Cada nó monitora a disponibilidade dos pares com um serviço de *heartbeat*. Se um
+nó responsável por determinada chave estiver fora do ar, a escrita não é
+rejeitada: outros nós saudáveis são escolhidos para completar o quorum
+(`sloppy quorum`). A operação é enviada ao substituto com o campo
+`hinted_for` indicando o destino original.
+
+Essas atualizações ficam registradas em `hints.json` e uma thread de fundo
+verifica periodicamente se o peer voltou a responder ao heartbeat. Quando isso
+ocorre o dado é transferido e o hint removido.
+
+O mesmo princípio vale para leituras: se as réplicas preferenciais estiverem
+indisponíveis, o cluster consulta nós extras até atingir `R` respostas.
 
 ## Vector Clocks, CRDTs e modos de consistência
 
