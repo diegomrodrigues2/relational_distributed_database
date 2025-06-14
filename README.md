@@ -114,7 +114,7 @@ sequenceDiagram
 
 ## Executando
 
-1. Instale as dependências
+1. Instale as dependências (incluindo `grpcio` utilizado na comunicação gRPC)
    ```bash
    pip install -r requirements.txt
    ```
@@ -312,7 +312,8 @@ with TemporaryDirectory() as dir_a, TemporaryDirectory() as dir_b:
 
 ## Testes
 
-Execute a bateria de testes para validar o sistema:
+Execute a bateria de testes para validar o sistema (as dependências `grpcio` e
+`grpcio-tools` do `requirements.txt` são necessárias):
 ```bash
 python -m unittest discover -s tests -v
 ```
