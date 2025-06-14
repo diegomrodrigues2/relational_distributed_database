@@ -6,7 +6,7 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from lsm_db import SimpleLSMDB
-from merkle import merkle_root, compute_segment_hashes
+from merkle import merkle_root, compute_segment_hashes, build_merkle_tree
 import json
 from replica.grpc_server import ReplicaService, NodeServer
 from replica import replication_pb2
@@ -46,10 +46,20 @@ class FetchUpdatesMerkleTest(unittest.TestCase):
             node_a.db.recalc_merkle()
             node_b.db.recalc_merkle()
 
+            trees = []
+            for seg in node_a.db.segment_hashes:
+                items = [
+                    (k, json.dumps(vc.clock) + ":" + v)
+                    for k, v, vc in node_a.db.get_segment_items(seg)
+                    if v != "__TOMBSTONE__"
+                ]
+                root = build_merkle_tree(items)
+                trees.append(replication_pb2.SegmentTree(segment=seg, root=root.to_proto()))
             req = replication_pb2.FetchRequest(
                 vector=replication_pb2.VersionVector(items={}),
                 ops=[],
                 segment_hashes=node_a.db.segment_hashes,
+                trees=trees,
             )
             resp = service_b.FetchUpdates(req, None)
             self.assertEqual(len(resp.ops), 0)
@@ -69,14 +79,24 @@ class FetchUpdatesMerkleTest(unittest.TestCase):
             node_a.db.recalc_merkle()
             node_b.db.recalc_merkle()
 
+            trees = []
+            for seg in node_a.db.segment_hashes:
+                items = [
+                    (k, json.dumps(vc.clock) + ":" + v)
+                    for k, v, vc in node_a.db.get_segment_items(seg)
+                    if v != "__TOMBSTONE__"
+                ]
+                root = build_merkle_tree(items)
+                trees.append(replication_pb2.SegmentTree(segment=seg, root=root.to_proto()))
             req = replication_pb2.FetchRequest(
                 vector=replication_pb2.VersionVector(items={}),
                 ops=[],
                 segment_hashes=node_a.db.segment_hashes,
+                trees=trees,
             )
             resp = service_b.FetchUpdates(req, None)
             keys = sorted(op.key for op in resp.ops)
-            self.assertEqual(keys, ["k1", "k2"])
+            self.assertEqual(keys, ["k2"])
 
             node_a.db.close()
             node_b.db.close()

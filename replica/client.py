@@ -69,15 +69,16 @@ class GRPCReplicaClient:
             results.append((val, item.timestamp, vec))
         return results
 
-    def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None):
-        """Fetch updates from peer optionally sending our pending ops and hashes."""
+    def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None, trees=None):
+        """Fetch updates from peer optionally sending our pending ops, hashes and trees."""
         vv = replication_pb2.VersionVector(items=last_seen)
         ops = ops or []
         hashes = segment_hashes or {}
+        trees = trees or []
         for op in ops:
             if not op.vector.items:
                 op.vector.MergeFrom(vv)
-        req = replication_pb2.FetchRequest(vector=vv, ops=ops, segment_hashes=hashes)
+        req = replication_pb2.FetchRequest(vector=vv, ops=ops, segment_hashes=hashes, trees=trees)
         return self.stub.FetchUpdates(req)
 
     def ping(self, node_id: str = ""):
