@@ -32,14 +32,15 @@ class ReplicationManagerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             cluster = NodeCluster(base_path=tmpdir, num_nodes=2)
             try:
+                time.sleep(1)
                 ts = int(time.time() * 1000)
                 op_id = "node_0:1"
-                # Send same op_id twice directly to node 1
-                cluster.nodes[1].client.put(
+                # Send same op_id twice via coordinator node 0
+                cluster.nodes[0].client.put(
                     "dup", "v1", timestamp=ts, node_id="node_0", op_id=op_id
                 )
                 time.sleep(0.2)
-                cluster.nodes[1].client.put(
+                cluster.nodes[0].client.put(
                     "dup", "v2", timestamp=ts + 1, node_id="node_0", op_id=op_id
                 )
                 time.sleep(0.5)
