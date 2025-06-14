@@ -156,6 +156,43 @@ cluster = NodeCluster("/tmp/hash_cluster", num_nodes=3,
                       replication_factor=2)
 ```
 
+O número total de réplicas definido por `replication_factor` é chamado de **N**.
+Cada escrita precisa do reconhecimento de **W** nós (`write_quorum`) e cada
+leitura consulta ao menos **R** réplicas (`read_quorum`). Por padrão, `W` e `R`
+são calculados como `replication_factor // 2 + 1`, mas podem ser configurados
+explicitamente. Para garantir que uma leitura encontre a última escrita é comum
+seguir a regra **R + W > N**.
+
+```python
+from replication import NodeCluster
+
+cluster = NodeCluster(
+    "/tmp/quorum", num_nodes=3,
+    replication_factor=3,
+    write_quorum=2,  # W
+    read_quorum=2,   # R
+)
+```
+
+Também é possível utilizar os níveis predefinidos em `consistency.py`:
+
+```python
+from replication import NodeCluster
+from consistency import Consistency, level_to_quorum
+
+w, r = level_to_quorum(Consistency.ONE, replication_factor=3)
+fast_cluster = NodeCluster(
+    "/tmp/fast", num_nodes=3,
+    replication_factor=3,
+    write_quorum=w,
+    read_quorum=r,
+)
+```
+
+Valores menores de `W` e `R` aumentam a disponibilidade, pois menos nós precisam
+estar online. Quóruns maiores melhoram a consistência ao custo de exigir mais
+réplicas ativas.
+
 Durante essa etapa de consistência forte, uma escrita só é considerada
 bem-sucedida quando todos os nós escolhidos respondem com sucesso à
 chamada RPC.
