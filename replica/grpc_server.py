@@ -588,16 +588,46 @@ class NodeServer:
 
         # Determine peers responsible for this key according to the hash ring.
         if self.hash_ring and self.clients_by_id:
-            pref_nodes = self.hash_ring.get_preference_list(key, self.replication_factor)
+            # Ask for a large candidate list to allow fallbacks when some peers
+            # are unreachable.
+            all_nodes = len(self.clients_by_id) + 1
+            pref_nodes = self.hash_ring.get_preference_list(key, all_nodes)
             peer_list = []
             for node_id in pref_nodes:
                 if node_id == self.node_id:
                     continue
                 client = self.clients_by_id.get(node_id)
-                if client:
-                    peer_list.append((client.host, client.port, node_id, client))
+                if not client:
+                    continue
+                # Skip peers marked as down via heartbeat if enough others are
+                # available; otherwise attempt the RPC to try to reach quorum.
+                if (
+                    self.peer_status.get(node_id) is None
+                    and len(peer_list) >= self.replication_factor - 1
+                ):
+                    addr_id = f"{client.host}:{client.port}"
+                    self.hints.setdefault(addr_id, []).append(
+                        [op_id, op, key, value, timestamp]
+                    )
+                    continue
+                peer_list.append((client.host, client.port, node_id, client))
+                if len(peer_list) >= self.replication_factor - 1:
+                    break
         else:
-            peer_list = list(self._iter_peers())
+            peer_list = []
+            for host, port, node_id, client in self._iter_peers():
+                if (
+                    self.peer_status.get(node_id) is None
+                    and len(peer_list) >= self.replication_factor - 1
+                ):
+                    addr_id = f"{host}:{port}"
+                    self.hints.setdefault(addr_id, []).append(
+                        [op_id, op, key, value, timestamp]
+                    )
+                    continue
+                peer_list.append((host, port, node_id, client))
+                if len(peer_list) >= self.replication_factor - 1:
+                    break
 
         errors = []
         def do_rpc(params):
@@ -629,6 +659,9 @@ class NodeServer:
             return True
 
         if not peer_list:
+            self.save_hints()
+            if self.clients_by_id and self.write_quorum > 1:
+                raise RuntimeError("replication failed")
             return
 
         ack = 1  # local write
