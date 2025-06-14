@@ -26,10 +26,16 @@ message KeyValue {
 }
 
 // Resposta que devolve um valor, vazio caso nao encontrado
-message ValueResponse {
+// Representa um valor versionado
+message VersionedValue {
   string value = 1;
   int64 timestamp = 2;
   VersionVector vector = 3;
+}
+
+// Resposta que devolve todos os valores encontrados
+message ValueResponse {
+  repeated VersionedValue values = 1;
 }
 
 // Mensagem vazia usada em operacoes sem retorno

@@ -72,7 +72,8 @@ class SloppyQuorumTest(unittest.TestCase):
                 with open(os.path.join(tmpdir, holder.node_id, "hints.json"), "r", encoding="utf-8") as f:
                     hints_after = json.load(f)
                 self.assertFalse(hints_after.get(offline_id))
-                self.assertEqual(cluster.nodes_by_id[offline_id].client.get(key)[0], "v1")
+                val = cluster.nodes_by_id[offline_id].client.get(key)
+                self.assertEqual(val[0][0], "v1")
             finally:
                 cluster.shutdown()
 

@@ -157,5 +157,23 @@ class AntiEntropyLoopTest(unittest.TestCase):
             node_b.db.close()
 
 
+class GetMultipleVersionsTest(unittest.TestCase):
+    def test_get_returns_all_versions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, node_id="A", peers=[])
+            service = ReplicaService(node)
+
+            vc_a = VectorClock({"A": 1})
+            vc_b = VectorClock({"B": 1})
+            node.db.put("k", "va", vector_clock=vc_a)
+            node.db.put("k", "vb", vector_clock=vc_b)
+
+            resp = service.Get(replication_pb2.KeyRequest(key="k", timestamp=0, node_id="test"), None)
+            values = sorted(v.value for v in resp.values)
+            self.assertEqual(values, ["va", "vb"])
+
+            node.db.close()
+
+
 if __name__ == "__main__":
     unittest.main()

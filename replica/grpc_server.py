@@ -214,18 +214,20 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def Get(self, request, context):
         records = self._node.db.get_record(request.key)
         if not records:
-            return replication_pb2.ValueResponse(value="", timestamp=0)
-        latest_v = ""
-        latest_ts = -1
-        latest_vc = None
+            return replication_pb2.ValueResponse(values=[])
+
+        values = []
         for val, vc in records:
             ts = vc.clock.get("ts", 0) if vc is not None else 0
-            if ts > latest_ts:
-                latest_ts = ts
-                latest_v = val
-                latest_vc = vc
-        vector = replication_pb2.VersionVector(items=latest_vc.clock if latest_vc else {})
-        return replication_pb2.ValueResponse(value=latest_v, timestamp=latest_ts, vector=vector)
+            values.append(
+                replication_pb2.VersionedValue(
+                    value=val,
+                    timestamp=ts,
+                    vector=replication_pb2.VersionVector(items=vc.clock if vc else {}),
+                )
+            )
+
+        return replication_pb2.ValueResponse(values=values)
 
     def FetchUpdates(self, request, context):
         """Handle anti-entropy synchronization with a peer."""
