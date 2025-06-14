@@ -51,6 +51,20 @@ message VersionVector {
   map<string, int64> items = 1;
 }
 
+// Node in a Merkle tree
+message MerkleNodeMsg {
+  string key = 1;
+  string hash = 2;
+  MerkleNodeMsg left = 3;
+  MerkleNodeMsg right = 4;
+}
+
+// Tree for a database segment
+message SegmentTree {
+  string segment = 1;
+  MerkleNodeMsg root = 2;
+}
+
 // Representa uma operação pendente de replicação
 message Operation {
   string key = 1;
@@ -67,6 +81,7 @@ message FetchRequest {
   VersionVector vector = 1;
   repeated Operation ops = 2;
   map<string, string> segment_hashes = 3;
+  repeated SegmentTree trees = 4;
 }
 
 // Lista de operações para sincronização

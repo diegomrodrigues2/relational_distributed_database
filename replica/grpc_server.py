@@ -12,6 +12,7 @@ from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from lamport import LamportClock
 from vector_clock import VectorClock
 from lsm_db import SimpleLSMDB
+from merkle import MerkleNode, build_merkle_tree, diff_trees
 from . import replication_pb2, replication_pb2_grpc
 from .client import GRPCReplicaClient
 
@@ -233,6 +234,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         """Handle anti-entropy synchronization with a peer."""
         last_seen = dict(request.vector.items)
         remote_hashes = dict(request.segment_hashes)
+        remote_trees = {}
+        for t in request.trees:
+            remote_trees[t.segment] = MerkleNode.from_proto(t.root)
 
         for op in request.ops:
             if op.delete:
@@ -275,18 +279,32 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             for seg, h in local_hashes.items():
                 if remote_hashes.get(seg) == h:
                     continue
-                for k, v, vc in self._node.db.get_segment_items(seg):
-                    ts_val = vc.clock.get("ts", 0) if vc is not None else 0
-                    ops.append(
-                        replication_pb2.Operation(
-                            key=k,
-                            value=v if v is not None else "",
-                            timestamp=ts_val,
-                            node_id=self._node.node_id,
-                            op_id="",
-                            delete=v is None,
+                items = [
+                    (k, json.dumps(vc.clock) + ":" + v)
+                    for k, v, vc in self._node.db.get_segment_items(seg)
+                    if v != "__TOMBSTONE__"
+                ]
+                local_tree = build_merkle_tree(items)
+                diff_keys = diff_trees(local_tree, remote_trees.get(seg))
+                for key in diff_keys:
+                    for val, vc in self._node.db.get_record(key):
+                        ts_val = vc.clock.get("ts", 0) if vc is not None else 0
+                        ops.append(
+                            replication_pb2.Operation(
+                                key=key,
+                                value=val if val is not None else "",
+                                timestamp=ts_val,
+                                node_id=self._node.node_id,
+                                op_id="",
+                                delete=val is None,
+                            )
                         )
-                    )
+                        if len(ops) >= self._node.max_batch_size:
+                            break
+                    if len(ops) >= self._node.max_batch_size:
+                        break
+                if len(ops) >= self._node.max_batch_size:
+                    break
 
         return replication_pb2.FetchResponse(ops=ops, segment_hashes=local_hashes)
 
@@ -796,10 +814,24 @@ class NodeServer:
             )
 
         hashes = self.db.segment_hashes
+        trees = []
+        for seg in hashes:
+            items = [
+                (k, json.dumps(vc.clock) + ":" + v)
+                for k, v, vc in self.db.get_segment_items(seg)
+                if v != "__TOMBSTONE__"
+            ]
+            root = build_merkle_tree(items)
+            trees.append(
+                replication_pb2.SegmentTree(segment=seg, root=root.to_proto())
+            )
 
         for host, port, peer_id, client in peer_list:
             try:
-                resp = client.fetch_updates(self.last_seen, pending_ops, hashes)
+                try:
+                    resp = client.fetch_updates(self.last_seen, pending_ops, hashes, trees)
+                except TypeError:
+                    resp = client.fetch_updates(self.last_seen, pending_ops, hashes)
             except Exception:
                 continue
 
