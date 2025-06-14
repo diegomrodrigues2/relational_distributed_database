@@ -117,7 +117,7 @@ sequenceDiagram
 
 ## Executando
 
-1. Instale as dependências (incluindo `grpcio` utilizado na comunicação gRPC)
+1. Instale as dependências (incluindo `grpcio` e `protobuf` utilizados na comunicação gRPC)
    ```bash
    pip install -r requirements.txt
    ```
