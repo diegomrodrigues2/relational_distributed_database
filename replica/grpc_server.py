@@ -89,6 +89,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 else:
                     apply_update = False
 
+        if apply_update and request.hinted_for and request.hinted_for != self._node.node_id:
+            self._node.hints.setdefault(request.hinted_for, []).append(
+                [request.op_id or "", "PUT", request.key, request.value, int(request.timestamp)]
+            )
+            self._node.save_hints()
+            return replication_pb2.Empty()
+
         if apply_update:
             is_coordinator = True
             if self._node.hash_ring is not None:
@@ -165,6 +172,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     self._node.db.delete(request.key, timestamp=int(request.timestamp))
                 else:
                     apply_update = False
+
+        if apply_update and request.hinted_for and request.hinted_for != self._node.node_id:
+            self._node.hints.setdefault(request.hinted_for, []).append(
+                [request.op_id or "", "DELETE", request.key, None, int(request.timestamp)]
+            )
+            self._node.save_hints()
+            return replication_pb2.Empty()
 
         if apply_update:
             is_coordinator = True
@@ -588,50 +602,72 @@ class NodeServer:
 
         # Determine peers responsible for this key according to the hash ring.
         if self.hash_ring and self.clients_by_id:
-            # Ask for a large candidate list to allow fallbacks when some peers
-            # are unreachable.
-            all_nodes = len(self.clients_by_id) + 1
-            pref_nodes = self.hash_ring.get_preference_list(key, all_nodes)
+            pref_nodes = self.hash_ring.get_preference_list(key, len(self.clients_by_id) + 1)
             peer_list = []
+            missing = []
             for node_id in pref_nodes:
                 if node_id == self.node_id:
                     continue
                 client = self.clients_by_id.get(node_id)
                 if not client:
                     continue
-                # Skip peers marked as down via heartbeat if enough others are
-                # available; otherwise attempt the RPC to try to reach quorum.
-                if (
-                    self.peer_status.get(node_id) is None
-                    and len(peer_list) >= self.replication_factor - 1
-                ):
-                    addr_id = f"{client.host}:{client.port}"
-                    self.hints.setdefault(addr_id, []).append(
-                        [op_id, op, key, value, timestamp]
-                    )
+                if self.peer_status.get(node_id) is None:
+                    if len(peer_list) >= self.replication_factor - 1:
+                        self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
+                        continue
+                    missing.append(node_id)
+                    peer_list.append((client.host, client.port, node_id, "", client))
+                    if len(peer_list) >= self.replication_factor - 1:
+                        break
                     continue
-                peer_list.append((client.host, client.port, node_id, client))
-                if len(peer_list) >= self.replication_factor - 1:
-                    break
-        else:
-            peer_list = []
-            for host, port, node_id, client in self._iter_peers():
-                if (
-                    self.peer_status.get(node_id) is None
-                    and len(peer_list) >= self.replication_factor - 1
-                ):
-                    addr_id = f"{host}:{port}"
-                    self.hints.setdefault(addr_id, []).append(
-                        [op_id, op, key, value, timestamp]
-                    )
-                    continue
-                peer_list.append((host, port, node_id, client))
+                peer_list.append((client.host, client.port, node_id, "", client))
                 if len(peer_list) >= self.replication_factor - 1:
                     break
 
+            for node_id in pref_nodes:
+                if len(peer_list) >= self.replication_factor - 1 or not missing:
+                    break
+                if node_id == self.node_id or any(p[2] == node_id for p in peer_list) or node_id in missing:
+                    continue
+                client = self.clients_by_id.get(node_id)
+                if not client or self.peer_status.get(node_id) is None:
+                    continue
+                hinted = missing.pop(0)
+                peer_list.append((client.host, client.port, node_id, hinted, client))
+
+            for node_id in missing:
+                self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
+        else:
+            peer_list = []
+            missing = []
+            peers = list(self._iter_peers())
+            for host, port, node_id, client in peers:
+                if self.peer_status.get(node_id) is None:
+                    if len(peer_list) >= self.replication_factor - 1:
+                        self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
+                        continue
+                    missing.append(node_id)
+                    peer_list.append((host, port, node_id, "", client))
+                    if len(peer_list) >= self.replication_factor - 1:
+                        break
+                    continue
+                peer_list.append((host, port, node_id, "", client))
+                if len(peer_list) >= self.replication_factor - 1:
+                    break
+            for host, port, node_id, client in peers:
+                if len(peer_list) >= self.replication_factor - 1 or not missing:
+                    break
+                if any(p[2] == node_id for p in peer_list) or node_id in missing or self.peer_status.get(node_id) is None:
+                    continue
+                hinted = missing.pop(0)
+                peer_list.append((host, port, node_id, hinted, client))
+
+            for node_id in missing:
+                self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
+
         errors = []
         def do_rpc(params):
-            host, port, peer_id, client = params
+            host, port, peer_id, hinted_for, client = params
             if skip_id is not None:
                 if self.clients_by_id:
                     if peer_id == skip_id:
@@ -647,6 +683,7 @@ class NodeServer:
                     node_id=self.node_id,
                     op_id=op_id,
                     vector=vector,
+                    hinted_for=hinted_for,
                 )
             else:
                 client.delete(
@@ -655,13 +692,11 @@ class NodeServer:
                     node_id=self.node_id,
                     op_id=op_id,
                     vector=vector,
+                    hinted_for=hinted_for,
                 )
             return True
 
         if not peer_list:
-            self.save_hints()
-            if self.clients_by_id and self.write_quorum > 1:
-                raise RuntimeError("replication failed")
             return
 
         ack = 1  # local write
@@ -671,15 +706,14 @@ class NodeServer:
                 fut = ex.submit(do_rpc, p)
                 futures_map[fut] = p
             for fut in futures.as_completed(futures_map):
-                host, port, peer_id, _ = futures_map[fut]
+                host, port, peer_id, hinted_for, _ = futures_map[fut]
                 try:
                     res = fut.result()
                     if res:
                         ack += 1
                 except Exception as exc:
                     print(f"Falha ao replicar: {exc}")
-                    addr_id = f"{host}:{port}"
-                    self.hints.setdefault(addr_id, []).append(
+                    self.hints.setdefault(peer_id, []).append(
                         [op_id, op, key, value, timestamp]
                     )
                     errors.append(exc)
@@ -746,8 +780,7 @@ class NodeServer:
                         pass
 
             # attempt to flush hinted handoff operations
-            addr_id = f"{host}:{port}"
-            hints = self.hints.get(addr_id, [])
+            hints = self.hints.get(peer_id, [])
             if hints:
                 remaining = []
                 for h_op_id, h_op, h_key, h_val, h_ts in hints:
@@ -759,6 +792,7 @@ class NodeServer:
                                 timestamp=h_ts,
                                 node_id=self.node_id,
                                 op_id=h_op_id,
+                                hinted_for="",
                             )
                         else:
                             client.delete(
@@ -766,13 +800,14 @@ class NodeServer:
                                 timestamp=h_ts,
                                 node_id=self.node_id,
                                 op_id=h_op_id,
+                                hinted_for="",
                             )
                     except Exception:
                         remaining.append((h_op_id, h_op, h_key, h_val, h_ts))
                 if remaining:
-                    self.hints[addr_id] = [list(r) for r in remaining]
+                    self.hints[peer_id] = [list(r) for r in remaining]
                 else:
-                    self.hints.pop(addr_id, None)
+                    self.hints.pop(peer_id, None)
                 self.save_hints()
 
     # lifecycle -----------------------------------------------------------

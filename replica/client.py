@@ -11,7 +11,16 @@ class GRPCReplicaClient:
         self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
         self.heartbeat_stub = replication_pb2_grpc.HeartbeatServiceStub(self.channel)
 
-    def put(self, key, value, timestamp=None, node_id="", op_id="", vector=None):
+    def put(
+        self,
+        key,
+        value,
+        timestamp=None,
+        node_id="",
+        op_id="",
+        vector=None,
+        hinted_for="",
+    ):
         if timestamp is None:
             timestamp = int(time.time() * 1000)
         if vector is None:
@@ -27,10 +36,11 @@ class GRPCReplicaClient:
             node_id=node_id,
             op_id=op_id,
             vector=vv,
+            hinted_for=hinted_for,
         )
         self.stub.Put(request)
 
-    def delete(self, key, timestamp=None, node_id="", op_id="", vector=None):
+    def delete(self, key, timestamp=None, node_id="", op_id="", vector=None, hinted_for=""):
         if timestamp is None:
             timestamp = int(time.time() * 1000)
         if vector is None:
@@ -45,6 +55,7 @@ class GRPCReplicaClient:
             node_id=node_id,
             op_id=op_id,
             vector=vv,
+            hinted_for=hinted_for,
         )
         self.stub.Delete(request)
 

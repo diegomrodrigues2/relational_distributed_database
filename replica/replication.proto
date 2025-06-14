@@ -11,6 +11,7 @@ message KeyRequest {
   string node_id = 3;
   string op_id = 4;
   VersionVector vector = 5;
+  string hinted_for = 6;
 }
 
 // Estrutura para enviar chave e valor de uma escrita
@@ -21,6 +22,7 @@ message KeyValue {
   string node_id = 4;
   string op_id = 5;
   VersionVector vector = 6;
+  string hinted_for = 7;
 }
 
 // Resposta que devolve um valor, vazio caso nao encontrado
