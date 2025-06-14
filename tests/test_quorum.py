@@ -56,7 +56,8 @@ class WriteQuorumTest(unittest.TestCase):
                 for nid in pref_nodes:
                     if nid == pref_nodes[1]:
                         continue
-                    self.assertEqual(cluster.nodes_by_id[nid].client.get(key)[0], "v1")
+                    recs = cluster.nodes_by_id[nid].client.get(key)
+                    self.assertEqual(recs[0][0], "v1")
 
                 # stop another replica - now quorum not met
                 cluster.nodes_by_id[pref_nodes[2]].stop()
@@ -117,7 +118,7 @@ class AvailabilityScenarioTest(unittest.TestCase):
                 db_path = os.path.join(tmpdir, stale_id)
                 local_db = SimpleLSMDB(db_path=db_path)
                 stale_val = local_db.get(key)
-                fresh_val = cluster.nodes_by_id[pref_nodes[0]].client.get(key)[0]
+                fresh_val = cluster.nodes_by_id[pref_nodes[0]].client.get(key)[0][0]
                 self.assertEqual(stale_val, "v1")
                 self.assertEqual(fresh_val, "v2")
             finally:

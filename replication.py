@@ -12,6 +12,7 @@ from replica.grpc_server import run_server
 from replica.client import GRPCReplicaClient
 from hash_ring import HashRing as ConsistentHashRing
 from vector_clock import VectorClock
+from lsm_db import _merge_version_lists
 
 
 @dataclass
@@ -31,8 +32,8 @@ class ClusterNode:
         self.client.delete(key, timestamp=ts, node_id=self.node_id)
 
     def get(self, key):
-        value, _, _ = self.client.get(key)
-        return value
+        recs = self.client.get(key)
+        return recs[0][0] if recs else None
 
     def stop(self):
         if self.process.is_alive():
@@ -123,7 +124,7 @@ class NodeCluster:
         node = self._coordinator(key)
         node.delete(key)
 
-    def get(self, node_index: int, key: str):
+    def get(self, node_index: int, key: str, *, merge: bool = True):
         pref_nodes = self.ring.get_preference_list(key, self.replication_factor)
         nodes = []
         for nid in pref_nodes:
@@ -157,47 +158,77 @@ class NodeCluster:
             for fut in futures.as_completed(future_map):
                 node = future_map[fut]
                 try:
-                    val, ts, vec = fut.result()
+                    recs = fut.result()
                 except Exception:
-                    val = None
-                    ts = -1
-                    vec = {}
-                responses.append((node, ts, vec, val))
+                    recs = []
+                responses.append((node, recs))
 
         if not responses:
             return None
 
-        valid = [r for r in responses if r[3] is not None]
-        if not valid:
+        merged = []
+        for _, recs in responses:
+            for val, ts, vc_dict in recs:
+                merged = _merge_version_lists(merged, [(val, VectorClock(vc_dict))])
+
+        if not merged:
             return None
 
-        if self.consistency_mode in ("vector", "crdt"):
-            best_node, best_ts, best_vc_dict, best_val = valid[0]
-            best_vc = VectorClock(best_vc_dict)
-            for node, ts, vc_dict, val in valid[1:]:
-                vc = VectorClock(vc_dict)
-                cmp = vc.compare(best_vc)
-                if cmp == ">" or (cmp is None and ts > best_ts):
-                    best_node, best_ts, best_vc_dict, best_val = node, ts, vc_dict, val
-                    best_vc = vc
-        else:
-            best_node, best_ts, best_vc_dict, best_val = max(valid, key=lambda x: x[1])
-            best_vc = VectorClock(best_vc_dict)
-
-        stale_nodes = []
-        for node, ts, vc_dict, val in responses:
-            if val is None:
-                if best_val is not None:
-                    stale_nodes.append(node)
-                continue
+        if merge:
             if self.consistency_mode in ("vector", "crdt"):
-                vc = VectorClock(vc_dict)
-                cmp = vc.compare(best_vc)
-                if cmp == "<" or (cmp is None and ts < best_ts):
-                    stale_nodes.append(node)
+                best_val, best_vc = merged[0]
+                best_ts = best_vc.clock.get("ts", 0)
+                for val, vc in merged[1:]:
+                    cmp = vc.compare(best_vc)
+                    ts = vc.clock.get("ts", 0)
+                    if cmp == ">" or (cmp is None and ts > best_ts):
+                        best_val, best_vc, best_ts = val, vc, ts
             else:
-                if ts < best_ts:
+                best_val = None
+                best_ts = -1
+                best_vc = None
+                for val, vc in merged:
+                    ts = vc.clock.get("ts", 0)
+                    if ts > best_ts:
+                        best_val, best_vc, best_ts = val, vc, ts
+
+            stale_nodes = []
+            for node, recs in responses:
+                has = False
+                for val, ts, vc_dict in recs:
+                    if val == best_val and vc_dict == best_vc.clock:
+                        has = True
+                        break
+                if not has:
                     stale_nodes.append(node)
+
+            def _repair(n):
+                try:
+                    if self.consistency_mode in ("vector", "crdt"):
+                        n.client.put(
+                            key,
+                            best_val,
+                            timestamp=best_ts,
+                            node_id=n.node_id,
+                            vector=best_vc.clock,
+                        )
+                    else:
+                        n.client.put(
+                            key,
+                            best_val,
+                            timestamp=best_ts,
+                            node_id=n.node_id,
+                        )
+                except Exception:
+                    pass
+
+            for sn in stale_nodes:
+                t = threading.Thread(target=_repair, args=(sn,), daemon=True)
+                t.start()
+
+            return best_val
+        else:
+            return [(val, vc.clock) for val, vc in merged]
 
         def _repair(n):
             try:

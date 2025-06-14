@@ -55,7 +55,8 @@ class ReadRepairTest(unittest.TestCase):
                 val = cluster.get(0, key)
                 self.assertEqual(val, "v2")
                 time.sleep(1)
-                self.assertEqual(cluster.nodes_by_id[stale_id].client.get(key)[0], "v2")
+                recs = cluster.nodes_by_id[stale_id].client.get(key)
+                self.assertEqual(recs[0][0], "v2")
             finally:
                 cluster.shutdown()
 
