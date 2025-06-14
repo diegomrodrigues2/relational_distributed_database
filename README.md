@@ -144,6 +144,22 @@ malha completa (all‑to‑all), preservando o comportamento original.
 O dicionário passado em `topology` usa o índice de cada nó como chave e
 uma lista de destinos como valor.
 
+O cluster também utiliza a estrutura `ConsistentHashRing` para determinar
+de forma estável quais nós são responsáveis por cada chave.  O parâmetro
+`replication_factor` indica quantas réplicas devem armazenar o mesmo
+valor.  A inicialização com fator de replicação customizado fica:
+
+```python
+from replication import NodeCluster
+
+cluster = NodeCluster("/tmp/hash_cluster", num_nodes=3,
+                      replication_factor=2)
+```
+
+Durante essa etapa de consistência forte, uma escrita só é considerada
+bem-sucedida quando todos os nós escolhidos respondem com sucesso à
+chamada RPC.
+
 ### Configuração em anel
 
 ```python
