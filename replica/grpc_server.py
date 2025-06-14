@@ -865,13 +865,13 @@ class NodeServer:
         self.load_replication_log()
         self.load_last_seen()
         self.load_hints()
-        self.sync_from_peer()
+        self.server.start()
         self._start_cleanup_thread()
         self._start_replay_thread()
         self._start_anti_entropy_thread()
         self._start_heartbeat_thread()
         self._start_hinted_handoff_thread()
-        self.server.start()
+        self.sync_from_peer()
         self.server.wait_for_termination()
 
     def stop(self):
