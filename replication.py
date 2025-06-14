@@ -4,6 +4,7 @@ import os
 import time
 import shutil
 import multiprocessing
+import threading
 from dataclasses import dataclass
 from concurrent import futures
 
@@ -152,36 +153,76 @@ class NodeCluster:
 
         responses = []
         with futures.ThreadPoolExecutor(max_workers=len(nodes)) as ex:
-            future_map = {ex.submit(n.client.get, key): n.node_id for n in nodes}
+            future_map = {ex.submit(n.client.get, key): n for n in nodes}
             for fut in futures.as_completed(future_map):
+                node = future_map[fut]
                 try:
                     val, ts, vec = fut.result()
                 except Exception:
                     val = None
                     ts = -1
                     vec = {}
-                if val is not None:
-                    responses.append((ts, vec, val))
-                if len(responses) >= self.read_quorum:
-                    break
+                responses.append((node, ts, vec, val))
 
         if not responses:
             return None
 
+        valid = [r for r in responses if r[3] is not None]
+        if not valid:
+            return None
+
         if self.consistency_mode in ("vector", "crdt"):
-            best_ts, best_vc_dict, best_val = responses[0]
+            best_node, best_ts, best_vc_dict, best_val = valid[0]
             best_vc = VectorClock(best_vc_dict)
-            for ts, vc_dict, val in responses[1:]:
+            for node, ts, vc_dict, val in valid[1:]:
                 vc = VectorClock(vc_dict)
                 cmp = vc.compare(best_vc)
                 if cmp == ">" or (cmp is None and ts > best_ts):
-                    best_ts = ts
-                    best_val = val
+                    best_node, best_ts, best_vc_dict, best_val = node, ts, vc_dict, val
                     best_vc = vc
-            return best_val
+        else:
+            best_node, best_ts, best_vc_dict, best_val = max(valid, key=lambda x: x[1])
+            best_vc = VectorClock(best_vc_dict)
 
-        # default last-write-wins based on timestamp
-        best_ts, _, best_val = max(responses, key=lambda x: x[0])
+        stale_nodes = []
+        for node, ts, vc_dict, val in responses:
+            if val is None:
+                if best_val is not None:
+                    stale_nodes.append(node)
+                continue
+            if self.consistency_mode in ("vector", "crdt"):
+                vc = VectorClock(vc_dict)
+                cmp = vc.compare(best_vc)
+                if cmp == "<" or (cmp is None and ts < best_ts):
+                    stale_nodes.append(node)
+            else:
+                if ts < best_ts:
+                    stale_nodes.append(node)
+
+        def _repair(n):
+            try:
+                if self.consistency_mode in ("vector", "crdt"):
+                    n.client.put(
+                        key,
+                        best_val,
+                        timestamp=best_ts,
+                        node_id=n.node_id,
+                        vector=best_vc_dict,
+                    )
+                else:
+                    n.client.put(
+                        key,
+                        best_val,
+                        timestamp=best_ts,
+                        node_id=n.node_id,
+                    )
+            except Exception:
+                pass
+
+        for sn in stale_nodes:
+            t = threading.Thread(target=_repair, args=(sn,), daemon=True)
+            t.start()
+
         return best_val
 
     def shutdown(self):
