@@ -10,6 +10,7 @@ from concurrent import futures
 from replica.grpc_server import run_server
 from replica.client import GRPCReplicaClient
 from hash_ring import HashRing as ConsistentHashRing
+from vector_clock import VectorClock
 
 
 @dataclass
@@ -29,7 +30,7 @@ class ClusterNode:
         self.client.delete(key, timestamp=ts, node_id=self.node_id)
 
     def get(self, key):
-        value, _ = self.client.get(key)
+        value, _, _ = self.client.get(key)
         return value
 
     def stop(self):
@@ -123,24 +124,65 @@ class NodeCluster:
 
     def get(self, node_index: int, key: str):
         pref_nodes = self.ring.get_preference_list(key, self.replication_factor)
-        nodes = [self.nodes_by_id[nid] for nid in pref_nodes]
+        nodes = []
+        for nid in pref_nodes:
+            n = self.nodes_by_id[nid]
+            try:
+                n.client.ping(n.node_id)
+                nodes.append(n)
+            except Exception:
+                continue
+
+        if len(nodes) < self.read_quorum:
+            all_nodes = self.ring.get_preference_list(key, len(self.nodes))
+            for nid in all_nodes:
+                if len(nodes) >= self.read_quorum:
+                    break
+                if nid in pref_nodes or any(x.node_id == nid for x in nodes):
+                    continue
+                n = self.nodes_by_id[nid]
+                try:
+                    n.client.ping(n.node_id)
+                    nodes.append(n)
+                except Exception:
+                    continue
+
+        if not nodes:
+            return None
+
         responses = []
         with futures.ThreadPoolExecutor(max_workers=len(nodes)) as ex:
             future_map = {ex.submit(n.client.get, key): n.node_id for n in nodes}
             for fut in futures.as_completed(future_map):
                 try:
-                    val, ts = fut.result()
+                    val, ts, vec = fut.result()
                 except Exception:
                     val = None
                     ts = -1
+                    vec = {}
                 if val is not None:
-                    responses.append((ts, val))
+                    responses.append((ts, vec, val))
                 if len(responses) >= self.read_quorum:
                     break
+
         if not responses:
             return None
-        _, value = max(responses, key=lambda x: x[0])
-        return value
+
+        if self.consistency_mode in ("vector", "crdt"):
+            best_ts, best_vc_dict, best_val = responses[0]
+            best_vc = VectorClock(best_vc_dict)
+            for ts, vc_dict, val in responses[1:]:
+                vc = VectorClock(vc_dict)
+                cmp = vc.compare(best_vc)
+                if cmp == ">" or (cmp is None and ts > best_ts):
+                    best_ts = ts
+                    best_val = val
+                    best_vc = vc
+            return best_val
+
+        # default last-write-wins based on timestamp
+        best_ts, _, best_val = max(responses, key=lambda x: x[0])
+        return best_val
 
     def shutdown(self):
         for n in self.nodes:
