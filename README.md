@@ -89,6 +89,7 @@ Se um nó ficar offline, ele pode recuperar as mudanças perdidas ao reprovar o 
 - **Heartbeat** – serviço `Ping` que monitora a disponibilidade dos peers.
 - **Sloppy quorum** – usa nós saudáveis extras quando os responsáveis originais estão off-line.
 - **Hinted handoff** – escritas destinadas a nós indisponíveis são salvas em substitutos e reenviadas em background.
+- **Read repair** – durante uma leitura, réplicas que retornarem versões antigas são atualizadas de forma assíncrona.
 
 ## Sincronização offline e anti-entropia
 
@@ -110,11 +111,13 @@ sequenceDiagram
   para os pares.
 - Caso um destino esteja inacessível, outro nó saudável guarda a atualização com `hinted_for` e a entrega quando o peer volta (hinted handoff).
 - Hashes de segmentos baseados em **Merkle trees** permitem pular dados já
-  sincronizados durante a troca de atualizações.
+  sincronizados durante a troca de atualizações, enviando apenas as chaves divergentes.
+  O processo roda periodicamente como anti-entropia garantindo que todas as
+  réplicas eventualmente convergem.
 
 ## Executando
 
-1. Instale as dependências (incluindo `grpcio` utilizado na comunicação gRPC)
+1. Instale as dependências (incluindo `grpcio` e `protobuf` utilizados na comunicação gRPC)
    ```bash
    pip install -r requirements.txt
    ```
@@ -256,7 +259,9 @@ verifica periodicamente se o peer voltou a responder ao heartbeat. Quando isso
 ocorre o dado é transferido e o hint removido.
 
 O mesmo princípio vale para leituras: se as réplicas preferenciais estiverem
-indisponíveis, o cluster consulta nós extras até atingir `R` respostas.
+indisponíveis, o cluster consulta nós extras até atingir `R` respostas. Durante
+essa leitura, os valores retornados são comparados e réplicas desatualizadas são
+atualizadas em background (read repair).
 
 ## Vector Clocks, CRDTs e modos de consistência
 
@@ -281,6 +286,10 @@ vector_cluster = NodeCluster("/tmp/vc", num_nodes=3, consistency_mode="vector")
 # cluster preparado para CRDTs (ex.: contadores)
 crdt_cluster = NodeCluster("/tmp/crdt", num_nodes=2, consistency_mode="crdt")
 ```
+
+No modo `vector`, o método `get` retorna uma lista de todas as versões
+(`[(valor, timestamp, vector)]`) presentes para a chave. Cabe à aplicação
+mesclar os valores e gravar o resultado se desejar convergir.
 
 ### Exemplo de contador CRDT
 
