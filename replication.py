@@ -6,7 +6,7 @@ import shutil
 import multiprocessing
 import threading
 import hashlib
-from partitioning import hash_key
+from partitioning import hash_key, compose_key
 from dataclasses import dataclass
 from concurrent import futures
 
@@ -134,12 +134,14 @@ class NodeCluster:
         if key_ranges is not None:
             self._setup_partitions(key_ranges)
 
-    def get_node_for_key(self, key: str) -> ClusterNode:
-        """Return the node responsible for a given key based on ``key_ranges``."""
+    def get_node_for_key(
+        self, partition_key: str, clustering_key: str | None = None
+    ) -> ClusterNode:
+        """Return the node responsible for ``partition_key`` based on ``key_ranges``."""
         if self.key_ranges is None:
             raise ValueError("key_ranges not configured")
         for (start, end), node in self.partitions:
-            if start <= key < end:
+            if start <= partition_key < end:
                 return node
         return self.partitions[-1][1]
 
@@ -170,48 +172,76 @@ class NodeCluster:
         ]
         self.num_partitions = len(ranges)
 
-    def get_partition_id(self, key: str) -> int:
-        """Return partition id for ``key`` based on hashing."""
-        return hash_key(key) % self.num_partitions
+    def get_partition_id(
+        self, partition_key: str, clustering_key: str | None = None
+    ) -> int:
+        """Return partition id for ``partition_key`` based on hashing."""
+        return hash_key(partition_key) % self.num_partitions
 
-    def _coordinator(self, key: str) -> ClusterNode:
+    def _coordinator(
+        self, partition_key: str, clustering_key: str | None = None
+    ) -> ClusterNode:
         if self.partition_strategy == "hash":
-            pid = self.get_partition_id(key)
+            pid = self.get_partition_id(partition_key, clustering_key)
             return self.nodes[pid % len(self.nodes)]
         if self.key_ranges is not None:
-            return self.get_node_for_key(key)
+            return self.get_node_for_key(partition_key, clustering_key)
         if self.ring is None:
-            h = hash_key(key)
+            h = hash_key(partition_key)
             for (start, end), node in self.partitions:
                 if start <= h < end:
                     return node
             return self.partitions[-1][1]
-        node_id = self.ring.get_preference_list(key, 1)[0]
+        node_id = self.ring.get_preference_list(partition_key, 1)[0]
         return self.nodes_by_id[node_id]
 
-    def put(self, node_index: int, key: str, value: str):
-        node = self._coordinator(key)
-        node.put(key, value)
+    def put(
+        self,
+        node_index: int,
+        partition_key: str,
+        value: str,
+        *,
+        clustering_key: str | None = None,
+    ):
+        composed_key = compose_key(partition_key, clustering_key)
+        node = self._coordinator(partition_key, clustering_key)
+        node.put(composed_key, value)
 
-    def delete(self, node_index: int, key: str):
-        node = self._coordinator(key)
-        node.delete(key)
+    def delete(
+        self,
+        node_index: int,
+        partition_key: str,
+        *,
+        clustering_key: str | None = None,
+    ):
+        composed_key = compose_key(partition_key, clustering_key)
+        node = self._coordinator(partition_key, clustering_key)
+        node.delete(composed_key)
 
-    def get(self, node_index: int, key: str, *, merge: bool = True):
+    def get(
+        self,
+        node_index: int,
+        partition_key: str,
+        *,
+        clustering_key: str | None = None,
+        merge: bool = True,
+    ):
+        composed_key = compose_key(partition_key, clustering_key)
         if self.partition_strategy == "hash":
-            node = self._coordinator(key)
-            recs = node.client.get(key)
+            node = self._coordinator(partition_key, clustering_key)
+            recs = node.client.get(composed_key)
             return recs[0][0] if recs else None
         if self.key_ranges is not None:
-            node = self.get_node_for_key(key)
-            recs = node.client.get(key)
+            node = self.get_node_for_key(partition_key, clustering_key)
+            recs = node.client.get(composed_key)
             return recs[0][0] if recs else None
         if self.ring is None:
-            node = self._coordinator(key)
-            recs = node.client.get(key)
+            node = self._coordinator(partition_key, clustering_key)
+            recs = node.client.get(composed_key)
             return recs[0][0] if recs else None
-
-        pref_nodes = self.ring.get_preference_list(key, self.replication_factor)
+        pref_nodes = self.ring.get_preference_list(
+            partition_key, self.replication_factor
+        )
         nodes = []
         for nid in pref_nodes:
             n = self.nodes_by_id[nid]
@@ -222,7 +252,7 @@ class NodeCluster:
                 continue
 
         if len(nodes) < self.read_quorum:
-            all_nodes = self.ring.get_preference_list(key, len(self.nodes))
+            all_nodes = self.ring.get_preference_list(partition_key, len(self.nodes))
             for nid in all_nodes:
                 if len(nodes) >= self.read_quorum:
                     break
@@ -240,7 +270,7 @@ class NodeCluster:
 
         responses = []
         with futures.ThreadPoolExecutor(max_workers=len(nodes)) as ex:
-            future_map = {ex.submit(n.client.get, key): n for n in nodes}
+            future_map = {ex.submit(n.client.get, composed_key): n for n in nodes}
             for fut in futures.as_completed(future_map):
                 node = future_map[fut]
                 try:
@@ -292,7 +322,7 @@ class NodeCluster:
                 try:
                     if self.consistency_mode in ("vector", "crdt"):
                         n.client.put(
-                            key,
+                            composed_key,
                             best_val,
                             timestamp=best_ts,
                             node_id=n.node_id,
@@ -300,7 +330,7 @@ class NodeCluster:
                         )
                     else:
                         n.client.put(
-                            key,
+                            composed_key,
                             best_val,
                             timestamp=best_ts,
                             node_id=n.node_id,
@@ -320,7 +350,7 @@ class NodeCluster:
             try:
                 if self.consistency_mode in ("vector", "crdt"):
                     n.client.put(
-                        key,
+                        composed_key,
                         best_val,
                         timestamp=best_ts,
                         node_id=n.node_id,
@@ -328,7 +358,7 @@ class NodeCluster:
                     )
                 else:
                     n.client.put(
-                        key,
+                        composed_key,
                         best_val,
                         timestamp=best_ts,
                         node_id=n.node_id,
