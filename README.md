@@ -319,6 +319,25 @@ with TemporaryDirectory() as dir_a, TemporaryDirectory() as dir_b:
     node_a.stop(); node_b.stop()
 ```
 
+## Particionamento por Faixa de Chave
+
+Também é possível distribuir as chaves manualmente por intervalos,
+associando cada partição a um nó específico. Para isso, informe a lista
+de faixas em `key_ranges` ao criar o cluster:
+
+```python
+from replication import NodeCluster
+
+ranges = [('a', 'm'), ('m', None)]  # exemplo
+cluster = NodeCluster('/tmp/range_cluster', num_nodes=2, key_ranges=ranges)
+```
+
+Cada tupla define o início e o fim (exclusivo) de uma faixa. No exemplo
+acima, o primeiro nó cuida das chaves de `'a'` até `'m'` e o segundo das
+demais. Por enquanto cada partição possui apenas uma réplica, mas o
+projeto prevê suportar múltiplas cópias e realocação dinâmica das
+faixas em versões futuras.
+
 ## Testes
 
 Execute a bateria de testes para validar o sistema (as dependências `grpcio` e
