@@ -2,6 +2,7 @@ import os
 import json
 import time
 from vector_clock import VectorClock
+from partitioning import compose_key
 
 SSTABLE_SPARSE_INDEX_INTERVAL = 100 # Intervalo para o índice esparso (a cada 100 linhas, por exemplo)
 TOMBSTONE = "__TOMBSTONE__" # Marcador para exclusão
@@ -110,10 +111,11 @@ class SSTableManager:
         print(f"  SSTableManager: Novo SSTable '{sstable_filename}' escrito com {len(sorted_items)} itens.")
         return sstable_path
 
-    def get_from_sstable(self, sstable_entry, key):
+    def get_from_sstable(self, sstable_entry, key, *, clustering_key=None):
         """Busca chave em um SSTable usando o índice esparso."""
+        composed = compose_key(key, clustering_key)
         _, sstable_path, sparse_index = sstable_entry
-        print(f"  SSTableManager: Buscando '{key}' em {os.path.basename(sstable_path)}...")
+        print(f"  SSTableManager: Buscando '{composed}' em {os.path.basename(sstable_path)}...")
 
         with open(sstable_path, 'r', encoding='utf-8') as f:
             start_offset = 0
@@ -122,14 +124,14 @@ class SSTableManager:
             # bisect_left retorna um ponto de inserção que mantém a ordem
             # Se a chave for menor que a primeira entrada, start_idx será 0.
             # Se a chave for maior que a última, start_idx será len(sparse_index).
-            start_idx = bisect_left(search_keys, key)
+            start_idx = bisect_left(search_keys, composed)
 
             if start_idx > 0:
                 # Se start_idx é maior que 0, significa que a chave pode estar a partir da entrada anterior no índice
                 # Ou a partir da entrada em start_idx se ela for exatamente a chave buscada.
                 # Para garantir que pegamos o bloco correto, buscamos a partir do último ponto de índice menor ou igual à chave.
                 # Como bisect_left encontra o ponto de inserção, o elemento ANTES desse ponto é o maior <= key
-                if start_idx == len(sparse_index) or search_keys[start_idx] != key:
+                if start_idx == len(sparse_index) or search_keys[start_idx] != composed:
                     start_offset = sparse_index[start_idx - 1]["offset"]
                 else: # key é exatamente um dos sparse_index keys
                     start_offset = sparse_index[start_idx]["offset"]
@@ -146,18 +148,18 @@ class SSTableManager:
                 except Exception:
                     continue
 
-                if current_key == key:
+                if current_key == composed:
                     if value == TOMBSTONE:
-                        print(f"  SSTableManager: Encontrado tombstone para '{key}'.")
+                        print(f"  SSTableManager: Encontrado tombstone para '{composed}'.")
                         return [(TOMBSTONE, vector)]
-                    print(f"  SSTableManager: '{key}' encontrado em {os.path.basename(sstable_path)}.")
+                    print(f"  SSTableManager: '{composed}' encontrado em {os.path.basename(sstable_path)}.")
                     return [(value, vector)]
-                elif current_key > key:
+                elif current_key > composed:
                     # Como o arquivo é ordenado, se a chave atual é maior que a chave buscada,
                     # a chave buscada não está neste SSTable.
                     break
         
-        print(f"  SSTableManager: '{key}' não encontrado em {os.path.basename(sstable_path)}.")
+        print(f"  SSTableManager: '{composed}' não encontrado em {os.path.basename(sstable_path)}.")
         return None
 
     def compact_segments(self):
