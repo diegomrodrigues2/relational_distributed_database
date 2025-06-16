@@ -135,8 +135,8 @@ from driver import Driver
 
 cluster = NodeCluster(num_nodes=2)
 driver = Driver(cluster)
-driver.put("alice", "k", "v")
-value = driver.get("alice", "k")
+driver.put("alice", "k", "1", "v")
+value = driver.get("alice", "k", "1")
 cluster.shutdown()
 ```
 
