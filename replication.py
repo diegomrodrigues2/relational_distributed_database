@@ -121,6 +121,15 @@ class NodeCluster:
         if key_ranges is not None:
             self._setup_partitions(key_ranges)
 
+    def get_node_for_key(self, key: str) -> ClusterNode:
+        """Return the node responsible for a given key based on ``key_ranges``."""
+        if self.key_ranges is None:
+            raise ValueError("key_ranges not configured")
+        for (start, end), node in self.partitions:
+            if start <= key < end:
+                return node
+        return self.partitions[-1][1]
+
     def _setup_partitions(self, key_ranges: list) -> None:
         if not key_ranges:
             raise ValueError("key_ranges cannot be empty")
@@ -148,6 +157,8 @@ class NodeCluster:
         ]
 
     def _coordinator(self, key: str) -> ClusterNode:
+        if self.key_ranges is not None:
+            return self.get_node_for_key(key)
         if self.ring is None:
             h = int(hashlib.sha1(key.encode("utf-8")).hexdigest(), 16)
             for (start, end), node in self.partitions:
