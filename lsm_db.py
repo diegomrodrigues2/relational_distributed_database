@@ -203,6 +203,56 @@ class SimpleLSMDB:
     def recalc_merkle(self):
         self.segment_hashes = compute_segment_hashes(self)
 
+    def scan_range(self, partition_key, start_ck, end_ck):
+        """Return ordered items within [start_ck, end_ck] for partition_key."""
+        start_key = compose_key(str(partition_key), start_ck)
+        end_key = compose_key(str(partition_key), end_ck)
+        items = {}
+
+        prefix = f"{partition_key}|"
+        for k, versions in self.memtable.get_sorted_items():
+            if not k.startswith(prefix):
+                continue
+            if k < start_key or k > end_key:
+                continue
+            for val, vc in versions:
+                items.setdefault(k, [])
+                items[k] = _merge_version_lists(items[k], [(val, vc)])
+
+        for _, path, _ in reversed(self.sstable_manager.sstable_segments):
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    key = data.get("key")
+                    if not key or not key.startswith(prefix):
+                        continue
+                    if key < start_key or key > end_key:
+                        continue
+                    val = data.get("value")
+                    vc = VectorClock(data.get("vector", {}))
+                    items.setdefault(key, [])
+                    items[key] = _merge_version_lists(items[key], [(val, vc)])
+
+        result = []
+        for k in sorted(items):
+            ck = k.split("|", 1)[1] if "|" in k else ""
+            versions = [v for v in items[k] if v[0] != TOMBSTONE]
+            if not versions:
+                continue
+            best_val, best_vc = versions[0]
+            best_ts = best_vc.clock.get("ts", 0)
+            for val, vc in versions[1:]:
+                cmp = vc.compare(best_vc)
+                ts = vc.clock.get("ts", 0)
+                if cmp == ">" or (cmp is None and ts > best_ts):
+                    best_val, best_vc, best_ts = val, vc, ts
+            result.append((ck, best_val, best_vc))
+
+        return result
+
     def get_segment_items(self, segment_id):
         if segment_id == "memtable":
             res = []

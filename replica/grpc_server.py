@@ -230,6 +230,23 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         return replication_pb2.ValueResponse(values=values)
 
+    def ScanRange(self, request, context):
+        items = self._node.db.scan_range(
+            request.partition_key, request.start_ck, request.end_ck
+        )
+        resp_items = []
+        for ck, val, vc in items:
+            ts = vc.clock.get("ts", 0) if vc is not None else 0
+            resp_items.append(
+                replication_pb2.RangeItem(
+                    clustering_key=ck,
+                    value=val,
+                    timestamp=ts,
+                    vector=replication_pb2.VersionVector(items=vc.clock if vc else {}),
+                )
+            )
+        return replication_pb2.RangeResponse(items=resp_items)
+
     def FetchUpdates(self, request, context):
         """Handle anti-entropy synchronization with a peer."""
         last_seen = dict(request.vector.items)

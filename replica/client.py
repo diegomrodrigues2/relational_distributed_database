@@ -69,6 +69,25 @@ class GRPCReplicaClient:
             results.append((val, item.timestamp, vec))
         return results
 
+    def scan_range(self, partition_key, start_ck, end_ck):
+        req = replication_pb2.RangeRequest(
+            partition_key=partition_key,
+            start_ck=start_ck,
+            end_ck=end_ck,
+        )
+        resp = self.stub.ScanRange(req)
+        results = []
+        for it in resp.items:
+            results.append(
+                (
+                    it.clustering_key,
+                    it.value,
+                    it.timestamp,
+                    dict(it.vector.items),
+                )
+            )
+        return results
+
     def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None, trees=None):
         """Fetch updates from peer optionally sending our pending ops, hashes and trees."""
         vv = replication_pb2.VersionVector(items=last_seen)
