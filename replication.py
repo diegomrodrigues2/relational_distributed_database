@@ -5,6 +5,7 @@ import time
 import shutil
 import multiprocessing
 import threading
+import hashlib
 from dataclasses import dataclass
 from concurrent import futures
 
@@ -52,9 +53,10 @@ class NodeCluster:
         topology: dict[int, list[int]] | None = None,
         *,
         consistency_mode: str = "lww",
-        replication_factor: int = 3,
+        replication_factor: int | None = None,
         write_quorum: int | None = None,
         read_quorum: int | None = None,
+        key_ranges: list | None = None,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -65,16 +67,21 @@ class NodeCluster:
         self.nodes = []
         self.nodes_by_id: dict[str, ClusterNode] = {}
         self.consistency_mode = consistency_mode
+        if replication_factor is None:
+            replication_factor = 1 if key_ranges else 3
         self.replication_factor = replication_factor
         self.write_quorum = write_quorum or (replication_factor // 2 + 1)
         self.read_quorum = read_quorum or (replication_factor // 2 + 1)
-        self.ring = ConsistentHashRing()
+        self.key_ranges = None
+        self.partitions: list[tuple[tuple, ClusterNode]] = []
+        self.ring = None if key_ranges else ConsistentHashRing()
         peers = [
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
         ]
-        for _, _, nid in peers:
-            self.ring.add_node(nid)
+        if self.ring is not None:
+            for _, _, nid in peers:
+                self.ring.add_node(nid)
 
         for i in range(num_nodes):
             node_id = f"node_{i}"
@@ -111,8 +118,42 @@ class NodeCluster:
             self.nodes_by_id[node_id] = node
 
         time.sleep(1)
+        if key_ranges is not None:
+            self._setup_partitions(key_ranges)
+
+    def _setup_partitions(self, key_ranges: list) -> None:
+        if not key_ranges:
+            raise ValueError("key_ranges cannot be empty")
+        if all(isinstance(r, tuple) and len(r) == 2 for r in key_ranges):
+            ranges = list(key_ranges)
+        else:
+            if len(key_ranges) < 2:
+                raise ValueError("key_ranges must have at least two boundaries")
+            ranges = [
+                (key_ranges[i], key_ranges[i + 1])
+                for i in range(len(key_ranges) - 1)
+            ]
+        last_end = None
+        for start, end in ranges:
+            if last_end is not None and start < last_end:
+                raise ValueError("key_ranges must be ordered and non-overlapping")
+            if start >= end:
+                raise ValueError("invalid range")
+            last_end = end
+        if len(ranges) != len(self.nodes):
+            raise ValueError("number of ranges must match number of nodes")
+        self.key_ranges = ranges
+        self.partitions = [
+            (rng, node) for rng, node in zip(ranges, self.nodes)
+        ]
 
     def _coordinator(self, key: str) -> ClusterNode:
+        if self.ring is None:
+            h = int(hashlib.sha1(key.encode("utf-8")).hexdigest(), 16)
+            for (start, end), node in self.partitions:
+                if start <= h < end:
+                    return node
+            return self.partitions[-1][1]
         node_id = self.ring.get_preference_list(key, 1)[0]
         return self.nodes_by_id[node_id]
 
@@ -125,6 +166,11 @@ class NodeCluster:
         node.delete(key)
 
     def get(self, node_index: int, key: str, *, merge: bool = True):
+        if self.ring is None:
+            node = self._coordinator(key)
+            recs = node.client.get(key)
+            return recs[0][0] if recs else None
+
         pref_nodes = self.ring.get_preference_list(key, self.replication_factor)
         nodes = []
         for nid in pref_nodes:
