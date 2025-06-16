@@ -199,10 +199,17 @@ class NodeCluster:
         self,
         node_index: int,
         partition_key: str,
-        value: str,
-        *,
-        clustering_key: str | None = None,
+        clustering_key: str,
+        value: str | None = None,
     ):
+        """Insert ``value`` using ``partition_key`` and ``clustering_key``.
+
+        For backwards compatibility ``clustering_key`` may actually be the
+        ``value`` when only a single key component is provided.
+        """
+        if value is None:
+            value = clustering_key
+            clustering_key = None
         composed_key = compose_key(partition_key, clustering_key)
         node = self._coordinator(partition_key, clustering_key)
         node.put(composed_key, value)
@@ -211,9 +218,13 @@ class NodeCluster:
         self,
         node_index: int,
         partition_key: str,
-        *,
         clustering_key: str | None = None,
     ):
+        """Delete key identified by ``partition_key`` and ``clustering_key``.
+
+        Backwards compatible with calls that omit ``clustering_key`` and pass a
+        single combined key as ``partition_key``.
+        """
         composed_key = compose_key(partition_key, clustering_key)
         node = self._coordinator(partition_key, clustering_key)
         node.delete(composed_key)
@@ -222,10 +233,15 @@ class NodeCluster:
         self,
         node_index: int,
         partition_key: str,
-        *,
         clustering_key: str | None = None,
+        *,
         merge: bool = True,
     ):
+        """Retrieve the value stored under ``partition_key`` and ``clustering_key``.
+
+        The optional ``clustering_key`` keeps compatibility with the previous
+        API where a single key string was used.
+        """
         composed_key = compose_key(partition_key, clustering_key)
         if self.partition_strategy == "hash":
             node = self._coordinator(partition_key, clustering_key)

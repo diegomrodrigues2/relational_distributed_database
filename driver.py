@@ -29,19 +29,36 @@ class Driver:
             }
         return self._sessions[user_id]
 
-    def put(self, user_id: str, key: str, value: str):
-        """Escreve via líder e atualiza o tempo da sessão."""
+    def put(
+        self,
+        user_id: str,
+        partition_key: str,
+        clustering_key: str,
+        value: str | None = None,
+    ):
+        """Escreve via líder e atualiza o tempo da sessão.
+
+        Para retrocompatibilidade ``clustering_key`` pode ser omitido e o valor
+        passado diretamente após ``partition_key``.
+        """
         session = self._get_or_create_session(user_id)
         session["last_write_time"] = time.time()
         node = session["assigned_follower"]
-        self.cluster.put(node, key, value)
+        if value is None:
+            value = clustering_key
+            clustering_key = None
+        self.cluster.put(node, partition_key, clustering_key, value)
 
-    def get(self, user_id: str, key: str):
+    def get(
+        self,
+        user_id: str,
+        partition_key: str,
+        clustering_key: str | None = None,
+    ):
         """Lê aplicando read-your-own-writes e leituras monotônicas."""
         session = self._get_or_create_session(user_id)
         elapsed = time.time() - session["last_write_time"]
-        if elapsed < self.read_your_writes_timeout:
-            node = session["assigned_follower"]
-            return self.cluster.get(node, key)
         node = session["assigned_follower"]
-        return self.cluster.get(node, key)
+        if elapsed < self.read_your_writes_timeout:
+            return self.cluster.get(node, partition_key, clustering_key)
+        return self.cluster.get(node, partition_key, clustering_key)
