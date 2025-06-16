@@ -169,14 +169,24 @@ class NodeCluster:
         return self.nodes_by_id[node_id]
 
     def put(self, node_index: int, key: str, value: str):
-        node = self._coordinator(key)
+        if self.key_ranges is not None:
+            node = self.get_node_for_key(key)
+        else:
+            node = self._coordinator(key)
         node.put(key, value)
 
     def delete(self, node_index: int, key: str):
-        node = self._coordinator(key)
+        if self.key_ranges is not None:
+            node = self.get_node_for_key(key)
+        else:
+            node = self._coordinator(key)
         node.delete(key)
 
     def get(self, node_index: int, key: str, *, merge: bool = True):
+        if self.key_ranges is not None:
+            node = self.get_node_for_key(key)
+            recs = node.client.get(key)
+            return recs[0][0] if recs else None
         if self.ring is None:
             node = self._coordinator(key)
             recs = node.client.get(key)
