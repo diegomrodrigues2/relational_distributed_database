@@ -372,6 +372,12 @@ class NodeCluster:
 
         return best_val
 
+    def get_range(self, partition_key: str, start_ck: str, end_ck: str):
+        """Return a list of (clustering_key, value) for a key range."""
+        node = self._coordinator(partition_key, start_ck)
+        items = node.client.scan_range(partition_key, start_ck, end_ck)
+        return [(ck, val) for ck, val, _, _ in items]
+
     def shutdown(self):
         for n in self.nodes:
             n.stop()

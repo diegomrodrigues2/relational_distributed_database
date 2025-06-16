@@ -38,6 +38,26 @@ message ValueResponse {
   repeated VersionedValue values = 1;
 }
 
+// Request for a range scan within a partition
+message RangeRequest {
+  string partition_key = 1;
+  string start_ck = 2;
+  string end_ck = 3;
+}
+
+// Item returned when scanning a range
+message RangeItem {
+  string clustering_key = 1;
+  string value = 2;
+  int64 timestamp = 3;
+  VersionVector vector = 4;
+}
+
+// Response with ordered items for a range scan
+message RangeResponse {
+  repeated RangeItem items = 1;
+}
+
 // Mensagem vazia usada em operacoes sem retorno
 message Empty {}
 
@@ -95,6 +115,7 @@ service Replica {
   rpc Put(KeyValue) returns (Empty);
   rpc Delete(KeyRequest) returns (Empty);
   rpc Get(KeyRequest) returns (ValueResponse);
+  rpc ScanRange(RangeRequest) returns (RangeResponse);
   rpc FetchUpdates(FetchRequest) returns (FetchResponse);
 }
 
