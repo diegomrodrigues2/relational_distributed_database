@@ -6,6 +6,7 @@ import shutil
 import multiprocessing
 import threading
 import hashlib
+from partitioning import hash_key
 from dataclasses import dataclass
 from concurrent import futures
 
@@ -57,6 +58,7 @@ class NodeCluster:
         write_quorum: int | None = None,
         read_quorum: int | None = None,
         key_ranges: list | None = None,
+        partition_strategy: str = "range",
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -72,9 +74,14 @@ class NodeCluster:
         self.replication_factor = replication_factor
         self.write_quorum = write_quorum or (replication_factor // 2 + 1)
         self.read_quorum = read_quorum or (replication_factor // 2 + 1)
+        self.partition_strategy = partition_strategy
+        if partition_strategy not in ("range", "hash"):
+            raise ValueError("invalid partition_strategy")
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.ring = None if key_ranges else ConsistentHashRing()
+        if partition_strategy == "hash" or key_ranges is None:
+            self.num_partitions = num_nodes
         peers = [
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
@@ -161,12 +168,20 @@ class NodeCluster:
         self.partitions = [
             (rng, node) for rng, node in zip(ranges, self.nodes)
         ]
+        self.num_partitions = len(ranges)
+
+    def get_partition_id(self, key: str) -> int:
+        """Return partition id for ``key`` based on hashing."""
+        return hash_key(key) % self.num_partitions
 
     def _coordinator(self, key: str) -> ClusterNode:
+        if self.partition_strategy == "hash":
+            pid = self.get_partition_id(key)
+            return self.nodes[pid % len(self.nodes)]
         if self.key_ranges is not None:
             return self.get_node_for_key(key)
         if self.ring is None:
-            h = int(hashlib.sha1(key.encode("utf-8")).hexdigest(), 16)
+            h = hash_key(key)
             for (start, end), node in self.partitions:
                 if start <= h < end:
                     return node
@@ -175,20 +190,18 @@ class NodeCluster:
         return self.nodes_by_id[node_id]
 
     def put(self, node_index: int, key: str, value: str):
-        if self.key_ranges is not None:
-            node = self.get_node_for_key(key)
-        else:
-            node = self._coordinator(key)
+        node = self._coordinator(key)
         node.put(key, value)
 
     def delete(self, node_index: int, key: str):
-        if self.key_ranges is not None:
-            node = self.get_node_for_key(key)
-        else:
-            node = self._coordinator(key)
+        node = self._coordinator(key)
         node.delete(key)
 
     def get(self, node_index: int, key: str, *, merge: bool = True):
+        if self.partition_strategy == "hash":
+            node = self._coordinator(key)
+            recs = node.client.get(key)
+            return recs[0][0] if recs else None
         if self.key_ranges is not None:
             node = self.get_node_for_key(key)
             recs = node.client.get(key)
