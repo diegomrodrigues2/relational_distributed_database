@@ -94,6 +94,12 @@ class NodeCluster:
                     ("localhost", base_port + j, f"node_{j}")
                     for j in topology.get(i, [])
                 ]
+
+            rf = self.replication_factor
+            if key_ranges is not None:
+                peers_i = []
+                rf = 1
+
             p = multiprocessing.Process(
                 target=run_server,
                 args=(
@@ -103,7 +109,7 @@ class NodeCluster:
                     node_id,
                     peers_i,
                     self.ring,
-                    self.replication_factor,
+                    rf,
                     self.write_quorum,
                     self.read_quorum,
                 ),
