@@ -410,6 +410,20 @@ cluster.put(0, 'hotkey', 'value')
 print(cluster.get(1, 'hotkey'))
 ```
 
+## Divisão de Partições
+
+Quando uma faixa se torna muito movimentada é possível dividi-la manualmente
+chamando `split_partition(pid, split_key=None)`. O método recebe o índice da
+partição atual e opcionalmente a chave que servirá de limite entre as novas
+faixas. Sem parâmetro, um ponto médio aproximado é utilizado.
+
+```python
+cluster.split_partition(0, 'g')  # cria ['a','g') e ['g','m')
+```
+
+A divisão apenas redireciona novas escritas; os dados existentes permanecem em
+sua localização original.
+
 ## Testes
 
 Execute a bateria de testes para validar o sistema. Instale antes as
