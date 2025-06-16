@@ -59,6 +59,7 @@ class NodeCluster:
         read_quorum: int | None = None,
         key_ranges: list | None = None,
         partition_strategy: str = "range",
+        num_partitions: int | None = None,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -80,8 +81,10 @@ class NodeCluster:
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.ring = None if key_ranges else ConsistentHashRing()
+        if num_partitions is None:
+            num_partitions = num_nodes
         if partition_strategy == "hash" or key_ranges is None:
-            self.num_partitions = num_nodes
+            self.num_partitions = num_partitions
         peers = [
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
@@ -164,11 +167,10 @@ class NodeCluster:
             if start >= end:
                 raise ValueError("invalid range")
             last_end = end
-        if len(ranges) != len(self.nodes):
-            raise ValueError("number of ranges must match number of nodes")
         self.key_ranges = ranges
         self.partitions = [
-            (rng, node) for rng, node in zip(ranges, self.nodes)
+            (rng, self.nodes[i % len(self.nodes)])
+            for i, rng in enumerate(ranges)
         ]
         self.num_partitions = len(ranges)
 

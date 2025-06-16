@@ -362,7 +362,8 @@ Cada tupla define o início e o fim (exclusivo) de uma faixa. No exemplo
 acima, o primeiro nó cuida das chaves de `'a'` até `'m'` e o segundo das
 demais. Por enquanto cada partição possui apenas uma réplica, mas o
 projeto prevê suportar múltiplas cópias e realocação dinâmica das
-faixas em versões futuras.
+faixas em versões futuras. É possível definir mais faixas do que nós; elas são
+atribuídas em esquema *round-robin* para balancear a carga.
 
 ## Particionamento por Hash de Chave
 
@@ -376,6 +377,15 @@ from replication import NodeCluster
 cluster = NodeCluster('/tmp/hash_cluster', num_nodes=3,
                       partition_strategy='hash',
                       replication_factor=1)
+```
+
+Para pré-criar um número maior de partições do que nós, defina
+`num_partitions` explicitamente. As partições extras serão distribuídas em
+round-robin entre os nós:
+
+```python
+cluster = NodeCluster('/tmp/pre', num_nodes=2,
+                      partition_strategy='hash', num_partitions=4)
 ```
 
 Essa estratégia tende a balancear bem os dados entre os nós, mas consultas por
