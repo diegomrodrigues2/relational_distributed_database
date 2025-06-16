@@ -87,6 +87,7 @@ class NodeCluster:
             num_partitions = num_nodes
         if partition_strategy == "hash" or key_ranges is None:
             self.num_partitions = num_partitions
+            self.partition_ops = [0] * self.num_partitions
         peers = [
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
@@ -156,6 +157,16 @@ class NodeCluster:
                 return node
         return self.partitions[-1][1]
 
+    def _range_partition_id(self, partition_key: str) -> int:
+        """Return index of range partition containing ``partition_key``."""
+        if self.key_ranges is None:
+            raise ValueError("key_ranges not configured")
+        for i, (rng, _) in enumerate(self.partitions):
+            start, end = rng
+            if start <= partition_key < end:
+                return i
+        return len(self.partitions) - 1
+
     def _setup_partitions(self, key_ranges: list) -> None:
         if not key_ranges:
             raise ValueError("key_ranges cannot be empty")
@@ -181,12 +192,20 @@ class NodeCluster:
             for i, rng in enumerate(ranges)
         ]
         self.num_partitions = len(ranges)
+        self.partition_ops = [0] * self.num_partitions
 
     def get_partition_id(
         self, partition_key: str, clustering_key: str | None = None
     ) -> int:
         """Return partition id for ``partition_key`` based on hashing."""
         return hash_key(partition_key) % self.num_partitions
+
+    def _pid_for_key(self, partition_key: str, clustering_key: str | None = None) -> int:
+        if self.partition_strategy == "hash" or self.ring is not None:
+            return self.get_partition_id(partition_key, clustering_key)
+        if self.key_ranges is not None:
+            return self._range_partition_id(partition_key)
+        return self.get_partition_id(partition_key, clustering_key)
 
     def _coordinator(
         self, partition_key: str, clustering_key: str | None = None
@@ -227,6 +246,10 @@ class NodeCluster:
         composed_key = compose_key(partition_key, clustering_key)
         node = self._coordinator(partition_key, clustering_key)
         node.put(composed_key, value)
+        pid = self._pid_for_key(partition_key, clustering_key)
+        if pid >= len(self.partition_ops):
+            self.partition_ops.extend([0] * (pid + 1 - len(self.partition_ops)))
+        self.partition_ops[pid] += 1
 
     def delete(
         self,
@@ -242,6 +265,10 @@ class NodeCluster:
         composed_key = compose_key(partition_key, clustering_key)
         node = self._coordinator(partition_key, clustering_key)
         node.delete(composed_key)
+        pid = self._pid_for_key(partition_key, clustering_key)
+        if pid >= len(self.partition_ops):
+            self.partition_ops.extend([0] * (pid + 1 - len(self.partition_ops)))
+        self.partition_ops[pid] += 1
 
     def get(
         self,
@@ -298,18 +325,30 @@ class NodeCluster:
         if self.partition_strategy == "hash":
             node = self._coordinator(partition_key, clustering_key)
             recs = node.client.get(composed_key)
+            pid = self._pid_for_key(partition_key, clustering_key)
+            if pid >= len(self.partition_ops):
+                self.partition_ops.extend([0] * (pid + 1 - len(self.partition_ops)))
+            self.partition_ops[pid] += 1
             if merge:
                 return recs[0][0] if recs else None
             return [(val, vc_dict) for val, ts, vc_dict in recs]
         if self.key_ranges is not None:
             node = self.get_node_for_key(partition_key, clustering_key)
             recs = node.client.get(composed_key)
+            pid = self._pid_for_key(partition_key, clustering_key)
+            if pid >= len(self.partition_ops):
+                self.partition_ops.extend([0] * (pid + 1 - len(self.partition_ops)))
+            self.partition_ops[pid] += 1
             if merge:
                 return recs[0][0] if recs else None
             return [(val, vc_dict) for val, ts, vc_dict in recs]
         if self.ring is None:
             node = self._coordinator(partition_key, clustering_key)
             recs = node.client.get(composed_key)
+            pid = self._pid_for_key(partition_key, clustering_key)
+            if pid >= len(self.partition_ops):
+                self.partition_ops.extend([0] * (pid + 1 - len(self.partition_ops)))
+            self.partition_ops[pid] += 1
             if merge:
                 return recs[0][0] if recs else None
             return [(val, vc_dict) for val, ts, vc_dict in recs]
@@ -451,6 +490,45 @@ class NodeCluster:
         node = self._coordinator(partition_key, start_ck)
         items = node.client.scan_range(partition_key, start_ck, end_ck)
         return [(ck, val) for ck, val, _, _ in items]
+
+    def split_partition(self, pid: int, split_key: str | None = None) -> None:
+        """Split a range partition creating a new one."""
+        if self.partition_strategy == "hash" and self.key_ranges is None:
+            # simply increase logical partitions
+            self.num_partitions += 1
+            self.partition_ops.append(0)
+            return
+        if self.key_ranges is None:
+            raise ValueError("range partitions not configured")
+        if pid < 0 or pid >= len(self.partitions):
+            raise IndexError("invalid partition id")
+        (start, end), node = self.partitions[pid]
+        if split_key is None:
+            if start is None or end is None:
+                raise ValueError("split_key required for unbounded range")
+            if len(start) == 1 and len(end) == 1:
+                split_key = chr((ord(start) + ord(end)) // 2)
+            else:
+                h1 = hash_key(start)
+                h2 = hash_key(end)
+                split_key = str((h1 + h2) // 2)
+        if not (start < split_key < end):
+            raise ValueError("split_key must be within range")
+        if len(self.nodes) > len(self.partitions):
+            new_node = self.nodes[len(self.partitions)]
+        else:
+            new_node = self.nodes[(pid + 1) % len(self.nodes)]
+        new_parts = []
+        for i, (rng, nd) in enumerate(self.partitions):
+            if i == pid:
+                new_parts.append(((start, split_key), nd))
+                new_parts.append(((split_key, end), new_node))
+            else:
+                new_parts.append((rng, nd))
+        self.partitions = new_parts
+        self.key_ranges = [rng for rng, _ in new_parts]
+        self.num_partitions = len(self.partitions)
+        self.partition_ops = [0] * self.num_partitions
 
     def shutdown(self):
         for n in self.nodes:
