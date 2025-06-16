@@ -7,6 +7,7 @@ import multiprocessing
 import threading
 import hashlib
 import random
+import json
 from partitioning import hash_key, compose_key
 from dataclasses import dataclass
 from concurrent import futures
@@ -15,7 +16,8 @@ from replica.grpc_server import run_server
 from replica.client import GRPCReplicaClient
 from hash_ring import HashRing as ConsistentHashRing
 from vector_clock import VectorClock
-from lsm_db import _merge_version_lists
+from lsm_db import _merge_version_lists, SimpleLSMDB
+from sstable import TOMBSTONE
 
 
 @dataclass
@@ -68,6 +70,7 @@ class NodeCluster:
         os.makedirs(base_path)
 
         base_port = 9000
+        self.base_port = base_port
         self.nodes = []
         self.nodes_by_id: dict[str, ClusterNode] = {}
         self.salted_keys: dict[str, int] = {}
@@ -529,6 +532,146 @@ class NodeCluster:
         self.key_ranges = [rng for rng, _ in new_parts]
         self.num_partitions = len(self.partitions)
         self.partition_ops = [0] * self.num_partitions
+
+    def _split_key_components(self, key: str) -> tuple[str, str | None]:
+        if "|" in key:
+            pk, ck = key.split("|", 1)
+        else:
+            pk, ck = key, None
+        return pk, ck
+
+    def _load_node_items(self, node: ClusterNode) -> dict[str, list[tuple]]:
+        path = os.path.join(self.base_path, node.node_id)
+        db = SimpleLSMDB(db_path=path)
+        merged: dict[str, list[tuple]] = {}
+        for k, versions in db.memtable.get_sorted_items():
+            merged[k] = _merge_version_lists(merged.get(k, []), versions)
+        for _, seg_path, _ in db.sstable_manager.sstable_segments:
+            with open(seg_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    key = data.get("key")
+                    val = data.get("value")
+                    vc = VectorClock(data.get("vector", {}))
+                    merged[key] = _merge_version_lists(merged.get(key, []), [(val, vc)])
+        db.close()
+        return {k: [tpl for tpl in v if tpl[0] != TOMBSTONE] for k, v in merged.items()}
+
+    def _move_hash_partition(self, pid: int, src: ClusterNode, dest: ClusterNode) -> None:
+        items = self._load_node_items(src)
+        for key, versions in items.items():
+            pk, ck = self._split_key_components(key)
+            if self.get_partition_id(pk, ck) != pid:
+                continue
+            for val, vc in versions:
+                ts = vc.clock.get("ts", 0)
+                dest.client.put(key, val, timestamp=ts, node_id=dest.node_id, vector=vc.clock)
+                src.client.delete(key, timestamp=ts + 1, node_id=src.node_id)
+        print(f"moved partition {pid} from {src.node_id} to {dest.node_id}")
+
+    def _move_range_partition(self, rng: tuple, src: ClusterNode, dest: ClusterNode, pid: int) -> None:
+        start, end = rng
+        items = self._load_node_items(src)
+        for key, versions in items.items():
+            pk, ck = self._split_key_components(key)
+            if not (start <= pk < end):
+                continue
+            for val, vc in versions:
+                ts = vc.clock.get("ts", 0)
+                dest.client.put(key, val, timestamp=ts, node_id=dest.node_id, vector=vc.clock)
+                src.client.delete(key, timestamp=ts + 1, node_id=src.node_id)
+        print(f"moved partition {pid} from {src.node_id} to {dest.node_id}")
+
+    def add_node(self) -> ClusterNode:
+        idx = len(self.nodes)
+        node_id = f"node_{idx}"
+        db_path = os.path.join(self.base_path, node_id)
+        port = self.base_port + idx
+        peers = [("localhost", self.base_port + i, f"node_{i}") for i in range(len(self.nodes) + 1)]
+        if self.ring is not None:
+            self.ring.add_node(node_id)
+        p = multiprocessing.Process(
+            target=run_server,
+            args=(
+                db_path,
+                "localhost",
+                port,
+                node_id,
+                peers,
+                self.ring,
+                self.replication_factor,
+                self.write_quorum,
+                self.read_quorum,
+            ),
+            kwargs={"consistency_mode": self.consistency_mode},
+            daemon=True,
+        )
+        p.start()
+        time.sleep(0.2)
+        client = GRPCReplicaClient("localhost", port)
+        node = ClusterNode(node_id, "localhost", port, p, client)
+        self.nodes.append(node)
+        self.nodes_by_id[node_id] = node
+
+        if self.partition_strategy == "hash" and self.ring is None:
+            old_count = len(self.nodes) - 1
+            new_count = len(self.nodes)
+            for pid in range(self.num_partitions):
+                old_owner = self.nodes[pid % old_count]
+                new_owner = self.nodes[pid % new_count]
+                if old_owner is not new_owner:
+                    self._move_hash_partition(pid, old_owner, new_owner)
+        elif self.key_ranges is not None:
+            new_parts = []
+            for i, (rng, nd) in enumerate(self.partitions):
+                target = self.nodes[i % len(self.nodes)]
+                if nd is not target:
+                    self._move_range_partition(rng, nd, target, i)
+                new_parts.append((rng, target))
+            self.partitions = new_parts
+        return node
+
+    def remove_node(self, node_id: str) -> None:
+        if node_id not in self.nodes_by_id:
+            return
+        node = self.nodes_by_id.pop(node_id)
+        old_nodes = list(self.nodes)
+        self.nodes = [n for n in self.nodes if n.node_id != node_id]
+        if self.ring is not None:
+            self.ring.remove_node(node_id)
+        node.stop()
+
+        if self.partition_strategy == "hash" and self.ring is None and self.nodes:
+            old_count = len(old_nodes)
+            new_count = len(self.nodes)
+            for pid in range(self.num_partitions):
+                old_owner = old_nodes[pid % old_count]
+                new_owner = self.nodes[pid % new_count]
+                if old_owner.node_id == node_id:
+                    if new_owner.node_id != node_id:
+                        self._move_hash_partition(pid, old_owner, new_owner)
+                elif old_owner is not new_owner:
+                    self._move_hash_partition(pid, old_owner, new_owner)
+        elif self.key_ranges is not None and self.nodes:
+            new_parts = []
+            for i, (rng, nd) in enumerate(self.partitions):
+                old_target = old_nodes[i % len(old_nodes)]
+                new_target = self.nodes[i % len(self.nodes)]
+                if nd.node_id == node_id:
+                    mover_src = nd
+                else:
+                    mover_src = nd
+                if mover_src is not new_target:
+                    self._move_range_partition(rng, mover_src, new_target, i)
+                new_parts.append((rng, new_target))
+            self.partitions = new_parts
+
 
     def shutdown(self):
         for n in self.nodes:
