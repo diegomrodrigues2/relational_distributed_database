@@ -6,6 +6,7 @@ import shutil
 import multiprocessing
 import threading
 import hashlib
+import random
 from partitioning import hash_key, compose_key
 from dataclasses import dataclass
 from concurrent import futures
@@ -69,6 +70,7 @@ class NodeCluster:
         base_port = 9000
         self.nodes = []
         self.nodes_by_id: dict[str, ClusterNode] = {}
+        self.salted_keys: dict[str, int] = {}
         self.consistency_mode = consistency_mode
         if replication_factor is None:
             replication_factor = 1 if key_ranges else 3
@@ -136,6 +138,12 @@ class NodeCluster:
         time.sleep(1)
         if key_ranges is not None:
             self._setup_partitions(key_ranges)
+
+    def enable_salt(self, key: str, buckets: int) -> None:
+        """Enable random prefixing for ``key`` using ``buckets`` variants."""
+        if buckets < 1:
+            raise ValueError("buckets must be >= 1")
+        self.salted_keys[str(key)] = int(buckets)
 
     def get_node_for_key(
         self, partition_key: str, clustering_key: str | None = None
@@ -212,6 +220,10 @@ class NodeCluster:
         if value is None:
             value = clustering_key
             clustering_key = None
+        if partition_key in self.salted_keys:
+            buckets = self.salted_keys[partition_key]
+            prefix = random.randint(0, buckets - 1)
+            partition_key = f"{prefix}#{partition_key}"
         composed_key = compose_key(partition_key, clustering_key)
         node = self._coordinator(partition_key, clustering_key)
         node.put(composed_key, value)
@@ -238,25 +250,69 @@ class NodeCluster:
         clustering_key: str | None = None,
         *,
         merge: bool = True,
+        ignore_salt: bool = False,
     ):
         """Retrieve the value stored under ``partition_key`` and ``clustering_key``.
 
         The optional ``clustering_key`` keeps compatibility with the previous
         API where a single key string was used.
         """
+        if not ignore_salt and partition_key in self.salted_keys:
+            buckets = self.salted_keys[partition_key]
+            merged = []
+            for i in range(buckets):
+                skey = f"{i}#{partition_key}"
+                vals = self.get(
+                    node_index,
+                    skey,
+                    clustering_key,
+                    merge=False,
+                    ignore_salt=True,
+                )
+                for val, vc_dict in vals or []:
+                    merged = _merge_version_lists(merged, [(val, VectorClock(vc_dict))])
+            if not merged:
+                return None if merge else []
+            if merge:
+                if self.consistency_mode in ("vector", "crdt"):
+                    best_val, best_vc = merged[0]
+                    best_ts = best_vc.clock.get("ts", 0)
+                    for val, vc in merged[1:]:
+                        cmp = vc.compare(best_vc)
+                        ts = vc.clock.get("ts", 0)
+                        if cmp == ">" or (cmp is None and ts > best_ts):
+                            best_val, best_vc, best_ts = val, vc, ts
+                else:
+                    best_val = None
+                    best_ts = -1
+                    best_vc = None
+                    for val, vc in merged:
+                        ts = vc.clock.get("ts", 0)
+                        if ts > best_ts:
+                            best_val, best_vc, best_ts = val, vc, ts
+                return best_val
+            else:
+                return [(val, vc.clock) for val, vc in merged]
+
         composed_key = compose_key(partition_key, clustering_key)
         if self.partition_strategy == "hash":
             node = self._coordinator(partition_key, clustering_key)
             recs = node.client.get(composed_key)
-            return recs[0][0] if recs else None
+            if merge:
+                return recs[0][0] if recs else None
+            return [(val, vc_dict) for val, ts, vc_dict in recs]
         if self.key_ranges is not None:
             node = self.get_node_for_key(partition_key, clustering_key)
             recs = node.client.get(composed_key)
-            return recs[0][0] if recs else None
+            if merge:
+                return recs[0][0] if recs else None
+            return [(val, vc_dict) for val, ts, vc_dict in recs]
         if self.ring is None:
             node = self._coordinator(partition_key, clustering_key)
             recs = node.client.get(composed_key)
-            return recs[0][0] if recs else None
+            if merge:
+                return recs[0][0] if recs else None
+            return [(val, vc_dict) for val, ts, vc_dict in recs]
         pref_nodes = self.ring.get_preference_list(
             partition_key, self.replication_factor
         )

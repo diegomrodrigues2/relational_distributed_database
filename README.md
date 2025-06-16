@@ -392,6 +392,24 @@ Essa estratégia tende a balancear bem os dados entre os nós, mas consultas por
 faixa de valores precisam acessar várias partições para coletar todos os
 resultados.
 
+## Random Prefixing/Salting
+
+Para evitar hotspots em chaves muito acessadas é possível habilitar um
+*salting* que adiciona um prefixo aleatório antes da chave de partição. As
+escritas ficam distribuídas em diferentes partições e a leitura consulta todas
+as variações retornando o valor mais recente.
+
+```python
+from replication import NodeCluster
+
+cluster = NodeCluster('/tmp/hash_cluster', num_nodes=3,
+                      partition_strategy='hash')
+cluster.enable_salt('hotkey', buckets=4)
+
+cluster.put(0, 'hotkey', 'value')
+print(cluster.get(1, 'hotkey'))
+```
+
 ## Testes
 
 Execute a bateria de testes para validar o sistema. Instale antes as
