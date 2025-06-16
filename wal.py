@@ -1,6 +1,7 @@
 import os
 import json
 from vector_clock import VectorClock
+from partitioning import compose_key
 
 class WriteAheadLog(object):
     """Log de pré-escrita para garantir durabilidade."""
@@ -16,13 +17,14 @@ class WriteAheadLog(object):
             with open(self.wal_file_path, 'w') as f:
                 pass # Apenas cria o arquivo
     
-    def append(self, entry_type, key, value, vector_clock=None):
+    def append(self, entry_type, key, value, vector_clock=None, *, clustering_key=None):
         """Adiciona registro ao WAL com o vetor associado."""
         if vector_clock is None:
             vector_clock = VectorClock()
+        composed = compose_key(key, clustering_key)
         entry = {
             "type": entry_type,
-            "key": key,
+            "key": composed,
             "value": value,
             "vector": vector_clock.clock,
         }

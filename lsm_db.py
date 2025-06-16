@@ -7,6 +7,7 @@ from sstable import SSTableManager, TOMBSTONE
 from wal import WriteAheadLog
 from merkle import compute_segment_hashes
 from vector_clock import VectorClock
+from partitioning import compose_key
 
 
 def _merge_version_lists(current, new_list):
@@ -112,22 +113,22 @@ class SimpleLSMDB:
         self._start_compaction_async()
         self.segment_hashes = compute_segment_hashes(self)
 
-    def put(self, key, value, *, timestamp=None, vector_clock=None):
+    def put(self, key, value, *, timestamp=None, vector_clock=None, clustering_key=None):
         """Insere ou atualiza uma chave."""
-        key = str(key)
+        key = compose_key(str(key), clustering_key)
         value = str(value)
         if vector_clock is None:
             if timestamp is None:
                 timestamp = int(time.time() * 1000)
             vector_clock = VectorClock({"ts": int(timestamp)})
-        self.wal.append("PUT", key, value, vector_clock)
+        self.wal.append("PUT", key, value, vector_clock, clustering_key=None)
         self.memtable.put(key, (value, vector_clock))
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
 
-    def get(self, key):
+    def get(self, key, *, clustering_key=None):
         """Retorna o(s) valor(es) associado(s) à chave."""
-        key = str(key)
+        key = compose_key(str(key), clustering_key)
         print(f"\nGET: Buscando chave '{key}'")
 
         versions = []
@@ -153,9 +154,9 @@ class SimpleLSMDB:
         print(f"GET: '{key}' possui múltiplas versões.")
         return [v for v, _ in versions]
 
-    def get_record(self, key):
+    def get_record(self, key, *, clustering_key=None):
         """Retorna lista de ``(valor, vector_clock)`` se presente."""
-        key = str(key)
+        key = compose_key(str(key), clustering_key)
         versions = []
         record = self.memtable.get(key)
         if record:
@@ -169,15 +170,15 @@ class SimpleLSMDB:
         versions = [v for v in versions if v[0] != TOMBSTONE]
         return versions
 
-    def delete(self, key, *, timestamp=None, vector_clock=None):
+    def delete(self, key, *, timestamp=None, vector_clock=None, clustering_key=None):
         """Marca uma chave como removida."""
-        key = str(key)
+        key = compose_key(str(key), clustering_key)
         print(f"\nDELETE: Marcando chave '{key}' para exclusão.")
         if vector_clock is None:
             if timestamp is None:
                 timestamp = int(time.time() * 1000)
             vector_clock = VectorClock({"ts": int(timestamp)})
-        self.wal.append("DELETE", key, TOMBSTONE, vector_clock)
+        self.wal.append("DELETE", key, TOMBSTONE, vector_clock, clustering_key=None)
         self.memtable.put(key, (TOMBSTONE, vector_clock))
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
