@@ -319,6 +319,32 @@ with TemporaryDirectory() as dir_a, TemporaryDirectory() as dir_b:
     node_a.stop(); node_b.stop()
 ```
 
+## Chaves Compostas
+
+Chaves podem ter dois componentes: a **chave de partição** e a
+**chave de clusterização**. A função `compose_key(partition_key, clustering_key)`
+gera uma representação unificada no formato `"particao|cluster"`. Quando apenas o
+primeiro componente é usado, a chave permanece como uma string simples.
+
+No particionamento por hash, somente a **chave de partição** é usada no cálculo
+do hash. Assim, todos os registros com o mesmo prefixo permanecem na mesma
+partição, independentemente do valor de clusterização.
+
+Exemplo básico de uso:
+
+```python
+from replication import NodeCluster
+
+cluster = NodeCluster('/tmp/demo', num_nodes=2, partition_strategy='hash')
+
+cluster.put(0, 'user1', '001', 'Alice')
+cluster.put(0, 'user1', '002', 'Bob')
+
+print(cluster.get(1, 'user1', '001'))  # 'Alice'
+print(cluster.get_range('user1', '000', '999'))
+cluster.shutdown()
+```
+
 ## Particionamento por Faixa de Chave
 
 Também é possível distribuir as chaves manualmente por intervalos,
