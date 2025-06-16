@@ -104,7 +104,7 @@ class ReplicationManagerTest(unittest.TestCase):
                     daemon=True,
                 )
                 p.start()
-                time.sleep(0.5)
+                time.sleep(1)
                 client = GRPCReplicaClient("localhost", 9001)
                 cluster.nodes[1] = ClusterNode("node_1", "localhost", 9001, p, client)
 

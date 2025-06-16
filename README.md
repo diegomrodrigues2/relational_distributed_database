@@ -338,11 +338,30 @@ demais. Por enquanto cada partição possui apenas uma réplica, mas o
 projeto prevê suportar múltiplas cópias e realocação dinâmica das
 faixas em versões futuras.
 
+## Particionamento por Hash de Chave
+
+Além das faixas definidas manualmente, o cluster pode distribuir as chaves
+automaticamente calculando `hash(key) % num_partitions`.
+Cada partição corresponde a um nó (ou réplica) responsável pelo armazenamento.
+
+```python
+from replication import NodeCluster
+
+cluster = NodeCluster('/tmp/hash_cluster', num_nodes=3,
+                      partition_strategy='hash',
+                      replication_factor=1)
+```
+
+Essa estratégia tende a balancear bem os dados entre os nós, mas consultas por
+faixa de valores precisam acessar várias partições para coletar todos os
+resultados.
+
 ## Testes
 
-Execute a bateria de testes para validar o sistema (as dependências `grpcio` e
-`grpcio-tools` do `requirements.txt` são necessárias):
+Execute a bateria de testes para validar o sistema. Instale antes as
+dependências listadas em `requirements.txt`:
 ```bash
+pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
