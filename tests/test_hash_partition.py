@@ -39,6 +39,32 @@ class HashPartitionTest(unittest.TestCase):
             finally:
                 cluster.shutdown()
 
+    def test_hash_distribution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = NodeCluster(
+                base_path=tmpdir,
+                num_nodes=3,
+                replication_factor=1,
+                partition_strategy="hash",
+            )
+            try:
+                keys = [f"k{i}" for i in range(100)]
+                for k in keys:
+                    cluster.put(0, k, k)
+                time.sleep(0.5)
+
+                counts = [0] * 3
+                for k in keys:
+                    pid = cluster.get_partition_id(k)
+                    self.assertIsNotNone(cluster.get(pid, k))
+                    counts[pid] += 1
+
+                expected = len(keys) / len(counts)
+                for c in counts:
+                    self.assertTrue(abs(c - expected) <= 10)
+            finally:
+                cluster.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()
