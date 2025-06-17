@@ -533,12 +533,51 @@ class NodeCluster:
         self.num_partitions = len(self.partitions)
         self.partition_ops = [0] * self.num_partitions
 
+        new_pid = pid + 1
+        if new_node is not node:
+            self.transfer_partition(node, new_node, new_pid)
+
     def _split_key_components(self, key: str) -> tuple[str, str | None]:
         if "|" in key:
             pk, ck = key.split("|", 1)
         else:
             pk, ck = key, None
         return pk, ck
+
+    def transfer_partition(
+        self, src_node: ClusterNode, dst_node: ClusterNode, partition_id: int
+    ) -> None:
+        """Move all records for ``partition_id`` from ``src_node`` to ``dst_node``."""
+        if src_node is dst_node:
+            return
+
+        items = self._load_node_items(src_node)
+
+        if self.key_ranges is not None:
+            start, end = self.key_ranges[partition_id]
+            def belongs(pk: str) -> bool:
+                return start <= pk < end
+        else:
+            def belongs(pk: str, ck: str | None) -> bool:
+                return self.get_partition_id(pk, ck) == partition_id
+
+        for key, versions in items.items():
+            pk, ck = self._split_key_components(key)
+            if self.key_ranges is not None:
+                if not belongs(pk):
+                    continue
+            else:
+                if not belongs(pk, ck):
+                    continue
+            for val, vc in versions:
+                ts = vc.clock.get("ts", 0)
+                dst_node.client.put(
+                    key, val, timestamp=ts, node_id=dst_node.node_id, vector=vc.clock
+                )
+                src_node.client.delete(key, timestamp=ts + 1, node_id=src_node.node_id)
+        print(
+            f"moved partition {partition_id} from {src_node.node_id} to {dst_node.node_id}"
+        )
 
     def _load_node_items(self, node: ClusterNode) -> dict[str, list[tuple]]:
         path = os.path.join(self.base_path, node.node_id)
@@ -626,13 +665,13 @@ class NodeCluster:
                 old_owner = self.nodes[pid % old_count]
                 new_owner = self.nodes[pid % new_count]
                 if old_owner is not new_owner:
-                    self._move_hash_partition(pid, old_owner, new_owner)
+                    self.transfer_partition(old_owner, new_owner, pid)
         elif self.key_ranges is not None:
             new_parts = []
             for i, (rng, nd) in enumerate(self.partitions):
                 target = self.nodes[i % len(self.nodes)]
                 if nd is not target:
-                    self._move_range_partition(rng, nd, target, i)
+                    self.transfer_partition(nd, target, i)
                 new_parts.append((rng, target))
             self.partitions = new_parts
         return node
@@ -653,22 +692,14 @@ class NodeCluster:
             for pid in range(self.num_partitions):
                 old_owner = old_nodes[pid % old_count]
                 new_owner = self.nodes[pid % new_count]
-                if old_owner.node_id == node_id:
-                    if new_owner.node_id != node_id:
-                        self._move_hash_partition(pid, old_owner, new_owner)
-                elif old_owner is not new_owner:
-                    self._move_hash_partition(pid, old_owner, new_owner)
+                if old_owner is not new_owner:
+                    self.transfer_partition(old_owner, new_owner, pid)
         elif self.key_ranges is not None and self.nodes:
             new_parts = []
             for i, (rng, nd) in enumerate(self.partitions):
-                old_target = old_nodes[i % len(old_nodes)]
                 new_target = self.nodes[i % len(self.nodes)]
-                if nd.node_id == node_id:
-                    mover_src = nd
-                else:
-                    mover_src = nd
-                if mover_src is not new_target:
-                    self._move_range_partition(rng, mover_src, new_target, i)
+                if nd is not new_target:
+                    self.transfer_partition(nd, new_target, i)
                 new_parts.append((rng, new_target))
             self.partitions = new_parts
 
