@@ -38,6 +38,7 @@ class ReadRepairTest(unittest.TestCase):
                         stale_id,
                         peers,
                         cluster.ring,
+                        cluster.partition_map,
                         cluster.replication_factor,
                         cluster.write_quorum,
                         cluster.read_quorum,

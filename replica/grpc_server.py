@@ -4,6 +4,7 @@ import threading
 import time
 import json
 import os
+from bisect import bisect_right
 from concurrent import futures
 
 import grpc
@@ -27,16 +28,19 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     # ------------------------------------------------------------------
     def _owner_for_key(self, key: str) -> str:
         """Return node_id of partition owner for given key."""
-        if self._node.hash_ring is not None:
-            return self._node.hash_ring.get_preference_list(key, 1)[0]
+        pmap = getattr(self._node, "partition_map", None) or {}
+        if self._node.hash_ring is not None and self._node.hash_ring._ring:
+            key_hash = hash_key(key)
+            hashes = [h for h, _ in self._node.hash_ring._ring]
+            idx = bisect_right(hashes, key_hash) % len(hashes)
+            return pmap.get(idx, self._node.hash_ring._ring[idx][1])
         if getattr(self._node, "range_table", None):
-            for (start, end), nid in self._node.range_table:
+            for i, ((start, end), _) in enumerate(self._node.range_table):
                 if start <= key < end:
-                    return nid
+                    return pmap.get(i, self._node.range_table[i][1])
         if self._node.partition_modulus is not None and self._node.node_index is not None:
             pid = hash_key(key) % self._node.partition_modulus
-            owner_idx = pid % len(self._node.peers) if self._node.peers else pid
-            return f"node_{owner_idx}"
+            return pmap.get(pid, f"node_{pid % len(self._node.peers) if self._node.peers else pid}")
         return self._node.node_id
 
     def Put(self, request, context):
@@ -400,6 +404,8 @@ class NodeServer:
         node_id="node",
         peers=None,
         hash_ring=None,
+        *,
+        partition_map=None,
         partition_modulus: int | None = None,
         node_index: int | None = None,
         replication_factor: int = 3,
@@ -418,6 +424,7 @@ class NodeServer:
         self.node_id = node_id
         self.peers = peers or []
         self.hash_ring = hash_ring
+        self.partition_map = partition_map or {}
         self.partition_modulus = partition_modulus
         self.node_index = node_index
         self.replication_factor = replication_factor
@@ -499,6 +506,10 @@ class NodeServer:
                 self.crdts[key] = cls(self.node_id)
             except Exception:
                 self.crdts[key] = cls
+
+    def update_partition_map(self, new_map) -> None:
+        """Update the cached partition map."""
+        self.partition_map = new_map or {}
 
     def _iter_peers(self):
         """Yield tuples of (host, port, node_id, client) for all peers."""
@@ -1018,6 +1029,7 @@ def run_server(
     node_id="node",
     peers=None,
     hash_ring=None,
+    partition_map=None,
     replication_factor: int = 3,
     write_quorum: int | None = None,
     read_quorum: int | None = None,
@@ -1034,6 +1046,7 @@ def run_server(
         node_id=node_id,
         peers=peers,
         hash_ring=hash_ring,
+        partition_map=partition_map,
         replication_factor=replication_factor,
         write_quorum=write_quorum,
         read_quorum=read_quorum,

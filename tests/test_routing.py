@@ -22,7 +22,8 @@ class CoordinatorForwardingTest(unittest.TestCase):
             )
             try:
                 key = "route:key"
-                owner_id = cluster.ring.get_preference_list(key, 1)[0]
+                pid = cluster.get_partition_id(key)
+                owner_id = cluster.get_partition_map()[pid]
                 wrong_node = random.choice(
                     [n for n in cluster.nodes if n.node_id != owner_id]
                 )
