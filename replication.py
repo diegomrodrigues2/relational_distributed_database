@@ -65,6 +65,7 @@ class NodeCluster:
         partition_strategy: str = "range",
         num_partitions: int | None = None,
         partitions_per_node: int = 1,
+        max_transfer_rate: int | None = None,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -86,6 +87,7 @@ class NodeCluster:
         if partition_strategy not in ("range", "hash"):
             raise ValueError("invalid partition_strategy")
         self.partitions_per_node = max(1, int(partitions_per_node))
+        self.max_transfer_rate = max_transfer_rate
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.ring = None if key_ranges else ConsistentHashRing()
@@ -156,6 +158,10 @@ class NodeCluster:
         if buckets < 1:
             raise ValueError("buckets must be >= 1")
         self.salted_keys[str(key)] = int(buckets)
+
+    def set_max_transfer_rate(self, rate: int | None) -> None:
+        """Configure maximum transfer rate in bytes/second."""
+        self.max_transfer_rate = rate
 
     def get_node_for_key(
         self, partition_key: str, clustering_key: str | None = None
@@ -578,6 +584,8 @@ class NodeCluster:
             return
 
         items = self._load_node_items(src_node)
+        start_ts = time.time()
+        bytes_copied = 0
 
         if self.key_ranges is not None:
             start, end = self.key_ranges[partition_id]
@@ -601,6 +609,16 @@ class NodeCluster:
                     key, val, timestamp=ts, node_id=dst_node.node_id, vector=vc.clock
                 )
                 src_node.client.delete(key, timestamp=ts + 1, node_id=src_node.node_id)
+                if self.max_transfer_rate:
+                    record_size = len(key.encode("utf-8"))
+                    if val is not None:
+                        record_size += len(str(val).encode("utf-8"))
+                    record_size += len(json.dumps(vc.clock).encode("utf-8"))
+                    bytes_copied += record_size
+                    elapsed = time.time() - start_ts
+                    expected = bytes_copied / float(self.max_transfer_rate)
+                    if expected > elapsed:
+                        time.sleep(expected - elapsed)
         print(
             f"moved partition {partition_id} from {src_node.node_id} to {dst_node.node_id}"
         )
