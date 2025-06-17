@@ -424,6 +424,11 @@ cluster.split_partition(0, 'g')  # cria ['a','g') e ['g','m')
 A divisão apenas redireciona novas escritas; os dados existentes permanecem em
 sua localização original.
 
+Ao realocar dados entre nós, o cluster pode limitar a taxa de cópia. Defina
+`max_transfer_rate` (em bytes/segundo) ao criar a instância ou use
+`set_max_transfer_rate()` para ajustar dinamicamente. Isso é útil em testes para
+simular links lentos.
+
 ## Testes
 
 Execute a bateria de testes para validar o sistema. Instale antes as
