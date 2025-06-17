@@ -22,6 +22,7 @@ class SaltingTest(unittest.TestCase):
             try:
                 for i in range(20):
                     cluster.put(0, "hot", f"v{i}")
+                    time.sleep(0.001)
                 time.sleep(0.5)
 
                 used_partitions = set()

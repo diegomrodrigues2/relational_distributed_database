@@ -23,7 +23,24 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def __init__(self, node):
         self._node = node
 
+    # ------------------------------------------------------------------
+    def _owner_for_key(self, key: str) -> str:
+        """Return node_id of partition owner for given key."""
+        if self._node.hash_ring is not None:
+            return self._node.hash_ring.get_preference_list(key, 1)[0]
+        if getattr(self._node, "range_table", None):
+            for (start, end), nid in self._node.range_table:
+                if start <= key < end:
+                    return nid
+        return self._node.node_id
+
     def Put(self, request, context):
+        if getattr(self._node, "enable_forwarding", False):
+            owner_id = self._owner_for_key(request.key)
+            if owner_id != self._node.node_id and request.node_id != owner_id:
+                client = self._node.clients_by_id.get(owner_id)
+                if client:
+                    return client.stub.Put(request)
         self._node.clock.update(request.timestamp)
 
         origem = seq = None
@@ -129,6 +146,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
+        if getattr(self._node, "enable_forwarding", False):
+            owner_id = self._owner_for_key(request.key)
+            if owner_id != self._node.node_id and request.node_id != owner_id:
+                client = self._node.clients_by_id.get(owner_id)
+                if client:
+                    return client.stub.Delete(request)
         self._node.clock.update(request.timestamp)
 
         origem = seq = None
@@ -213,6 +236,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.Empty()
 
     def Get(self, request, context):
+        if getattr(self._node, "enable_forwarding", False):
+            owner_id = self._owner_for_key(request.key)
+            if owner_id != self._node.node_id:
+                client = self._node.clients_by_id.get(owner_id)
+                if client:
+                    return client.stub.Get(request)
+
         records = self._node.db.get_record(request.key)
         if not records:
             return replication_pb2.ValueResponse(values=[])
@@ -231,6 +261,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.ValueResponse(values=values)
 
     def ScanRange(self, request, context):
+        if getattr(self._node, "enable_forwarding", False):
+            owner_id = self._owner_for_key(request.partition_key)
+            if owner_id != self._node.node_id:
+                client = self._node.clients_by_id.get(owner_id)
+                if client:
+                    return client.stub.ScanRange(request)
+
         items = self._node.db.scan_range(
             request.partition_key, request.start_ck, request.end_ck
         )
@@ -359,6 +396,7 @@ class NodeServer:
         anti_entropy_interval: float = 5.0,
         max_batch_size: int = 50,
         crdt_config: dict | None = None,
+        enable_forwarding: bool = False,
     ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
@@ -372,6 +410,7 @@ class NodeServer:
         self.read_quorum = read_quorum or (replication_factor // 2 + 1)
         self.consistency_mode = consistency_mode
         self.crdt_config = crdt_config or {}
+        self.enable_forwarding = bool(enable_forwarding)
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         self.service = ReplicaService(self)
@@ -964,6 +1003,7 @@ def run_server(
     read_quorum: int | None = None,
     *,
     consistency_mode: str = "lww",
+    enable_forwarding: bool = False,
 ):
     node = NodeServer(
         db_path,
@@ -976,5 +1016,6 @@ def run_server(
         write_quorum=write_quorum,
         read_quorum=read_quorum,
         consistency_mode=consistency_mode,
+        enable_forwarding=enable_forwarding,
     )
     node.start()
