@@ -92,7 +92,14 @@ class NodeCluster:
         self.enable_forwarding = enable_forwarding
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
-        self.ring = None if key_ranges else ConsistentHashRing()
+        if key_ranges:
+            self.ring = None
+        elif partition_strategy == "hash" and replication_factor == 1 and not enable_forwarding:
+            # simple hash partitioning without forwarding or replication
+            self.ring = None
+        else:
+            # Use a consistent hash ring for owner determination
+            self.ring = ConsistentHashRing()
         if num_partitions is None:
             num_partitions = num_nodes
         if self.ring is None:
@@ -142,6 +149,8 @@ class NodeCluster:
                 kwargs={
                     "consistency_mode": self.consistency_mode,
                     "enable_forwarding": self.enable_forwarding,
+                    "partition_modulus": self.num_partitions if self.ring is None else None,
+                    "node_index": i if self.ring is None else None,
                 },
                 daemon=True,
             )

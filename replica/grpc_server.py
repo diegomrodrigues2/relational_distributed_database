@@ -13,6 +13,7 @@ from lamport import LamportClock
 from vector_clock import VectorClock
 from lsm_db import SimpleLSMDB
 from merkle import MerkleNode, build_merkle_tree, diff_trees
+from partitioning import hash_key
 from . import replication_pb2, replication_pb2_grpc
 from .client import GRPCReplicaClient
 
@@ -32,6 +33,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             for (start, end), nid in self._node.range_table:
                 if start <= key < end:
                     return nid
+        if self._node.partition_modulus is not None and self._node.node_index is not None:
+            pid = hash_key(key) % self._node.partition_modulus
+            owner_idx = pid % len(self._node.peers) if self._node.peers else pid
+            return f"node_{owner_idx}"
         return self._node.node_id
 
     def Put(self, request, context):
@@ -243,14 +248,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
     def Get(self, request, context):
         owner_id = self._owner_for_key(request.key)
-        if getattr(self._node, "enable_forwarding", False):
-            if owner_id != self._node.node_id:
-                client = self._node.clients_by_id.get(owner_id)
-                if client:
-                    return client.stub.Get(request)
-        else:
-            if owner_id != self._node.node_id and request.node_id == "":
-                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
+        if getattr(self._node, "enable_forwarding", False) and owner_id != self._node.node_id:
+            client = self._node.clients_by_id.get(owner_id)
+            if client:
+                return client.stub.Get(request)
 
         records = self._node.db.get_record(request.key)
         if not records:
@@ -271,14 +272,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
     def ScanRange(self, request, context):
         owner_id = self._owner_for_key(request.partition_key)
-        if getattr(self._node, "enable_forwarding", False):
-            if owner_id != self._node.node_id:
-                client = self._node.clients_by_id.get(owner_id)
-                if client:
-                    return client.stub.ScanRange(request)
-        else:
-            if owner_id != self._node.node_id and request.node_id == "":
-                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
+        if getattr(self._node, "enable_forwarding", False) and owner_id != self._node.node_id:
+            client = self._node.clients_by_id.get(owner_id)
+            if client:
+                return client.stub.ScanRange(request)
+        elif owner_id != self._node.node_id:
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
 
         items = self._node.db.scan_range(
             request.partition_key, request.start_ck, request.end_ck
@@ -401,6 +400,8 @@ class NodeServer:
         node_id="node",
         peers=None,
         hash_ring=None,
+        partition_modulus: int | None = None,
+        node_index: int | None = None,
         replication_factor: int = 3,
         write_quorum: int | None = None,
         read_quorum: int | None = None,
@@ -417,6 +418,8 @@ class NodeServer:
         self.node_id = node_id
         self.peers = peers or []
         self.hash_ring = hash_ring
+        self.partition_modulus = partition_modulus
+        self.node_index = node_index
         self.replication_factor = replication_factor
         self.write_quorum = write_quorum or (replication_factor // 2 + 1)
         self.read_quorum = read_quorum or (replication_factor // 2 + 1)
@@ -738,6 +741,10 @@ class NodeServer:
     def replicate(self, op, key, value, timestamp, op_id="", vector=None, skip_id=None):
         """Synchronously replicate an operation to responsible peers."""
 
+        if self.replication_factor <= 1:
+            # single replica configured - no replication needed
+            return
+
         # Determine peers responsible for this key according to the hash ring.
         if self.hash_ring and self.clients_by_id:
             pref_nodes = self.hash_ring.get_preference_list(key, len(self.clients_by_id) + 1)
@@ -968,12 +975,13 @@ class NodeServer:
         self.load_last_seen()
         self.load_hints()
         self.server.start()
-        self._start_cleanup_thread()
-        self._start_replay_thread()
-        self._start_anti_entropy_thread()
+        if self.replication_factor > 1:
+            self._start_cleanup_thread()
+            self._start_replay_thread()
+            self._start_anti_entropy_thread()
+            self._start_hinted_handoff_thread()
+            self.sync_from_peer()
         self._start_heartbeat_thread()
-        self._start_hinted_handoff_thread()
-        self.sync_from_peer()
         self.server.wait_for_termination()
 
     def stop(self):
@@ -1016,6 +1024,8 @@ def run_server(
     *,
     consistency_mode: str = "lww",
     enable_forwarding: bool = False,
+    partition_modulus: int | None = None,
+    node_index: int | None = None,
 ):
     node = NodeServer(
         db_path,
@@ -1029,5 +1039,7 @@ def run_server(
         read_quorum=read_quorum,
         consistency_mode=consistency_mode,
         enable_forwarding=enable_forwarding,
+        partition_modulus=partition_modulus,
+        node_index=node_index,
     )
     node.start()
