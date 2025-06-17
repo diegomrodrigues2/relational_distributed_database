@@ -468,6 +468,15 @@ node = cluster.add_node()
 cluster.remove_node(node.node_id)
 ```
 
+## Nó Coordenador (forwarding)
+
+Um cliente pode contatar qualquer nó do cluster. Se o servidor que recebeu a
+requisição não for o responsável pela partição da chave, ele pode encaminhar a
+operação para o dono correto usando o hash ring (ou tabela de faixas) e retornar
+o resultado. Essa capacidade é opcional e habilitada ao inicializar o
+`NodeCluster` com `enable_forwarding=True`. Assim a aplicação não precisa
+conhecer previamente qual nó detém a partição.
+
 ## Testes
 
 Execute a bateria de testes para validar o sistema. Instale antes as

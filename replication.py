@@ -66,6 +66,7 @@ class NodeCluster:
         num_partitions: int | None = None,
         partitions_per_node: int = 1,
         max_transfer_rate: int | None = None,
+        enable_forwarding: bool = False,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -88,6 +89,7 @@ class NodeCluster:
             raise ValueError("invalid partition_strategy")
         self.partitions_per_node = max(1, int(partitions_per_node))
         self.max_transfer_rate = max_transfer_rate
+        self.enable_forwarding = enable_forwarding
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.ring = None if key_ranges else ConsistentHashRing()
@@ -137,7 +139,10 @@ class NodeCluster:
                     self.write_quorum,
                     self.read_quorum,
                 ),
-                kwargs={"consistency_mode": self.consistency_mode},
+                kwargs={
+                    "consistency_mode": self.consistency_mode,
+                    "enable_forwarding": self.enable_forwarding,
+                },
                 daemon=True,
             )
             p.start()
@@ -693,7 +698,10 @@ class NodeCluster:
                 self.write_quorum,
                 self.read_quorum,
             ),
-            kwargs={"consistency_mode": self.consistency_mode},
+            kwargs={
+                "consistency_mode": self.consistency_mode,
+                "enable_forwarding": self.enable_forwarding,
+            },
             daemon=True,
         )
         p.start()
