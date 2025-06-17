@@ -202,6 +202,15 @@ Durante essa etapa de consistência forte, uma escrita só é considerada
 bem-sucedida quando todos os nós escolhidos respondem com sucesso à
 chamada RPC.
 
+## Partições proporcionais (vnodes)
+
+Ao usar o anel de hash é possível atribuir múltiplos *tokens* virtuais para cada
+nó. Defina `partitions_per_node` ao criar o cluster para indicar quantas
+partições lógicas cada servidor receberá. O total de partições passa a ser
+`num_nodes * partitions_per_node`, permitindo um balanceamento mais fino e uma
+redistribuição mais suave quando `add_node()` ou `remove_node()` forem
+executados.
+
 ### Configuração em anel
 
 ```python
@@ -392,6 +401,13 @@ Essa estratégia tende a balancear bem os dados entre os nós, mas consultas por
 faixa de valores precisam acessar várias partições para coletar todos os
 resultados.
 
+Apesar da flexibilidade, o valor de `num_partitions` é **fixo** após a criação do
+cluster. Cada partição permanece associada ao mesmo nó até que uma realocação
+seja executada manualmente. Assim, iniciar com poucas partições limita o número
+máximo de nós diferentes quando `replication_factor=1`. Para crescer além desse
+limite é recomendável pré-criar partições suficientes ou adotar a divisão
+dinâmica descrita adiante.
+
 ## Random Prefixing/Salting
 
 Para evitar hotspots em chaves muito acessadas é possível habilitar um
@@ -424,10 +440,33 @@ cluster.split_partition(0, 'g')  # cria ['a','g') e ['g','m')
 A divisão apenas redireciona novas escritas; os dados existentes permanecem em
 sua localização original.
 
+Também é possível mesclar duas partições vizinhas para reduzir a fragmentação.
+Essa fusão altera apenas o mapeamento de chaves e não move registros
+automaticamente. Utilize `transfer_partition()` para realocar os itens ou deixe
+que as operações de `add_node()` ou `remove_node()` cuidem da cópia.
+
+Para mover registros entre nós utilize `transfer_partition(src, dst, pid)`. Essa
+operação é empregada automaticamente quando novas máquinas entram ou saem do
+cluster.
+
 Ao realocar dados entre nós, o cluster pode limitar a taxa de cópia. Defina
 `max_transfer_rate` (em bytes/segundo) ao criar a instância ou use
 `set_max_transfer_rate()` para ajustar dinamicamente. Isso é útil em testes para
 simular links lentos.
+
+## Adicionando e removendo nós
+
+Use `add_node()` para incluir um novo servidor no cluster. As partições são
+redistribuídas e os registros existentes são copiados para o nó recém-criado.
+Para reduzir a quantidade de máquinas utilize `remove_node(node_id)`, que
+transfere seus dados para os demais antes de desligá-lo.
+
+```python
+cluster = NodeCluster('/tmp/demo', num_nodes=2, partition_strategy='hash')
+node = cluster.add_node()
+...  # operações
+cluster.remove_node(node.node_id)
+```
 
 ## Testes
 
@@ -437,6 +476,8 @@ dependências listadas em `requirements.txt`:
 pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
+Esse comando deve ser executado sempre que novas funcionalidades forem
+implementadas ou arquivos forem modificados.
 
 ## Estrutura de arquivos
 
