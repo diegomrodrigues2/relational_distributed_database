@@ -92,6 +92,7 @@ class NodeCluster:
         self.enable_forwarding = enable_forwarding
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
+        self.partition_map: dict[int, str] = {}
         if key_ranges:
             self.ring = None
         elif partition_strategy == "hash" and replication_factor == 1 and not enable_forwarding:
@@ -115,6 +116,30 @@ class NodeCluster:
         if self.ring is not None:
             for _, _, nid in peers:
                 self.ring.add_node(nid, weight=self.partitions_per_node)
+
+        # Build initial partition map before launching nodes
+        if key_ranges is not None:
+            if all(isinstance(r, tuple) and len(r) == 2 for r in key_ranges):
+                ranges = list(key_ranges)
+            else:
+                ranges = [
+                    (key_ranges[i], key_ranges[i + 1])
+                    for i in range(len(key_ranges) - 1)
+                ]
+            self.num_partitions = len(ranges)
+            self.partition_map = {
+                i: peers[i % len(peers)][2] for i in range(self.num_partitions)
+            }
+        elif self.ring is not None and self.ring._ring:
+            self.partition_map = {
+                i: nid for i, (_, nid) in enumerate(self.ring._ring)
+            }
+            self.num_partitions = len(self.ring._ring)
+        else:
+            self.partition_map = {
+                pid: peers[pid % len(peers)][2]
+                for pid in range(self.num_partitions)
+            }
 
         for i in range(num_nodes):
             node_id = f"node_{i}"
@@ -142,6 +167,7 @@ class NodeCluster:
                     node_id,
                     peers_i,
                     self.ring,
+                    self.partition_map,
                     rf,
                     self.write_quorum,
                     self.read_quorum,
@@ -719,6 +745,7 @@ class NodeCluster:
                 node_id,
                 peers,
                 self.ring,
+                self.partition_map,
                 self.replication_factor,
                 self.write_quorum,
                 self.read_quorum,

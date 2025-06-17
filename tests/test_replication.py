@@ -100,7 +100,18 @@ class ReplicationManagerTest(unittest.TestCase):
                 peers = [("localhost", 9000), ("localhost", 9001)]
                 p = multiprocessing.Process(
                     target=run_server,
-                    args=(db_path, "localhost", 9001, "node_1", peers),
+                    args=(
+                        db_path,
+                        "localhost",
+                        9001,
+                        "node_1",
+                        peers,
+                        cluster.ring,
+                        cluster.partition_map,
+                        cluster.replication_factor,
+                        cluster.write_quorum,
+                        cluster.read_quorum,
+                    ),
                     daemon=True,
                 )
                 p.start()
@@ -137,7 +148,18 @@ class ReplicationManagerTest(unittest.TestCase):
                 peers = [("localhost", 9000), ("localhost", 9001)]
                 p = multiprocessing.Process(
                     target=run_server,
-                    args=(db_path, "localhost", 9001, "node_1", peers),
+                    args=(
+                        db_path,
+                        "localhost",
+                        9001,
+                        "node_1",
+                        peers,
+                        cluster.ring,
+                        cluster.partition_map,
+                        cluster.replication_factor,
+                        cluster.write_quorum,
+                        cluster.read_quorum,
+                    ),
                     daemon=True,
                 )
                 p.start()
@@ -173,7 +195,18 @@ class ReplicationManagerTest(unittest.TestCase):
                 peers = [("localhost", 9000), ("localhost", 9001)]
                 p = multiprocessing.Process(
                     target=run_server,
-                    args=(db_path, "localhost", 9001, "node_1", peers),
+                    args=(
+                        db_path,
+                        "localhost",
+                        9001,
+                        "node_1",
+                        peers,
+                        cluster.ring,
+                        cluster.partition_map,
+                        cluster.replication_factor,
+                        cluster.write_quorum,
+                        cluster.read_quorum,
+                    ),
                     daemon=True,
                 )
                 p.start()
