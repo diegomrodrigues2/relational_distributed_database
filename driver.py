@@ -1,6 +1,8 @@
 import time
 import random
+import grpc
 from replication import NodeCluster
+from partitioning import compose_key
 
 class Driver:
     """Interface entre usuários e o cluster garantindo certas consistências."""
@@ -17,6 +19,7 @@ class Driver:
         self.consistency_mode = consistency_mode
         self.read_your_writes_timeout = read_your_writes_timeout
         self._sessions = {}
+        self.partition_map = cluster.get_partition_map()
 
     def _get_or_create_session(self, user_id: str) -> dict:
         """Retorna a sessão existente ou cria uma nova."""
@@ -43,11 +46,26 @@ class Driver:
         """
         session = self._get_or_create_session(user_id)
         session["last_write_time"] = time.time()
-        node = session["assigned_follower"]
         if value is None:
             value = clustering_key
             clustering_key = None
-        self.cluster.put(node, partition_key, clustering_key, value)
+        pid = self.cluster.get_partition_id(partition_key, clustering_key)
+        node_id = self.partition_map.get(pid)
+        if node_id is None:
+            self.partition_map = self.cluster.get_partition_map()
+            node_id = self.partition_map.get(pid)
+        node = self.cluster.nodes_by_id[node_id]
+        key = compose_key(partition_key, clustering_key)
+        try:
+            node.client.put(key, value, node_id="")
+        except grpc.RpcError as exc:
+            if exc.code() == grpc.StatusCode.FAILED_PRECONDITION and "NotOwner" in exc.details():
+                self.partition_map = self.cluster.get_partition_map()
+                node_id = self.partition_map.get(pid)
+                node = self.cluster.nodes_by_id[node_id]
+                node.client.put(key, value, node_id="")
+            else:
+                raise
 
     def get(
         self,
@@ -57,8 +75,23 @@ class Driver:
     ):
         """Lê aplicando read-your-own-writes e leituras monotônicas."""
         session = self._get_or_create_session(user_id)
-        elapsed = time.time() - session["last_write_time"]
-        node = session["assigned_follower"]
-        if elapsed < self.read_your_writes_timeout:
-            return self.cluster.get(node, partition_key, clustering_key)
-        return self.cluster.get(node, partition_key, clustering_key)
+        pid = self.cluster.get_partition_id(partition_key, clustering_key)
+        node_id = self.partition_map.get(pid)
+        if node_id is None:
+            self.partition_map = self.cluster.get_partition_map()
+            node_id = self.partition_map.get(pid)
+        node = self.cluster.nodes_by_id[node_id]
+        key = compose_key(partition_key, clustering_key)
+        try:
+            recs = node.client.get(key)
+        except grpc.RpcError as exc:
+            if exc.code() == grpc.StatusCode.FAILED_PRECONDITION and "NotOwner" in exc.details():
+                self.partition_map = self.cluster.get_partition_map()
+                node_id = self.partition_map.get(pid)
+                node = self.cluster.nodes_by_id[node_id]
+                recs = node.client.get(key)
+            else:
+                raise
+        if not recs:
+            return None
+        return recs[0][0]

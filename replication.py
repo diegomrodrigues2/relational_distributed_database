@@ -223,6 +223,22 @@ class NodeCluster:
         self.num_partitions = len(self.ring._ring)
         self.partition_ops = [0] * self.num_partitions
 
+    def get_partition_map(self) -> dict[int, str]:
+        """Return mapping from partition id to owning node id."""
+        mapping: dict[int, str] = {}
+        if self.ring is not None and self.ring._ring:
+            for i, (_, nid) in enumerate(self.ring._ring):
+                mapping[i] = nid
+            return mapping
+        if self.key_ranges is not None:
+            for i, (_, node) in enumerate(self.partitions):
+                mapping[i] = node.node_id
+            return mapping
+        for pid in range(self.num_partitions):
+            node = self.nodes[pid % len(self.nodes)]
+            mapping[pid] = node.node_id
+        return mapping
+
     def get_partition_id(
         self, partition_key: str, clustering_key: str | None = None
     ) -> int:

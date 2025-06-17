@@ -83,7 +83,7 @@ Se um nó ficar offline, ele pode recuperar as mudanças perdidas ao reprovar o 
 - **Compactação** – remove registros obsoletos ao mesclar SSTables.
 - **Lamport Clock** – contador lógico usado para ordenar operações entre nós.
 - **Replicação multi-líder** – qualquer nó pode aceitar escritas e replicá-las para todos os outros de forma assíncrona.
-- **Driver opcional** – encaminha requisições para garantir "read your own writes".
+- **Driver opcional** – cliente consciente da topologia que mantém cache de partições.
 - **Log de replicação** – armazena operações geradas localmente até que todos os pares confirmem o recebimento.
 - **Vetor de versões** – cada nó mantém `last_seen` (origem → último contador) para aplicar cada operação exatamente uma vez.
 - **Heartbeat** – serviço `Ping` que monitora a disponibilidade dos peers.
@@ -139,6 +139,13 @@ driver.put("alice", "k", "1", "v")
 value = driver.get("alice", "k", "1")
 cluster.shutdown()
 ```
+
+### Cliente Consciente da Topologia
+
+O driver mantém um cache local do mapeamento de partições obtido com
+`get_partition_map()`. As requisições são enviadas diretamente ao nó
+responsável. Caso o nó retorne o erro `NotOwner` (por exemplo após uma
+migração de partição), o driver atualiza o cache e repete a operação.
 
 ## Topologia de replicação
 

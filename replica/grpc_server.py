@@ -35,12 +35,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return self._node.node_id
 
     def Put(self, request, context):
+        owner_id = self._owner_for_key(request.key)
         if getattr(self._node, "enable_forwarding", False):
-            owner_id = self._owner_for_key(request.key)
             if owner_id != self._node.node_id and request.node_id != owner_id:
                 client = self._node.clients_by_id.get(owner_id)
                 if client:
                     return client.stub.Put(request)
+        else:
+            if owner_id != self._node.node_id and request.node_id == "":
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
         self._node.clock.update(request.timestamp)
 
         origem = seq = None
@@ -146,12 +149,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
+        owner_id = self._owner_for_key(request.key)
         if getattr(self._node, "enable_forwarding", False):
-            owner_id = self._owner_for_key(request.key)
             if owner_id != self._node.node_id and request.node_id != owner_id:
                 client = self._node.clients_by_id.get(owner_id)
                 if client:
                     return client.stub.Delete(request)
+        else:
+            if owner_id != self._node.node_id and request.node_id == "":
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
         self._node.clock.update(request.timestamp)
 
         origem = seq = None
@@ -236,12 +242,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.Empty()
 
     def Get(self, request, context):
+        owner_id = self._owner_for_key(request.key)
         if getattr(self._node, "enable_forwarding", False):
-            owner_id = self._owner_for_key(request.key)
             if owner_id != self._node.node_id:
                 client = self._node.clients_by_id.get(owner_id)
                 if client:
                     return client.stub.Get(request)
+        else:
+            if owner_id != self._node.node_id and request.node_id == "":
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
 
         records = self._node.db.get_record(request.key)
         if not records:
@@ -261,12 +270,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.ValueResponse(values=values)
 
     def ScanRange(self, request, context):
+        owner_id = self._owner_for_key(request.partition_key)
         if getattr(self._node, "enable_forwarding", False):
-            owner_id = self._owner_for_key(request.partition_key)
             if owner_id != self._node.node_id:
                 client = self._node.clients_by_id.get(owner_id)
                 if client:
                     return client.stub.ScanRange(request)
+        else:
+            if owner_id != self._node.node_id and request.node_id == "":
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
 
         items = self._node.db.scan_range(
             request.partition_key, request.start_ck, request.end_ck
