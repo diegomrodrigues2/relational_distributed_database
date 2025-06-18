@@ -100,6 +100,11 @@ class GRPCReplicaClient:
         req = replication_pb2.FetchRequest(vector=vv, ops=ops, segment_hashes=hashes, trees=trees)
         return self.stub.FetchUpdates(req)
 
+    def update_partition_map(self, mapping: dict[int, str] | None):
+        """Send a new partition map to the replica."""
+        req = replication_pb2.PartitionMap(items=mapping or {})
+        self.stub.UpdatePartitionMap(req)
+
     def ping(self, node_id: str = ""):
         """Send a heartbeat ping to the remote peer."""
         req = replication_pb2.Heartbeat(node_id=node_id)

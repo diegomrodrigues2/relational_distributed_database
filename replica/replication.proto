@@ -71,6 +71,11 @@ message VersionVector {
   map<string, int64> items = 1;
 }
 
+// Mapear id da partição para o node owner
+message PartitionMap {
+  map<int32, string> items = 1;
+}
+
 // Node in a Merkle tree
 message MerkleNodeMsg {
   string key = 1;
@@ -117,6 +122,7 @@ service Replica {
   rpc Get(KeyRequest) returns (ValueResponse);
   rpc ScanRange(RangeRequest) returns (RangeResponse);
   rpc FetchUpdates(FetchRequest) returns (FetchResponse);
+  rpc UpdatePartitionMap(PartitionMap) returns (Empty);
 }
 
 // Servico dedicado para heartbeat

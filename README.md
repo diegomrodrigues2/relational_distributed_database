@@ -493,6 +493,12 @@ node = cluster.add_node()
 cluster.remove_node(node.node_id)
 ```
 
+Após qualquer redistribuição o mapa de partições pode ser enviado a todos os
+nós chamando `cluster.update_partition_map()`. O serviço gRPC expõe o RPC
+`UpdatePartitionMap` que atualiza a tabela local de cada réplica. Os métodos
+`split_partition`, `add_node` e `remove_node` já executam essa chamada
+automaticamente.
+
 ## Estágio 6 – Roteamento de Requisições
 
 O cluster pode encaminhar cada requisição para o nó responsável pela partição da

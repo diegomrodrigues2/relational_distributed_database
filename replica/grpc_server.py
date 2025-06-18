@@ -377,6 +377,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         return replication_pb2.FetchResponse(ops=ops, segment_hashes=local_hashes)
 
+    def UpdatePartitionMap(self, request, context):
+        """Replace the node's partition map."""
+        new_map = dict(request.items)
+        self._node.update_partition_map(new_map)
+        return replication_pb2.Empty()
+
 
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""
