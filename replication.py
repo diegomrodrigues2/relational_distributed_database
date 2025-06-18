@@ -213,6 +213,21 @@ class NodeCluster:
                 salted = f"{i}#{key}"
                 self.put(0, salted, value)
 
+    def check_hot_keys(self, threshold: int, buckets: int) -> None:
+        """Mark keys with high access frequency as hot.
+
+        Iterates over ``key_freq`` and calls :py:meth:`mark_hot_key` for any
+        key whose counter exceeds ``threshold`` and isn't already salted.
+        The frequency counter for a key is reset once salting is enabled.
+        """
+        for comp_key, count in list(self.key_freq.items()):
+            if count >= threshold:
+                pk, _ = self._split_key_components(comp_key)
+                if pk in self.salted_keys:
+                    continue
+                self.mark_hot_key(pk, buckets)
+                self.key_freq[comp_key] = 0
+
     def set_max_transfer_rate(self, rate: int | None) -> None:
         """Configure maximum transfer rate in bytes/second."""
         self.max_transfer_rate = rate
