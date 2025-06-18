@@ -202,6 +202,17 @@ class NodeCluster:
             raise ValueError("buckets must be >= 1")
         self.salted_keys[str(key)] = int(buckets)
 
+    def mark_hot_key(self, key: str, buckets: int, migrate: bool = False) -> None:
+        """Start salting ``key`` and optionally migrate existing data."""
+        self.enable_salt(key, buckets)
+        if migrate:
+            value = self.get(0, key, ignore_salt=True)
+            if value is None:
+                return
+            for i in range(buckets):
+                salted = f"{i}#{key}"
+                self.put(0, salted, value)
+
     def set_max_transfer_rate(self, rate: int | None) -> None:
         """Configure maximum transfer rate in bytes/second."""
         self.max_transfer_rate = rate
