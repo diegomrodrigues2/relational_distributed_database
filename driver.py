@@ -21,6 +21,12 @@ class Driver:
         self._sessions = {}
         self.partition_map = cluster.get_partition_map()
 
+    def update_partition_map(self, mapping: dict[int, str] | None = None) -> None:
+        """Replace cached partition map with ``mapping`` or fetch from cluster."""
+        if mapping is None:
+            mapping = self.cluster.get_partition_map()
+        self.partition_map = dict(mapping)
+
     def _get_or_create_session(self, user_id: str) -> dict:
         """Retorna a sessão existente ou cria uma nova."""
         if user_id not in self._sessions:

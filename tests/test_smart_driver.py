@@ -57,15 +57,28 @@ class SmartDriverTest(unittest.TestCase):
                 driver.put("u", key, "v1")
                 time.sleep(0.5)
 
-                # simulate stale cache
-                driver.partition_map[pid] = other
+                # simulate partition migration to the other node
+                cluster.transfer_partition(
+                    cluster.nodes_by_id[owner],
+                    cluster.nodes_by_id[other],
+                    pid,
+                )
+                idx_owner = cluster.nodes.index(cluster.nodes_by_id[owner])
+                idx_other = cluster.nodes.index(cluster.nodes_by_id[other])
+                cluster.nodes[idx_owner], cluster.nodes[idx_other] = (
+                    cluster.nodes[idx_other],
+                    cluster.nodes[idx_owner],
+                )
+                new_map = cluster.update_partition_map()
+                time.sleep(0.5)
 
-                # driver will refresh after receiving NotOwner
+                # refresh driver's map proactively
+                driver.update_partition_map(new_map)
                 driver.put("u", key, "v2")
                 time.sleep(0.5)
 
                 k = compose_key(key)
-                recs_new = cluster.nodes_by_id[owner].client.get(k)
+                recs_new = cluster.nodes_by_id[other].client.get(k)
                 self.assertTrue(recs_new and recs_new[0][0] == "v2")
             finally:
                 cluster.shutdown()

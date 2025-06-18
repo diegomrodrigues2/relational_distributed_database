@@ -292,8 +292,8 @@ class NodeCluster:
             mapping[pid] = node.node_id
         return mapping
 
-    def update_partition_map(self) -> None:
-        """Send current partition map to all nodes via RPC."""
+    def update_partition_map(self) -> dict[int, str]:
+        """Send current partition map to all nodes via RPC and return it."""
         mapping = self.get_partition_map()
         self.partition_map = dict(mapping)
         for node in self.nodes:
@@ -301,6 +301,7 @@ class NodeCluster:
                 node.client.update_partition_map(mapping)
             except Exception:
                 pass
+        return mapping
 
     def get_partition_id(
         self, partition_key: str, clustering_key: str | None = None
