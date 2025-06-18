@@ -495,8 +495,22 @@ tempos em tempos; para cada partição que ultrapassar o limite de operações e
 tiver pelo menos `min_keys` chaves distintas acessadas, `split_partition()` será
 invocado e os contadores reiniciados com `reset_metrics()`.
 
-A divisão apenas redireciona novas escritas; os dados existentes permanecem em
-sua localização original.
+Em partições por hash a divisão apenas redireciona novas escritas e os dados
+existentes permanecem em sua localização original. Para partições de faixa,
+`split_partition` também migra automaticamente os registros que passarem a
+pertencer à nova faixa.
+
+### Reparticionamento automático de hotspots
+
+`get_partition_stats()` fornece a quantidade de operações executadas em cada
+partição. Utilize essas métricas com `check_hot_partitions()` para dividir
+automaticamente as regiões mais carregadas.
+
+```python
+stats = cluster.get_partition_stats()
+print(stats)
+cluster.check_hot_partitions(threshold=2.0, min_keys=3)
+```
 
 Também é possível mesclar duas partições vizinhas para reduzir a fragmentação.
 Essa fusão altera apenas o mapeamento de chaves e não move registros
