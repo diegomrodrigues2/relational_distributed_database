@@ -6,6 +6,7 @@ import json
 import os
 from bisect import bisect_right
 from concurrent import futures
+from collections import OrderedDict
 
 import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
@@ -87,6 +88,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     json.dumps(crdt.to_dict()),
                     vector_clock=new_vc,
                 )
+                self._node._cache_delete(request.key)
             elif mode in ("vector", "crdt"):
                 versions = self._node.db.get_record(request.key)
                 dominated = False
@@ -101,6 +103,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         request.value,
                         vector_clock=new_vc,
                     )
+                    self._node._cache_delete(request.key)
                 else:
                     apply_update = False
             else:  # lww
@@ -116,6 +119,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         request.value,
                         timestamp=int(request.timestamp),
                     )
+                    self._node._cache_delete(request.key)
                 else:
                     apply_update = False
 
@@ -198,6 +202,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         break
                 if not dominated:
                     self._node.db.delete(request.key, vector_clock=new_vc)
+                    self._node._cache_delete(request.key)
                 else:
                     apply_update = False
             else:  # lww
@@ -209,6 +214,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         latest_ts = ts_val
                 if int(request.timestamp) >= latest_ts:
                     self._node.db.delete(request.key, timestamp=int(request.timestamp))
+                    self._node._cache_delete(request.key)
                 else:
                     apply_update = False
 
@@ -257,7 +263,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if client:
                 return client.stub.Get(request)
 
-        records = self._node.db.get_record(request.key)
+        records = self._node._cache_get(request.key)
+        if records is None:
+            records = self._node.db.get_record(request.key)
+            if records:
+                self._node._cache_set(request.key, records)
         if not records:
             return replication_pb2.ValueResponse(values=[])
 
@@ -422,6 +432,7 @@ class NodeServer:
         max_batch_size: int = 50,
         crdt_config: dict | None = None,
         enable_forwarding: bool = False,
+        cache_size: int = 0,
     ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
@@ -439,6 +450,8 @@ class NodeServer:
         self.consistency_mode = consistency_mode
         self.crdt_config = crdt_config or {}
         self.enable_forwarding = bool(enable_forwarding)
+        self.cache_size = int(cache_size)
+        self.cache = OrderedDict() if self.cache_size > 0 else None
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         self.service = ReplicaService(self)
@@ -528,6 +541,30 @@ class NodeServer:
             (c.host, c.port, f"{c.host}:{c.port}", c)
             for c in self.peer_clients
         ]
+
+    # cache helpers ------------------------------------------------
+    def _cache_get(self, key):
+        if self.cache is None:
+            return None
+        if key in self.cache:
+            val = self.cache.pop(key)
+            self.cache[key] = val
+            return val
+        return None
+
+    def _cache_set(self, key, records):
+        if self.cache is None:
+            return
+        if key in self.cache:
+            self.cache.pop(key)
+        self.cache[key] = records
+        if len(self.cache) > self.cache_size:
+            self.cache.popitem(last=False)
+
+    def _cache_delete(self, key):
+        if self.cache is None:
+            return
+        self.cache.pop(key, None)
 
     # persistence helpers ------------------------------------------------
     def _last_seen_file(self) -> str:
