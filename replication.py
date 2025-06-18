@@ -292,6 +292,16 @@ class NodeCluster:
             mapping[pid] = node.node_id
         return mapping
 
+    def update_partition_map(self) -> None:
+        """Send current partition map to all nodes via RPC."""
+        mapping = self.get_partition_map()
+        self.partition_map = dict(mapping)
+        for node in self.nodes:
+            try:
+                node.client.update_partition_map(mapping)
+            except Exception:
+                pass
+
     def get_partition_id(
         self, partition_key: str, clustering_key: str | None = None
     ) -> int:
@@ -609,6 +619,7 @@ class NodeCluster:
             # simply increase logical partitions
             self.num_partitions += 1
             self.partition_ops.append(0)
+            self.update_partition_map()
             return
         if self.key_ranges is None:
             raise ValueError("range partitions not configured")
@@ -645,6 +656,8 @@ class NodeCluster:
         new_pid = pid + 1
         if new_node is not node:
             self.transfer_partition(node, new_node, new_pid)
+
+        self.update_partition_map()
 
     def _split_key_components(self, key: str) -> tuple[str, str | None]:
         if "|" in key:
@@ -816,6 +829,7 @@ class NodeCluster:
                     self.transfer_partition(nd, target, i)
                 new_parts.append((rng, target))
             self.partitions = new_parts
+        self.update_partition_map()
         return node
 
     def remove_node(self, node_id: str) -> None:
@@ -857,6 +871,8 @@ class NodeCluster:
                     self.transfer_partition(nd, new_target, i)
                 new_parts.append((rng, new_target))
             self.partitions = new_parts
+
+        self.update_partition_map()
 
 
     def shutdown(self):
