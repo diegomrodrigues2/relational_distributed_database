@@ -109,6 +109,7 @@ class NodeCluster:
         else:
             self.num_partitions = 0
             self.partition_ops = []
+        self.key_freq: dict[str, int] = {}
         peers = [
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
@@ -202,6 +203,23 @@ class NodeCluster:
     def set_max_transfer_rate(self, rate: int | None) -> None:
         """Configure maximum transfer rate in bytes/second."""
         self.max_transfer_rate = rate
+
+    def reset_metrics(self) -> None:
+        """Reset partition and key frequency counters."""
+        self.partition_ops = [0] * self.num_partitions
+        self.key_freq = {}
+
+    def get_hot_partitions(self, threshold: float = 2.0) -> list[int]:
+        """Return ids of partitions with ops above ``threshold`` times the average."""
+        if not self.partition_ops:
+            return []
+        avg = sum(self.partition_ops) / len(self.partition_ops)
+        limit = avg * threshold
+        return [i for i, cnt in enumerate(self.partition_ops) if cnt > limit]
+
+    def get_hot_keys(self, top_n: int = 5) -> list[str]:
+        """Return most frequently accessed keys."""
+        return [k for k, _ in sorted(self.key_freq.items(), key=lambda kv: kv[1], reverse=True)[:top_n]]
 
     def get_node_for_key(
         self, partition_key: str, clustering_key: str | None = None
@@ -335,6 +353,7 @@ class NodeCluster:
             prefix = random.randint(0, buckets - 1)
             partition_key = f"{prefix}#{partition_key}"
         composed_key = compose_key(partition_key, clustering_key)
+        self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
         node = self._coordinator(partition_key, clustering_key)
         node.put(composed_key, value)
         pid = self._pid_for_key(partition_key, clustering_key)
@@ -354,6 +373,7 @@ class NodeCluster:
         single combined key as ``partition_key``.
         """
         composed_key = compose_key(partition_key, clustering_key)
+        self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
         node = self._coordinator(partition_key, clustering_key)
         node.delete(composed_key)
         pid = self._pid_for_key(partition_key, clustering_key)
@@ -413,6 +433,7 @@ class NodeCluster:
                 return [(val, vc.clock) for val, vc in merged]
 
         composed_key = compose_key(partition_key, clustering_key)
+        self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
         if self.partition_strategy == "hash":
             node = self._coordinator(partition_key, clustering_key)
             recs = node.client.get(composed_key)

@@ -433,6 +433,24 @@ cluster.put(0, 'hotkey', 'value')
 print(cluster.get(1, 'hotkey'))
 ```
 
+## Métricas de Hotspots
+
+A classe `NodeCluster` mantém contadores de operações por partição
+(`partition_ops`) e de frequência de acesso por chave (`key_freq`).
+Chame `reset_metrics()` para zerar esses valores.
+
+Use `get_hot_partitions(threshold=2.0)` para listar as partições cuja
+contagem de operações ultrapassa `threshold` vezes a média. O método
+`get_hot_keys(top_n=5)` retorna as chaves mais acessadas.
+
+```python
+cluster.reset_metrics()
+for _ in range(10):
+    cluster.put(0, 'hot', 'x')
+print(cluster.get_hot_partitions())
+print(cluster.get_hot_keys())
+```
+
 ## Divisão de Partições
 
 Quando uma faixa se torna muito movimentada é possível dividi-la manualmente
