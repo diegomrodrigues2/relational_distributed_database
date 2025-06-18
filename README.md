@@ -451,6 +451,18 @@ print(cluster.get_hot_partitions())
 print(cluster.get_hot_keys())
 ```
 
+## Balanceamento de leituras
+
+Para distribuir consultas entre as réplicas defina `load_balance_reads=True`
+ao criar o cluster. O método `get` escolherá aleatoriamente um dos nós
+preferidos retornados pelo anel de hash.
+
+```python
+cluster = NodeCluster('/tmp/lb', num_nodes=3,
+                      replication_factor=3, read_quorum=1,
+                      load_balance_reads=True)
+```
+
 ## Divisão de Partições
 
 Quando uma faixa se torna muito movimentada é possível dividi-la manualmente
