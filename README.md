@@ -562,6 +562,19 @@ driver.put('u', 'key', 'valor')
 print(driver.get('u', 'key'))
 ```
 
+### Atualização de mapeamento
+
+Caso uma partição seja dividida ou o cluster passe por um rebalanceamento,
+execute `cluster.update_partition_map()` para distribuir o novo mapa a todas as
+réplicas pelo RPC `UpdatePartitionMap`. O método retorna o dicionário de
+partições, permitindo que drivers ou roteadores atualizem seu cache:
+
+```python
+cluster.split_partition(0, "g")
+mapping = cluster.update_partition_map()
+driver.update_partition_map(mapping)  # ou router.update_partition_map(mapping)
+```
+
 ### Testes do estágio
 
 Execute apenas os testes de roteamento e do driver:
