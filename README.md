@@ -475,14 +475,76 @@ node = cluster.add_node()
 cluster.remove_node(node.node_id)
 ```
 
-## Nó Coordenador (forwarding)
+## Estágio 6 – Roteamento de Requisições
+
+O cluster pode encaminhar cada requisição para o nó responsável pela partição da
+chave de três maneiras distintas.
+
+### Nó coordenador (forwarding)
 
 Um cliente pode contatar qualquer nó do cluster. Se o servidor que recebeu a
-requisição não for o responsável pela partição da chave, ele pode encaminhar a
-operação para o dono correto usando o hash ring (ou tabela de faixas) e retornar
-o resultado. Essa capacidade é opcional e habilitada ao inicializar o
-`NodeCluster` com `enable_forwarding=True`. Assim a aplicação não precisa
-conhecer previamente qual nó detém a partição.
+requisição não for o dono da partição, ele reencaminhará a operação
+automaticamente e retornará o resultado. Basta criar o `NodeCluster` com
+`enable_forwarding=True`.
+
+```python
+cluster = NodeCluster('/tmp/fwd', num_nodes=3,
+                      partition_strategy='hash',
+                      enable_forwarding=True)
+import random
+node = random.choice(cluster.nodes)
+node.client.put('key', 'valor')
+```
+
+### Roteador dedicado
+
+Outra opção é executar um serviço separado que conheça o mapeamento das
+partições e apenas repasse as operações para os nós corretos.
+
+```python
+class Router:
+    def __init__(self, cluster):
+        self.cluster = cluster
+
+    def _client_for(self, key):
+        pid = self.cluster.get_partition_id(key)
+        owner = self.cluster.get_partition_map()[pid]
+        return self.cluster.nodes_by_id[owner].client
+
+    def put(self, key, value):
+        self._client_for(key).put(key, value)
+
+    def get(self, key):
+        recs = self._client_for(key).get(key)
+        return recs[0][0] if recs else None
+
+cluster = NodeCluster('/tmp/router', num_nodes=3,
+                      partition_strategy='hash')
+router = Router(cluster)
+router.put('other', 'v')
+print(router.get('other'))
+```
+
+### Cliente consciente
+
+O `Driver` mantém em cache o mapa de partições e atualiza-o sempre que recebe um
+erro `NotOwner`.
+
+```python
+cluster = NodeCluster('/tmp/driver', num_nodes=3,
+                      partition_strategy='hash', enable_forwarding=False)
+driver = Driver(cluster)
+driver.put('u', 'key', 'valor')
+print(driver.get('u', 'key'))
+```
+
+### Testes do estágio
+
+Execute apenas os testes de roteamento e do driver:
+
+```bash
+python -m unittest tests/test_routing.py tests/test_smart_driver.py -v
+```
 
 ## Testes
 
