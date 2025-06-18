@@ -245,6 +245,24 @@ class NodeCluster:
         limit = avg * threshold
         return [i for i, cnt in enumerate(self.partition_ops) if cnt > limit]
 
+    def check_hot_partitions(self, threshold: float = 2.0, min_keys: int = 2) -> None:
+        """Split partitions with heavy traffic involving many different keys.
+
+        Calls :py:meth:`split_partition` for each hot partition with at least
+        ``min_keys`` accessed keys since the last metric reset. After a
+        successful split the metrics are cleared via :py:meth:`reset_metrics`.
+        """
+        candidates = self.get_hot_partitions(threshold)
+        for pid in candidates:
+            seen = set()
+            for comp_key in self.key_freq:
+                pk, ck = self._split_key_components(comp_key)
+                if self.get_partition_id(pk, ck) == pid:
+                    seen.add(comp_key)
+            if len(seen) >= min_keys:
+                self.split_partition(pid)
+                self.reset_metrics()
+
     def get_hot_keys(self, top_n: int = 5) -> list[str]:
         """Return most frequently accessed keys."""
         return [k for k, _ in sorted(self.key_freq.items(), key=lambda kv: kv[1], reverse=True)[:top_n]]

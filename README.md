@@ -489,6 +489,12 @@ faixas. Sem parâmetro, um ponto médio aproximado é utilizado.
 cluster.split_partition(0, 'g')  # cria ['a','g') e ['g','m')
 ```
 
+Também é possível deixar que o cluster monitore as métricas e execute a divisão
+automaticamente. Chame `check_hot_partitions(threshold=2.0, min_keys=2)` de
+tempos em tempos; para cada partição que ultrapassar o limite de operações e
+tiver pelo menos `min_keys` chaves distintas acessadas, `split_partition()` será
+invocado e os contadores reiniciados com `reset_metrics()`.
+
 A divisão apenas redireciona novas escritas; os dados existentes permanecem em
 sua localização original.
 
