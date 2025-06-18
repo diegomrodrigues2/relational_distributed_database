@@ -249,6 +249,10 @@ class NodeCluster:
         """Return most frequently accessed keys."""
         return [k for k, _ in sorted(self.key_freq.items(), key=lambda kv: kv[1], reverse=True)[:top_n]]
 
+    def get_partition_stats(self) -> dict[int, int]:
+        """Return a mapping pid -> operation count."""
+        return {i: cnt for i, cnt in enumerate(self.partition_ops)}
+
     def get_node_for_key(
         self, partition_key: str, clustering_key: str | None = None
     ) -> ClusterNode:

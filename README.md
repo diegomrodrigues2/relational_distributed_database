@@ -450,7 +450,9 @@ cluster.mark_hot_key('hotkey', buckets=4, migrate=True)
 
 A classe `NodeCluster` mantém contadores de operações por partição
 (`partition_ops`) e de frequência de acesso por chave (`key_freq`).
-Chame `reset_metrics()` para zerar esses valores.
+Chame `reset_metrics()` para zerar esses valores. Utilize
+`get_partition_stats()` para obter o número de operações executadas em cada
+partição.
 
 Use `get_hot_partitions(threshold=2.0)` para listar as partições cuja
 contagem de operações ultrapassa `threshold` vezes a média. O método
