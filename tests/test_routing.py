@@ -8,6 +8,7 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from replication import NodeCluster
+from partitioning import compose_key
 
 
 class CoordinatorForwardingTest(unittest.TestCase):
@@ -43,6 +44,42 @@ class CoordinatorForwardingTest(unittest.TestCase):
                 wrong_node.client.delete(key)
                 time.sleep(0.5)
                 self.assertFalse(cluster.nodes_by_id[owner_id].client.get(key))
+            finally:
+                cluster.shutdown()
+
+    def test_forwarding_scan_range(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = NodeCluster(
+                base_path=tmpdir,
+                num_nodes=3,
+                replication_factor=1,
+                partition_strategy="hash",
+                enable_forwarding=True,
+            )
+            try:
+                pkey = "route:range"
+                pid = cluster.get_partition_id(pkey)
+                owner_id = cluster.get_partition_map()[pid]
+                owner_node = cluster.nodes_by_id[owner_id]
+                wrong_node = random.choice(
+                    [n for n in cluster.nodes if n.node_id != owner_id]
+                )
+
+                for ck, val in [("a", "va"), ("b", "vb"), ("c", "vc")]:
+                    owner_node.client.put(compose_key(pkey, ck), val)
+
+                time.sleep(0.5)
+
+                owner_items = [
+                    (ck, val)
+                    for ck, val, _, _ in owner_node.client.scan_range(pkey, "a", "c")
+                ]
+                wrong_items = [
+                    (ck, val)
+                    for ck, val, _, _ in wrong_node.client.scan_range(pkey, "a", "c")
+                ]
+
+                self.assertEqual(wrong_items, owner_items)
             finally:
                 cluster.shutdown()
 
