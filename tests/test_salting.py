@@ -38,6 +38,26 @@ class SaltingTest(unittest.TestCase):
             finally:
                 cluster.shutdown()
 
+    def test_get_range_with_salted_key(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = NodeCluster(
+                base_path=tmpdir,
+                num_nodes=3,
+                replication_factor=1,
+                partition_strategy="hash",
+            )
+            cluster.enable_salt("hk", buckets=2)
+            try:
+                for ck, val in [("a", "va"), ("b", "vb"), ("c", "vc")]:
+                    cluster.put(0, "hk", ck, val)
+                    time.sleep(0.001)
+                time.sleep(0.5)
+
+                items = cluster.get_range("hk", "a", "c")
+                self.assertEqual(items, [("a", "va"), ("b", "vb"), ("c", "vc")])
+            finally:
+                cluster.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()
