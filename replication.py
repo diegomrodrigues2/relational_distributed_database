@@ -67,6 +67,7 @@ class NodeCluster:
         partitions_per_node: int = 1,
         max_transfer_rate: int | None = None,
         enable_forwarding: bool = False,
+        load_balance_reads: bool = False,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -90,6 +91,7 @@ class NodeCluster:
         self.partitions_per_node = max(1, int(partitions_per_node))
         self.max_transfer_rate = max_transfer_rate
         self.enable_forwarding = enable_forwarding
+        self.load_balance_reads = load_balance_reads
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.partition_map: dict[int, str] = {}
@@ -445,6 +447,30 @@ class NodeCluster:
 
         composed_key = compose_key(partition_key, clustering_key)
         self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
+        if self.load_balance_reads and self.ring is not None:
+            pref_nodes = self.ring.get_preference_list(
+                partition_key, self.replication_factor
+            )
+            random.shuffle(pref_nodes)
+            recs = None
+            node = None
+            for nid in pref_nodes:
+                n = self.nodes_by_id[nid]
+                try:
+                    recs = n.client.get(composed_key)
+                    node = n
+                    break
+                except Exception:
+                    continue
+            if node is None:
+                return None
+            pid = self._pid_for_key(partition_key, clustering_key)
+            if pid >= len(self.partition_ops):
+                self.partition_ops.extend([0] * (pid + 1 - len(self.partition_ops)))
+            self.partition_ops[pid] += 1
+            if merge:
+                return recs[0][0] if recs else None
+            return [(val, vc_dict) for val, ts, vc_dict in recs]
         if self.partition_strategy == "hash":
             node = self._coordinator(partition_key, clustering_key)
             recs = node.client.get(composed_key)

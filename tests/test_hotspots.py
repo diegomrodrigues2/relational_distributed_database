@@ -31,6 +31,35 @@ class HotspotMetricsTest(unittest.TestCase):
             finally:
                 cluster.shutdown()
 
+    def test_load_balanced_reads_hit_multiple_nodes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = NodeCluster(
+                base_path=tmpdir,
+                num_nodes=3,
+                replication_factor=3,
+                read_quorum=1,
+                load_balance_reads=True,
+            )
+            try:
+                cluster.put(0, "lb", "x", "v")
+                counts = {}
+                for n in cluster.nodes:
+                    orig = n.client.get
+
+                    def wrap(key, _orig=orig, nid=n.node_id):
+                        counts[nid] = counts.get(nid, 0) + 1
+                        return _orig(key)
+
+                    n.client.get = wrap
+
+                for _ in range(10):
+                    cluster.get(0, "lb", "x")
+
+                hit_nodes = [nid for nid, c in counts.items() if c > 0]
+                self.assertGreaterEqual(len(hit_nodes), 2)
+            finally:
+                cluster.shutdown()
+
     def test_hot_partition_and_key_detection(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cluster = NodeCluster(
