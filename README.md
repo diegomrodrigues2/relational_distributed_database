@@ -84,6 +84,7 @@ Se um nó ficar offline, ele pode recuperar as mudanças perdidas ao reprovar o 
 - **Lamport Clock** – contador lógico usado para ordenar operações entre nós.
 - **Replicação multi-líder** – qualquer nó pode aceitar escritas e replicá-las para todos os outros de forma assíncrona.
 - **Driver opcional** – cliente consciente da topologia que mantém cache de partições.
+- **Cache LRU opcional** – cada nó pode armazenar leituras recentes definindo `cache_size` no `NodeServer`.
 - **Log de replicação** – armazena operações geradas localmente até que todos os pares confirmem o recebimento.
 - **Vetor de versões** – cada nó mantém `last_seen` (origem → último contador) para aplicar cada operação exatamente uma vez.
 - **Heartbeat** – serviço `Ping` que monitora a disponibilidade dos peers.
@@ -598,6 +599,12 @@ cluster.split_partition(0, "g")
 mapping = cluster.update_partition_map()
 driver.update_partition_map(mapping)  # ou router.update_partition_map(mapping)
 ```
+
+### Cache de leituras
+
+Defina `cache_size` ao criar cada `NodeServer` para habilitar um cache LRU de leituras.
+As entradas são consultadas em `Get` e invalidadas em `Put` ou `Delete`. Utilize
+`cache_size=0` (padrão) para desativar o recurso.
 
 ### Testes do estágio
 
