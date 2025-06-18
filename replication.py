@@ -662,6 +662,32 @@ class NodeCluster:
 
     def get_range(self, partition_key: str, start_ck: str, end_ck: str):
         """Return a list of (clustering_key, value) for a key range."""
+        if partition_key in self.salted_keys:
+            buckets = self.salted_keys[partition_key]
+            merged: dict[str, list[tuple]] = {}
+            for i in range(buckets):
+                salted_pk = f"{i}#{partition_key}"
+                node = self._coordinator(salted_pk, start_ck)
+                items = node.client.scan_range(salted_pk, start_ck, end_ck)
+                for ck, val, ts, vc_dict in items:
+                    vc = VectorClock(vc_dict)
+                    merged.setdefault(ck, [])
+                    merged[ck] = _merge_version_lists(merged[ck], [(val, vc)])
+            result = []
+            for ck in sorted(merged):
+                versions = [v for v in merged[ck] if v[0] != TOMBSTONE]
+                if not versions:
+                    continue
+                best_val, best_vc = versions[0]
+                best_ts = best_vc.clock.get("ts", 0)
+                for val, vc in versions[1:]:
+                    cmp = vc.compare(best_vc)
+                    ts = vc.clock.get("ts", 0)
+                    if cmp == ">" or (cmp is None and ts > best_ts):
+                        best_val, best_vc, best_ts = val, vc, ts
+                result.append((ck, best_val))
+            return result
+
         node = self._coordinator(partition_key, start_ck)
         items = node.client.scan_range(partition_key, start_ck, end_ck)
         return [(ck, val) for ck, val, _, _ in items]
