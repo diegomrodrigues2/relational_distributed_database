@@ -433,6 +433,18 @@ cluster.put(0, 'hotkey', 'value')
 print(cluster.get(1, 'hotkey'))
 ```
 
+### Salting Dinâmico de Hot-Keys
+
+Em cenários nos quais uma chave torna-se "quente" apenas após certo tempo,
+é possível ativar o salting de forma dinâmica. O método
+`mark_hot_key(key, buckets, migrate=True)` passa a distribuir novas escritas
+entre ``buckets`` prefixos e pode opcionalmente migrar o valor atual para
+cada variação.
+
+```python
+cluster.mark_hot_key('hotkey', buckets=4, migrate=True)
+```
+
 ## Métricas de Hotspots
 
 A classe `NodeCluster` mantém contadores de operações por partição
