@@ -9,7 +9,12 @@ import hashlib
 import random
 import json
 from bisect import bisect_right
-from partitioning import hash_key, compose_key
+from partitioning import (
+    hash_key,
+    compose_key,
+    RangePartitioner,
+    HashPartitioner,
+)
 from dataclasses import dataclass
 from concurrent import futures
 
@@ -196,6 +201,18 @@ class NodeCluster:
         if key_ranges is not None:
             self._setup_partitions(key_ranges)
 
+        if self.ring is None:
+            if key_ranges is not None:
+                self.partitioner = RangePartitioner(key_ranges, self.nodes)
+                self.partitions = self.partitioner.partitions
+                self.key_ranges = self.partitioner.key_ranges
+            else:
+                self.partitioner = HashPartitioner(self.num_partitions, self.nodes)
+            self.partition_map = self.partitioner.get_partition_map()
+            self.update_partition_map()
+        else:
+            self.partitioner = None
+
     def enable_salt(self, key: str, buckets: int) -> None:
         """Enable random prefixing for ``key`` using ``buckets`` variants."""
         if buckets < 1:
@@ -275,6 +292,11 @@ class NodeCluster:
         self, partition_key: str, clustering_key: str | None = None
     ) -> ClusterNode:
         """Return the node responsible for ``partition_key`` based on ``key_ranges``."""
+        if self.partitioner is not None and hasattr(self.partitioner, "partitions"):
+            for (start, end), node in self.partitioner.partitions:
+                if start <= partition_key < end:
+                    return node
+            return self.partitioner.partitions[-1][1]
         if self.key_ranges is None:
             raise ValueError("key_ranges not configured")
         for (start, end), node in self.partitions:
@@ -284,6 +306,8 @@ class NodeCluster:
 
     def _range_partition_id(self, partition_key: str) -> int:
         """Return index of range partition containing ``partition_key``."""
+        if self.partitioner is not None:
+            return self.partitioner.get_partition_id(partition_key)
         if self.key_ranges is None:
             raise ValueError("key_ranges not configured")
         for i, (rng, _) in enumerate(self.partitions):
@@ -333,10 +357,8 @@ class NodeCluster:
             for i, (_, nid) in enumerate(self.ring._ring):
                 mapping[i] = nid
             return mapping
-        if self.key_ranges is not None:
-            for i, (_, node) in enumerate(self.partitions):
-                mapping[i] = node.node_id
-            return mapping
+        if self.partitioner is not None:
+            return self.partitioner.get_partition_map()
         for pid in range(self.num_partitions):
             node = self.nodes[pid % len(self.nodes)]
             mapping[pid] = node.node_id
@@ -357,42 +379,37 @@ class NodeCluster:
         self, partition_key: str, clustering_key: str | None = None
     ) -> int:
         """Return partition id for ``partition_key``."""
-        if self.partition_strategy == "hash" or self.ring is None:
-            return hash_key(partition_key) % self.num_partitions
         if self.ring and self.ring._ring:
             key_hash = hash_key(partition_key)
             hashes = [h for h, _ in self.ring._ring]
             idx = bisect_right(hashes, key_hash) % len(hashes)
             return idx
-        return 0
+        if self.partitioner is not None:
+            return self.partitioner.get_partition_id(partition_key)
+        return hash_key(partition_key) % self.num_partitions
 
     def _pid_for_key(self, partition_key: str, clustering_key: str | None = None) -> int:
-        if self.partition_strategy == "hash":
-            # Hash partitioning uses a simple modulo scheme independent of the ring
-            return hash_key(partition_key) % self.num_partitions
         if self.ring is not None:
             return self.get_partition_id(partition_key, clustering_key)
+        if self.partitioner is not None:
+            return self.partitioner.get_partition_id(partition_key)
         if self.key_ranges is not None:
             return self._range_partition_id(partition_key)
-        return self.get_partition_id(partition_key, clustering_key)
+        return hash_key(partition_key) % self.num_partitions
 
     def _coordinator(
         self, partition_key: str, clustering_key: str | None = None
     ) -> ClusterNode:
-        if self.partition_strategy == "hash":
-            pid = self.get_partition_id(partition_key, clustering_key)
-            return self.nodes[pid % len(self.nodes)]
         if self.ring is not None:
             node_id = self.ring.get_preference_list(partition_key, 1)[0]
             return self.nodes_by_id[node_id]
-        if self.key_ranges is not None:
-            return self.get_node_for_key(partition_key, clustering_key)
-        if self.ring is None:
-            h = hash_key(partition_key)
-            for (start, end), node in self.partitions:
-                if start <= h < end:
-                    return node
-            return self.partitions[-1][1]
+        pid = (
+            self.partitioner.get_partition_id(partition_key)
+            if self.partitioner is not None
+            else hash_key(partition_key) % self.num_partitions
+        )
+        node_id = self.partition_map.get(pid)
+        return self.nodes_by_id[node_id]
 
     def put(
         self,
@@ -717,47 +734,22 @@ class NodeCluster:
     def split_partition(self, pid: int, split_key: str | None = None) -> None:
         """Split a range partition creating a new one."""
         if self.partition_strategy == "hash" and self.key_ranges is None:
-            # simply increase logical partitions
-            self.num_partitions += 1
+            self.partitioner.split_partition()
+            self.num_partitions = self.partitioner.num_partitions
             self.partition_ops.append(0)
             self.update_partition_map()
             return
-        if self.key_ranges is None:
+        if self.partitioner is None:
             raise ValueError("range partitions not configured")
-        if pid < 0 or pid >= len(self.partitions):
+        if pid < 0 or pid >= len(self.partitioner.partitions):
             raise IndexError("invalid partition id")
-        (start, end), node = self.partitions[pid]
-        if split_key is None:
-            if start is None or end is None:
-                raise ValueError("split_key required for unbounded range")
-            if len(start) == 1 and len(end) == 1:
-                split_key = chr((ord(start) + ord(end)) // 2)
-            else:
-                h1 = hash_key(start)
-                h2 = hash_key(end)
-                split_key = str((h1 + h2) // 2)
-        if not (start < split_key < end):
-            raise ValueError("split_key must be within range")
-        if len(self.nodes) > len(self.partitions):
-            new_node = self.nodes[len(self.partitions)]
-        else:
-            new_node = self.nodes[(pid + 1) % len(self.nodes)]
-        new_parts = []
-        for i, (rng, nd) in enumerate(self.partitions):
-            if i == pid:
-                new_parts.append(((start, split_key), nd))
-                new_parts.append(((split_key, end), new_node))
-            else:
-                new_parts.append((rng, nd))
-        self.partitions = new_parts
-        self.key_ranges = [rng for rng, _ in new_parts]
-        self.num_partitions = len(self.partitions)
+        new_pid, old_node, new_node = self.partitioner.split_partition(pid, split_key)
+        self.partitions = self.partitioner.partitions
+        self.key_ranges = self.partitioner.key_ranges
+        self.num_partitions = self.partitioner.num_partitions
         self.partition_ops = [0] * self.num_partitions
-
-        new_pid = pid + 1
-        if new_node is not node:
-            self.transfer_partition(node, new_node, new_pid)
-
+        if new_node is not old_node:
+            self.transfer_partition(old_node, new_node, new_pid)
         self.update_partition_map()
 
     def _split_key_components(self, key: str) -> tuple[str, str | None]:
@@ -784,6 +776,8 @@ class NodeCluster:
                 return start <= pk < end
         else:
             def belongs(pk: str, ck: str | None) -> bool:
+                if self.partitioner is not None:
+                    return self.partitioner.get_partition_id(pk) == partition_id
                 return self.get_partition_id(pk, ck) == partition_id
 
         for key, versions in items.items():
@@ -841,7 +835,12 @@ class NodeCluster:
         items = self._load_node_items(src)
         for key, versions in items.items():
             pk, ck = self._split_key_components(key)
-            if self.get_partition_id(pk, ck) != pid:
+            target_pid = (
+                self.partitioner.get_partition_id(pk)
+                if self.partitioner is not None
+                else self.get_partition_id(pk, ck)
+            )
+            if target_pid != pid:
                 continue
             for val, vc in versions:
                 ts = vc.clock.get("ts", 0)
@@ -930,6 +929,10 @@ class NodeCluster:
                     self.transfer_partition(nd, target, i)
                 new_parts.append((rng, target))
             self.partitions = new_parts
+        if self.partitioner is not None:
+            self.partitioner.add_node(node)
+            if hasattr(self.partitioner, "partitions"):
+                self.partitions = self.partitioner.partitions
         self.update_partition_map()
         return node
 
@@ -972,6 +975,11 @@ class NodeCluster:
                     self.transfer_partition(nd, new_target, i)
                 new_parts.append((rng, new_target))
             self.partitions = new_parts
+
+        if self.partitioner is not None:
+            self.partitioner.remove_node(node)
+            if hasattr(self.partitioner, "partitions"):
+                self.partitions = self.partitioner.partitions
 
         self.update_partition_map()
 

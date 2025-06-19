@@ -1,4 +1,5 @@
 import hashlib
+from abc import ABC, abstractmethod
 
 
 def hash_key(key: str) -> int:
@@ -19,3 +20,137 @@ def compose_key(partition_key: str, clustering_key: str | None = None) -> str:
         return str(partition_key)
     return f"{partition_key}|{clustering_key}"
 
+
+class Partitioner(ABC):
+    """Abstract base for partitioning strategies."""
+
+    @abstractmethod
+    def get_partition_id(self, key: str) -> int:
+        """Return partition id for ``key``."""
+
+    @abstractmethod
+    def add_node(self, node) -> None:
+        """Add a node to the partitioner."""
+
+    @abstractmethod
+    def remove_node(self, node) -> None:
+        """Remove ``node`` from the partitioner."""
+
+
+class RangePartitioner(Partitioner):
+    """Range partitioning similar to systems like Bigtable and HBase."""
+
+    def __init__(self, key_ranges: list, nodes: list):
+        self.key_ranges = self._normalize_ranges(key_ranges)
+        self.nodes = nodes
+        self.partitions = [
+            (rng, self.nodes[i % len(self.nodes)])
+            for i, rng in enumerate(self.key_ranges)
+        ]
+        self.num_partitions = len(self.partitions)
+
+    def _normalize_ranges(self, key_ranges: list) -> list[tuple[str, str]]:
+        if not key_ranges:
+            raise ValueError("key_ranges cannot be empty")
+        if all(isinstance(r, tuple) and len(r) == 2 for r in key_ranges):
+            ranges = list(key_ranges)
+        else:
+            if len(key_ranges) < 2:
+                raise ValueError("key_ranges must have at least two boundaries")
+            ranges = [
+                (key_ranges[i], key_ranges[i + 1])
+                for i in range(len(key_ranges) - 1)
+            ]
+        last_end = None
+        for start, end in ranges:
+            if last_end is not None and start < last_end:
+                raise ValueError("key_ranges must be ordered and non-overlapping")
+            if start >= end:
+                raise ValueError("invalid range")
+            last_end = end
+        return ranges
+
+    def get_partition_id(self, key: str) -> int:
+        for i, (rng, _) in enumerate(self.partitions):
+            start, end = rng
+            if start <= key < end:
+                return i
+        return len(self.partitions) - 1
+
+    def add_node(self, node) -> None:
+        self.nodes.append(node)
+        self.partitions = [
+            (rng, self.nodes[i % len(self.nodes)])
+            for i, (rng, _) in enumerate(self.partitions)
+        ]
+
+    def remove_node(self, node) -> None:
+        if node in self.nodes:
+            self.nodes.remove(node)
+            if self.nodes:
+                self.partitions = [
+                    (rng, self.nodes[i % len(self.nodes)])
+                    for i, (rng, _) in enumerate(self.partitions)
+                ]
+
+    def get_partition_map(self) -> dict[int, str]:
+        return {i: n.node_id for i, (_, n) in enumerate(self.partitions)}
+
+    def split_partition(self, pid: int, split_key: str | None = None):
+        (start, end), node = self.partitions[pid]
+        if split_key is None:
+            if start is None or end is None:
+                raise ValueError("split_key required for unbounded range")
+            if len(start) == 1 and len(end) == 1:
+                split_key = chr((ord(start) + ord(end)) // 2)
+            else:
+                h1 = hash_key(start)
+                h2 = hash_key(end)
+                split_key = str((h1 + h2) // 2)
+        if not (start < split_key < end):
+            raise ValueError("split_key must be within range")
+        if len(self.nodes) > len(self.partitions):
+            new_node = self.nodes[len(self.partitions)]
+        else:
+            new_node = self.nodes[(pid + 1) % len(self.nodes)]
+        new_parts = []
+        for i, (rng, nd) in enumerate(self.partitions):
+            if i == pid:
+                new_parts.append(((start, split_key), nd))
+                new_parts.append(((split_key, end), new_node))
+            else:
+                new_parts.append((rng, nd))
+        self.partitions = new_parts
+        self.key_ranges = [rng for rng, _ in new_parts]
+        self.num_partitions = len(self.partitions)
+        return pid + 1, node, new_node
+
+
+class HashPartitioner(Partitioner):
+    """Modulo based partitioning as used in Dynamo or Cassandra."""
+
+    def __init__(self, num_partitions: int, nodes: list):
+        self.num_partitions = max(1, int(num_partitions))
+        self.nodes = nodes
+
+    def get_partition_id(self, key: str) -> int:
+        return hash_key(key) % self.num_partitions
+
+    def add_node(self, node) -> None:
+        self.nodes.append(node)
+
+    def remove_node(self, node) -> None:
+        if node in self.nodes:
+            self.nodes.remove(node)
+
+    def get_partition_map(self) -> dict[int, str]:
+        return {
+            pid: self.nodes[pid % len(self.nodes)].node_id
+            for pid in range(self.num_partitions)
+        }
+
+    def split_partition(self):
+        self.num_partitions += 1
+
+
+# TODO: ConsistentHashPartitioner for ring-based distribution
