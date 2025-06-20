@@ -1,51 +1,45 @@
+import json
+from typing import Iterable, Dict, Set, Any, List
+
 class IndexManager:
     """Simple in-memory secondary index manager."""
 
-    def __init__(self) -> None:
-        self._fields = set()
-        self._indexes = {}
-        self._records = {}
+    def __init__(self, fields: Iterable[str] | None = None) -> None:
+        self.fields = list(fields) if fields else []
+        self.indexes: Dict[str, Dict[Any, Set[str]]] = {f: {} for f in self.fields}
 
-    def register_field(self, field: str) -> None:
-        """Register ``field`` for indexing."""
-        if not field:
-            raise ValueError("field name required")
-        if field in self._fields:
+    def add_record(self, key: str, value: str) -> None:
+        if not self.fields:
             return
-        self._fields.add(field)
-        self._indexes[field] = {}
-        # Index existing records for the new field
-        for rec_id, rec in self._records.items():
-            if field in rec:
-                value = rec[field]
-                self._indexes[field].setdefault(value, set()).add(rec_id)
-
-    def add_record(self, record_id: str, record: dict) -> None:
-        """Add ``record`` with identifier ``record_id`` to indexes."""
-        if record_id in self._records:
-            self.remove_record(record_id)
-        self._records[record_id] = dict(record)
-        for field in self._fields:
-            if field in record:
-                value = record[field]
-                self._indexes[field].setdefault(value, set()).add(record_id)
-
-    def remove_record(self, record_id: str) -> None:
-        """Remove a record from indexes."""
-        record = self._records.pop(record_id, None)
-        if not record:
+        try:
+            data = json.loads(value)
+        except Exception:
             return
-        for field in self._fields:
-            if field in record:
-                value = record[field]
-                ids = self._indexes[field].get(value)
-                if ids:
-                    ids.discard(record_id)
-                    if not ids:
-                        del self._indexes[field][value]
+        for field in self.fields:
+            if field in data:
+                val = data[field]
+                idx = self.indexes.setdefault(field, {})
+                idx.setdefault(val, set()).add(key)
 
-    def query(self, field: str, value) -> set:
-        """Return set of record ids with ``field`` equal to ``value``."""
-        if field not in self._fields:
-            raise KeyError(f"Unregistered field: {field}")
-        return set(self._indexes.get(field, {}).get(value, set()))
+    def remove_record(self, key: str, value: str) -> None:
+        if not self.fields:
+            return
+        try:
+            data = json.loads(value)
+        except Exception:
+            return
+        for field in self.fields:
+            if field in data:
+                val = data[field]
+                idx = self.indexes.get(field)
+                if not idx:
+                    continue
+                keys = idx.get(val)
+                if not keys:
+                    continue
+                keys.discard(key)
+                if not keys:
+                    idx.pop(val, None)
+
+    def query(self, field: str, value: Any) -> List[str]:
+        return list(self.indexes.get(field, {}).get(value, set()))
