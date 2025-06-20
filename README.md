@@ -387,6 +387,24 @@ service.Put(replication_pb2.KeyValue(key='k2', value='{"name": "bob"}', timestam
 print(node.query_index('name', 'alice'))  # ['k1']
 ```
 
+Usando `NodeCluster`:
+
+```python
+from replication import NodeCluster
+from replica.grpc_server import NodeServer
+import json
+
+cluster = NodeCluster('/tmp/cluster_idx', num_nodes=1, index_fields=['name'])
+cluster.put(0, 'u1', json.dumps({'name': 'alice'}))
+
+# Após as operações é possível criar um `NodeServer` apontando
+# para o diretório do nó para consultar o índice
+node = NodeServer('/tmp/cluster_idx/node_0', index_fields=['name'])
+print(node.query_index('name', 'alice'))  # ['u1']
+node.db.close()
+cluster.shutdown()
+```
+
 ## Sharding e Roteamento
 
 Esta seção resume como o cluster divide os dados e encaminha as requisições. Sistemas como **HBase** utilizam partições por faixa de valores, enquanto o **Cassandra** popularizou o particionamento por hash.
