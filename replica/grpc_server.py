@@ -359,8 +359,8 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 if remote_hashes.get(seg) == h:
                     continue
                 items = [
-                    (k, json.dumps(vc.clock) + ":" + v)
-                    for k, v, vc in self._node.db.get_segment_items(seg)
+                    (k, v)
+                    for k, v, _vc in self._node.db.get_segment_items(seg)
                     if v != "__TOMBSTONE__"
                 ]
                 local_tree = build_merkle_tree(items)
@@ -946,8 +946,8 @@ class NodeServer:
         trees = []
         for seg in hashes:
             items = [
-                (k, json.dumps(vc.clock) + ":" + v)
-                for k, v, vc in self.db.get_segment_items(seg)
+                (k, v)
+                for k, v, _vc in self.db.get_segment_items(seg)
                 if v != "__TOMBSTONE__"
             ]
             root = build_merkle_tree(items)

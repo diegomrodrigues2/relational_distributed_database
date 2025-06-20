@@ -33,9 +33,9 @@ def compute_segment_hashes(db) -> Dict[str, str]:
     if hasattr(db, "memtable"):
         items = []
         for k, versions in db.memtable.get_sorted_items():
-            for val, vc in versions:
+            for val, _vc in versions:
                 if val != "__TOMBSTONE__":
-                    items.append((k, json.dumps(vc.clock) + ":" + val))
+                    items.append((k, val))
         hashes["memtable"] = merkle_root(items)
 
     if hasattr(db, "sstable_manager"):
@@ -53,7 +53,7 @@ def compute_segment_hashes(db) -> Dict[str, str]:
                             k = data.get("key")
                             v = data.get("value")
                             if v != "__TOMBSTONE__":
-                                seg_items.append((k, json.dumps(data.get("vector", {})) + ":" + v))
+                                seg_items.append((k, v))
                         except json.JSONDecodeError:
                             continue
             except FileNotFoundError:
