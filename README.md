@@ -362,6 +362,42 @@ print(cluster.get_range('user1', '000', '999'))
 cluster.shutdown()
 ```
 
+## Sharding e Roteamento
+
+Esta seção resume como o cluster divide os dados e encaminha as requisições. Sistemas como **HBase** utilizam partições por faixa de valores, enquanto o **Cassandra** popularizou o particionamento por hash.
+
+### Estratégias de particionamento
+
+- **Ranges** – defina `partition_strategy='range'` e passe `key_ranges`:
+  ```python
+  ranges = [('a', 'm'), ('m', None)]
+  cluster = NodeCluster('/tmp/range', num_nodes=2,
+                        partition_strategy='range',
+                        key_ranges=ranges)
+  ```
+- **Hash** – escolha `partition_strategy='hash'` e, opcionalmente, o número de partições:
+  ```python
+  cluster = NodeCluster('/tmp/hash', num_nodes=3,
+                        partition_strategy='hash',
+                        num_partitions=6)
+  ```
+  `num_partitions` define quantas faixas lógicas o hash cria e distribui em round-robin.
+
+### Roteamento
+
+1. Com `enable_forwarding=True` o nó receptor encaminha para o dono da partição.
+2. Um *router* dedicado usa `get_partition_map()` para escolher o destino.
+3. O `Driver` em cada cliente guarda o mapa e o atualiza após `NotOwner`.
+
+Sempre que o mapeamento muda, chame `cluster.update_partition_map()` para enviar a nova tabela às réplicas e atualizar os caches.
+
+```mermaid
+flowchart LR
+    Client --> Router
+    Router --> A["Node A\nP0"]
+    Router --> B["Node B\nP1"]
+    Router --> C["Node C\nP2"]
+```
 ## Particionamento por Faixa de Chave
 
 Também é possível distribuir as chaves manualmente por intervalos,
