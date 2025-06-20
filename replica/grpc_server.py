@@ -17,6 +17,7 @@ from lsm_db import SimpleLSMDB
 from merkle import MerkleNode, build_merkle_tree, diff_trees
 from partitioning import hash_key
 from index_manager import IndexManager
+from global_index_manager import GlobalIndexManager
 from . import replication_pb2, replication_pb2_grpc
 from .client import GRPCReplicaClient
 
@@ -475,6 +476,7 @@ class NodeServer:
         enable_forwarding: bool = False,
         cache_size: int = 0,
         index_fields: list[str] | None = None,
+        global_index_fields: list[str] | None = None,
     ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
@@ -494,8 +496,11 @@ class NodeServer:
         self.enable_forwarding = bool(enable_forwarding)
         self.cache_size = int(cache_size)
         self.cache = OrderedDict() if self.cache_size > 0 else None
-        self.index_manager = IndexManager(index_fields or [])
+        self.index_fields = list(index_fields or [])
+        self.index_manager = IndexManager(self.index_fields)
         self.index_manager.rebuild(self.db)
+        self.global_index_fields = list(global_index_fields or [])
+        self.global_index_manager = GlobalIndexManager(self.global_index_fields)
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         self.service = ReplicaService(self)
@@ -1076,6 +1081,7 @@ class NodeServer:
         self.load_replication_log()
         self.load_last_seen()
         self.load_hints()
+        self.global_index_manager.rebuild(self.db)
         self.server.start()
         if self.replication_factor > 1:
             self._start_cleanup_thread()
@@ -1130,6 +1136,7 @@ def run_server(
     partition_modulus: int | None = None,
     node_index: int | None = None,
     index_fields: list[str] | None = None,
+    global_index_fields: list[str] | None = None,
 ):
     node = NodeServer(
         db_path,
@@ -1147,5 +1154,6 @@ def run_server(
         partition_modulus=partition_modulus,
         node_index=node_index,
         index_fields=index_fields,
+        global_index_fields=global_index_fields,
     )
     node.start()
