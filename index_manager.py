@@ -1,6 +1,8 @@
 import json
+import os
 import threading
 from typing import Iterable, Any
+from sstable import TOMBSTONE
 
 
 class IndexManager:
@@ -46,3 +48,20 @@ class IndexManager:
     def query(self, field: str, value) -> list[str]:
         with self._lock:
             return list(self.indexes.get(field, {}).get(value, set()))
+
+    def rebuild(self, db) -> None:
+        """Rebuild indexes scanning all DB segments and the memtable."""
+        with self._lock:
+            self.indexes = {f: {} for f in self.fields}
+
+        # Iterate over memtable items
+        for key, value, _ in db.get_segment_items("memtable"):
+            if value != TOMBSTONE:
+                self.add_record(key, value)
+
+        # Iterate over SSTable segments
+        for _, path, _ in db.sstable_manager.sstable_segments:
+            segment_id = os.path.basename(path)
+            for key, value, _ in db.get_segment_items(segment_id):
+                if value != TOMBSTONE:
+                    self.add_record(key, value)
