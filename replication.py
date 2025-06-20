@@ -74,6 +74,7 @@ class NodeCluster:
         enable_forwarding: bool = False,
         load_balance_reads: bool = False,
         index_fields: list[str] | None = None,
+        global_index_fields: list[str] | None = None,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -105,6 +106,7 @@ class NodeCluster:
         self.enable_forwarding = enable_forwarding
         self.load_balance_reads = load_balance_reads
         self.index_fields = index_fields
+        self.global_index_fields = global_index_fields
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.partition_map: dict[int, str] = {}
@@ -194,6 +196,7 @@ class NodeCluster:
                     "partition_modulus": self.num_partitions if self.ring is None else None,
                     "node_index": i if self.ring is None else None,
                     "index_fields": self.index_fields,
+                    "global_index_fields": self.global_index_fields,
                 },
                 daemon=True,
             )
@@ -901,6 +904,7 @@ class NodeCluster:
                 "consistency_mode": self.consistency_mode,
                 "enable_forwarding": self.enable_forwarding,
                 "index_fields": self.index_fields,
+                "global_index_fields": self.global_index_fields,
             },
             daemon=True,
         )

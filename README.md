@@ -86,6 +86,7 @@ Se um nó ficar offline, ele pode recuperar as mudanças perdidas ao reprovar o 
 - **Driver opcional** – cliente consciente da topologia que mantém cache de partições.
 - **Cache LRU opcional** – cada nó pode armazenar leituras recentes definindo `cache_size` no `NodeServer`.
 - **Índices secundários opcionais** – defina `index_fields` no `NodeServer` para manter índices simples em memória.
+- **Índices globais opcionais** – defina `global_index_fields` no `NodeServer` ou `NodeCluster` para reconstruir índices globais na inicialização.
 - **Log de replicação** – armazena operações geradas localmente até que todos os pares confirmem o recebimento.
 - **Vetor de versões** – cada nó mantém `last_seen` (origem → último contador) para aplicar cada operação exatamente uma vez.
 - **Heartbeat** – serviço `Ping` que monitora a disponibilidade dos peers.
