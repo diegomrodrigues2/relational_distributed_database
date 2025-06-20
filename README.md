@@ -365,22 +365,25 @@ cluster.shutdown()
 
 ## Índices secundários
 
-Defina o parâmetro `index_fields` no `NodeServer` ou ao criar um
-`NodeCluster` para que cada nó mantenha índices simples em memória. Os
-nomes informados devem corresponder aos campos presentes nos valores
-salvos (assumindo dados em formato JSON).
-
-Ao realizar inserções ou remoções, os índices são atualizados
-automaticamente, permitindo consultas por valor de campo com
-`query_index()`.
+Para habilitar índices secundários em memória é necessário iniciar o
+`NodeServer` informando quais campos devem ser indexados:
 
 ```python
-from replica.grpc_server import NodeServer, ReplicaService
-from replica import replication_pb2
+from replica.grpc_server import NodeServer
 
 node = NodeServer('/tmp/db', index_fields=['name'])
-service = ReplicaService(node)
+```
 
+Ao iniciar, o servidor reconstrói automaticamente os índices lendo os
+dados existentes no banco. Operações de `Put` e `Delete` mantêm essas
+estruturas atualizadas. As consultas podem ser realizadas via
+`query_index()`:
+
+```python
+from replica.grpc_server import ReplicaService
+from replica import replication_pb2
+
+service = ReplicaService(node)
 service.Put(replication_pb2.KeyValue(key='k1', value='{"name": "alice"}', timestamp=1), None)
 service.Put(replication_pb2.KeyValue(key='k2', value='{"name": "bob"}', timestamp=2), None)
 
