@@ -16,6 +16,7 @@ from vector_clock import VectorClock
 from lsm_db import SimpleLSMDB
 from merkle import MerkleNode, build_merkle_tree, diff_trees
 from partitioning import hash_key
+from index_manager import IndexManager
 from . import replication_pb2, replication_pb2_grpc
 from .client import GRPCReplicaClient
 
@@ -73,6 +74,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             else:
                 new_vc = VectorClock({"ts": int(request.timestamp)})
 
+            existing = self._node.db.get(request.key)
+            if isinstance(existing, list):
+                for val in existing:
+                    self._node.index_manager.remove_record(request.key, val)
+            elif existing is not None:
+                self._node.index_manager.remove_record(request.key, existing)
+
             mode = self._node.consistency_mode
 
             if mode == "crdt" and request.key in self._node.crdts:
@@ -89,6 +97,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     vector_clock=new_vc,
                 )
                 self._node._cache_delete(request.key)
+                self._node.index_manager.add_record(request.key, json.dumps(crdt.to_dict()))
             elif mode in ("vector", "crdt"):
                 versions = self._node.db.get_record(request.key)
                 dominated = False
@@ -104,6 +113,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         vector_clock=new_vc,
                     )
                     self._node._cache_delete(request.key)
+                    self._node.index_manager.add_record(request.key, request.value)
                 else:
                     apply_update = False
             else:  # lww
@@ -120,6 +130,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         timestamp=int(request.timestamp),
                     )
                     self._node._cache_delete(request.key)
+                    self._node.index_manager.add_record(request.key, request.value)
                 else:
                     apply_update = False
 
@@ -190,6 +201,8 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             else:
                 new_vc = VectorClock({"ts": int(request.timestamp)})
 
+            existing = self._node.db.get(request.key)
+
             mode = self._node.consistency_mode
 
             if mode in ("vector", "crdt"):
@@ -203,6 +216,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 if not dominated:
                     self._node.db.delete(request.key, vector_clock=new_vc)
                     self._node._cache_delete(request.key)
+                    if isinstance(existing, list):
+                        for val in existing:
+                            self._node.index_manager.remove_record(request.key, val)
+                    elif existing is not None:
+                        self._node.index_manager.remove_record(request.key, existing)
                 else:
                     apply_update = False
             else:  # lww
@@ -215,6 +233,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 if int(request.timestamp) >= latest_ts:
                     self._node.db.delete(request.key, timestamp=int(request.timestamp))
                     self._node._cache_delete(request.key)
+                    if isinstance(existing, list):
+                        for val in existing:
+                            self._node.index_manager.remove_record(request.key, val)
+                    elif existing is not None:
+                        self._node.index_manager.remove_record(request.key, existing)
                 else:
                     apply_update = False
 
@@ -433,6 +456,7 @@ class NodeServer:
         crdt_config: dict | None = None,
         enable_forwarding: bool = False,
         cache_size: int = 0,
+        index_fields: list[str] | None = None,
     ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
@@ -452,6 +476,7 @@ class NodeServer:
         self.enable_forwarding = bool(enable_forwarding)
         self.cache_size = int(cache_size)
         self.cache = OrderedDict() if self.cache_size > 0 else None
+        self.index_manager = IndexManager(index_fields or [])
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         self.service = ReplicaService(self)
@@ -1081,6 +1106,7 @@ def run_server(
     enable_forwarding: bool = False,
     partition_modulus: int | None = None,
     node_index: int | None = None,
+    index_fields: list[str] | None = None,
 ):
     node = NodeServer(
         db_path,
@@ -1097,5 +1123,6 @@ def run_server(
         enable_forwarding=enable_forwarding,
         partition_modulus=partition_modulus,
         node_index=node_index,
+        index_fields=index_fields,
     )
     node.start()
