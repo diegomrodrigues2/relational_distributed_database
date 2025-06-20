@@ -555,6 +555,10 @@ class NodeServer:
         """Update the cached partition map."""
         self.partition_map = new_map or {}
 
+    def query_index(self, field: str, value):
+        """Return keys matching field/value in the secondary index."""
+        return self.index_manager.query(field, value)
+
     def _iter_peers(self):
         """Yield tuples of (host, port, node_id, client) for all peers."""
         if self.clients_by_id:
