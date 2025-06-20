@@ -363,6 +363,30 @@ print(cluster.get_range('user1', '000', '999'))
 cluster.shutdown()
 ```
 
+## Índices secundários
+
+Defina o parâmetro `index_fields` no `NodeServer` ou ao criar um
+`NodeCluster` para que cada nó mantenha índices simples em memória. Os
+nomes informados devem corresponder aos campos presentes nos valores
+salvos (assumindo dados em formato JSON).
+
+Ao realizar inserções ou remoções, os índices são atualizados
+automaticamente, permitindo consultas por valor de campo com
+`query_index()`.
+
+```python
+from replica.grpc_server import NodeServer, ReplicaService
+from replica import replication_pb2
+
+node = NodeServer('/tmp/db', index_fields=['name'])
+service = ReplicaService(node)
+
+service.Put(replication_pb2.KeyValue(key='k1', value='{"name": "alice"}', timestamp=1), None)
+service.Put(replication_pb2.KeyValue(key='k2', value='{"name": "bob"}', timestamp=2), None)
+
+print(node.query_index('name', 'alice'))  # ['k1']
+```
+
 ## Sharding e Roteamento
 
 Esta seção resume como o cluster divide os dados e encaminha as requisições. Sistemas como **HBase** utilizam partições por faixa de valores, enquanto o **Cassandra** popularizou o particionamento por hash.
@@ -681,6 +705,8 @@ dependências listadas em `requirements.txt`:
 pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
+Também é possível simplesmente executar `python -m unittest` para
+rodar a suíte padrão de testes.
 Esse comando deve ser executado sempre que novas funcionalidades forem
 implementadas ou arquivos forem modificados.
 
