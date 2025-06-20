@@ -101,3 +101,22 @@ class Driver:
         if not recs:
             return None
         return recs[0][0]
+
+    def secondary_query(self, field: str, value) -> list[str]:
+        """Query secondary indexes across the cluster.
+
+        Due to asynchronous replication, results may be stale or
+        inconsistent across nodes."""
+        results: set[str] = set()
+        def _call(node):
+            try:
+                return node.client.list_by_index(field, value)
+            except grpc.RpcError:
+                return []
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor() as ex:
+            for keys in ex.map(_call, self.cluster.nodes_by_id.values()):
+                results.update(keys)
+        return sorted(results)

@@ -88,6 +88,11 @@ class GRPCReplicaClient:
             )
         return results
 
+    def list_by_index(self, field: str, value) -> list[str]:
+        req = replication_pb2.IndexQuery(field=field, value=str(value))
+        resp = self.stub.ListByIndex(req)
+        return list(resp.keys)
+
     def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None, trees=None):
         """Fetch updates from peer optionally sending our pending ops, hashes and trees."""
         vv = replication_pb2.VersionVector(items=last_seen)

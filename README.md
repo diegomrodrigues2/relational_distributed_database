@@ -408,6 +408,11 @@ node.db.close()
 cluster.shutdown()
 ```
 
+Para consultar índices via RPC utilize `ListByIndex`. O `Driver`
+exponibiliza `secondary_query(campo, valor)` que executa a chamada em
+todos os nós retornando a união das chaves. Como a replicação é
+assíncrona, os resultados podem estar desatualizados.
+
 ## Sharding e Roteamento
 
 Esta seção resume como o cluster divide os dados e encaminha as requisições. Sistemas como **HBase** utilizam partições por faixa de valores, enquanto o **Cassandra** popularizou o particionamento por hash.
