@@ -75,12 +75,6 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 new_vc = VectorClock({"ts": int(request.timestamp)})
 
             existing = self._node.db.get(request.key)
-            if isinstance(existing, list):
-                for val in existing:
-                    self._node.index_manager.remove_record(request.key, val)
-            elif existing is not None:
-                self._node.index_manager.remove_record(request.key, existing)
-
             mode = self._node.consistency_mode
 
             if mode == "crdt" and request.key in self._node.crdts:
@@ -91,6 +85,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     other_data = {}
                 other = type(crdt).from_dict(request.node_id, other_data)
                 crdt.merge(other)
+                if isinstance(existing, list):
+                    for val in existing:
+                        self._node.index_manager.remove_record(request.key, val)
+                elif existing is not None:
+                    self._node.index_manager.remove_record(request.key, existing)
                 self._node.db.put(
                     request.key,
                     json.dumps(crdt.to_dict()),
@@ -107,6 +106,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         dominated = True
                         break
                 if not dominated:
+                    if isinstance(existing, list):
+                        for val in existing:
+                            self._node.index_manager.remove_record(request.key, val)
+                    elif existing is not None:
+                        self._node.index_manager.remove_record(request.key, existing)
                     self._node.db.put(
                         request.key,
                         request.value,
@@ -124,6 +128,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     if ts_val > latest_ts:
                         latest_ts = ts_val
                 if int(request.timestamp) >= latest_ts:
+                    if isinstance(existing, list):
+                        for val in existing:
+                            self._node.index_manager.remove_record(request.key, val)
+                    elif existing is not None:
+                        self._node.index_manager.remove_record(request.key, existing)
                     self._node.db.put(
                         request.key,
                         request.value,
