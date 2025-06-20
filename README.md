@@ -413,6 +413,13 @@ exponibiliza `secondary_query(campo, valor)` que executa a chamada em
 todos os nós retornando a união das chaves. Como a replicação é
 assíncrona, os resultados podem estar desatualizados.
 
+As atualizações dos índices são replicadas em background para os peers.
+Assim, `Driver.secondary_query` pode não refletir escritas recentes ou até
+retornar duplicatas enquanto a anti-entropia não sincroniza todos os nós.
+O método realiza um *scatter‑gather*: envia `ListByIndex` para cada
+servidor e mescla os resultados localmente. O custo cresce de forma
+linear com o número de réplicas consultadas.
+
 ## Sharding e Roteamento
 
 Esta seção resume como o cluster divide os dados e encaminha as requisições. Sistemas como **HBase** utilizam partições por faixa de valores, enquanto o **Cassandra** popularizou o particionamento por hash.
