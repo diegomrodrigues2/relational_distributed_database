@@ -486,6 +486,7 @@ class NodeServer:
         self.cache_size = int(cache_size)
         self.cache = OrderedDict() if self.cache_size > 0 else None
         self.index_manager = IndexManager(index_fields or [])
+        self.index_manager.rebuild(self.db)
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         self.service = ReplicaService(self)
