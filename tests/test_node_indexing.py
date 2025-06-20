@@ -1,0 +1,36 @@
+import os
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from replica.grpc_server import NodeServer, ReplicaService
+from replica import replication_pb2
+
+
+class NodeIndexingTest(unittest.TestCase):
+    def test_index_insert_update_delete(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, index_fields=["age"])
+            service = ReplicaService(node)
+
+            service.Put(replication_pb2.KeyValue(key="u1", value='{"age": 30}', timestamp=1), None)
+            service.Put(replication_pb2.KeyValue(key="u2", value='{"age": 40}', timestamp=2), None)
+
+            self.assertEqual(sorted(node.query_index("age", 30)), ["u1"])
+            self.assertEqual(sorted(node.query_index("age", 40)), ["u2"])
+
+            service.Put(replication_pb2.KeyValue(key="u1", value='{"age": 31}', timestamp=3), None)
+
+            self.assertEqual(node.query_index("age", 30), [])
+            self.assertEqual(sorted(node.query_index("age", 31)), ["u1"])
+
+            service.Delete(replication_pb2.KeyRequest(key="u2", timestamp=4), None)
+            self.assertEqual(node.query_index("age", 40), [])
+
+            node.db.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
