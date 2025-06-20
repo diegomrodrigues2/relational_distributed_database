@@ -38,7 +38,11 @@ class Partitioner(ABC):
 
 
 class RangePartitioner(Partitioner):
-    """Range partitioning similar to systems like Bigtable and HBase."""
+    """Range partitioning similar to Bigtable or HBase.
+
+    Keeps keys ordered for fast range scans but may create hotspots when some
+    ranges receive disproportionate traffic.
+    """
 
     def __init__(self, key_ranges: list, nodes: list):
         self.key_ranges = self._normalize_ranges(key_ranges)
@@ -127,7 +131,11 @@ class RangePartitioner(Partitioner):
 
 
 class HashPartitioner(Partitioner):
-    """Modulo based partitioning as used in Dynamo or Cassandra."""
+    """Modulo based partitioning as used in Dynamo or Cassandra.
+
+    Provides an even key distribution but makes ordered range scans
+    inefficient since adjacent keys land on different partitions.
+    """
 
     def __init__(self, num_partitions: int, nodes: list):
         self.num_partitions = max(1, int(num_partitions))

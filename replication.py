@@ -90,6 +90,12 @@ class NodeCluster:
         self.replication_factor = replication_factor
         self.write_quorum = write_quorum or (replication_factor // 2 + 1)
         self.read_quorum = read_quorum or (replication_factor // 2 + 1)
+        # Partition strategies:
+        #   "range" - keeps keys ordered in contiguous ranges allowing efficient
+        #             scans (e.g. Bigtable/HBase). May lead to hotspots when
+        #             some ranges grow faster than others.
+        #   "hash"  - distributes keys via hashing for better balance as in
+        #             Dynamo or Cassandra, but range scans are expensive.
         self.partition_strategy = partition_strategy
         if partition_strategy not in ("range", "hash"):
             raise ValueError("invalid partition_strategy")
@@ -731,6 +737,8 @@ class NodeCluster:
         items = node.client.scan_range(partition_key, start_ck, end_ck)
         return [(ck, val) for ck, val, _, _ in items]
 
+    # See Bigtable ("Bigtable: A Distributed Storage System for Structured Data")
+    # and HBase region splitting for background on dynamic range splits.
     def split_partition(self, pid: int, split_key: str | None = None) -> None:
         """Split a range partition creating a new one."""
         if self.partition_strategy == "hash" and self.key_ranges is None:
@@ -759,6 +767,8 @@ class NodeCluster:
             pk, ck = key, None
         return pk, ck
 
+    # Partition migration approach inspired by Dynamo's data transfer during
+    # membership changes (see "Dynamo: Amazon's Highly Available Key-value Store").
     def transfer_partition(
         self, src_node: ClusterNode, dst_node: ClusterNode, partition_id: int
     ) -> None:
