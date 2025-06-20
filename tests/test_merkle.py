@@ -25,8 +25,8 @@ class MerkleUtilsTest(unittest.TestCase):
             hashes = db.segment_hashes
             self.assertNotEqual(before, hashes["memtable"])
             seg_items = [
-                (k, json.dumps(vc.clock) + ":" + v)
-                for k, v, vc in db.get_segment_items(seg_names[0])
+                (k, v)
+                for k, v, _vc in db.get_segment_items(seg_names[0])
                 if v != "__TOMBSTONE__"
             ]
             expected = merkle_root(seg_items)
@@ -49,8 +49,8 @@ class FetchUpdatesMerkleTest(unittest.TestCase):
             trees = []
             for seg in node_a.db.segment_hashes:
                 items = [
-                    (k, json.dumps(vc.clock) + ":" + v)
-                    for k, v, vc in node_a.db.get_segment_items(seg)
+                    (k, v)
+                    for k, v, _vc in node_a.db.get_segment_items(seg)
                     if v != "__TOMBSTONE__"
                 ]
                 root = build_merkle_tree(items)
@@ -82,8 +82,8 @@ class FetchUpdatesMerkleTest(unittest.TestCase):
             trees = []
             for seg in node_a.db.segment_hashes:
                 items = [
-                    (k, json.dumps(vc.clock) + ":" + v)
-                    for k, v, vc in node_a.db.get_segment_items(seg)
+                    (k, v)
+                    for k, v, _vc in node_a.db.get_segment_items(seg)
                     if v != "__TOMBSTONE__"
                 ]
                 root = build_merkle_tree(items)
