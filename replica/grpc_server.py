@@ -425,6 +425,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node.update_partition_map(new_map)
         return replication_pb2.Empty()
 
+    def ListByIndex(self, request, context):
+        """Return keys matching an index query."""
+        try:
+            value = json.loads(request.value)
+        except Exception:
+            value = request.value
+        keys = self._node.query_index(request.field, value)
+        return replication_pb2.KeyList(keys=keys)
+
 
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""

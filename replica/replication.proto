@@ -115,6 +115,17 @@ message FetchResponse {
   map<string, string> segment_hashes = 2;
 }
 
+// Query for a secondary index
+message IndexQuery {
+  string field = 1;
+  string value = 2;
+}
+
+// List of keys returned by index queries
+message KeyList {
+  repeated string keys = 1;
+}
+
 // Servico disponibilizado por cada seguidor
 service Replica {
   rpc Put(KeyValue) returns (Empty);
@@ -123,6 +134,7 @@ service Replica {
   rpc ScanRange(RangeRequest) returns (RangeResponse);
   rpc FetchUpdates(FetchRequest) returns (FetchResponse);
   rpc UpdatePartitionMap(PartitionMap) returns (Empty);
+  rpc ListByIndex(IndexQuery) returns (KeyList);
 }
 
 // Servico dedicado para heartbeat
