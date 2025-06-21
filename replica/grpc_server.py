@@ -504,7 +504,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             value = json.loads(request.value)
         except Exception:
             value = request.value
-        keys = self._node.query_index(request.field, value)
+        if request.field in getattr(self._node.global_index_manager, "fields", []):
+            keys = self._node.global_index_manager.query(request.field, value)
+        else:
+            keys = self._node.query_index(request.field, value)
         return replication_pb2.KeyList(keys=keys)
 
 
