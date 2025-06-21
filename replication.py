@@ -400,6 +400,26 @@ class NodeCluster:
             return self.partitioner.get_partition_id(partition_key)
         return hash_key(partition_key) % self.num_partitions
 
+    def get_index_owner(self, field: str, value) -> str:
+        """Return node_id responsible for index entry ``field``/``value``."""
+        key = f"idx:{field}:{value}"
+        pmap = self.partition_map or {}
+        if self.ring is not None and self.ring._ring:
+            key_hash = hash_key(key)
+            hashes = [h for h, _ in self.ring._ring]
+            idx = bisect_right(hashes, key_hash) % len(hashes)
+            return pmap.get(idx, self.ring._ring[idx][1])
+        if self.key_ranges is not None:
+            for i, (rng, node) in enumerate(self.partitions):
+                start, end = rng
+                if start <= key < end:
+                    return pmap.get(i, node.node_id)
+        if self.partitioner is not None:
+            pid = self.partitioner.get_partition_id(key)
+            return pmap.get(pid, self.nodes[pid % len(self.nodes)].node_id)
+        pid = hash_key(key) % self.num_partitions
+        return pmap.get(pid, self.nodes[pid % len(self.nodes)].node_id)
+
     def _pid_for_key(self, partition_key: str, clustering_key: str | None = None) -> int:
         if self.ring is not None:
             return self.get_partition_id(partition_key, clustering_key)

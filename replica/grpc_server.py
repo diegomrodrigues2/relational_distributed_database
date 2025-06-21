@@ -588,6 +588,12 @@ class NodeServer:
         """Return list of keys matching ``field``/``value`` in the secondary index."""
         return self.index_manager.query(field, value)
 
+    def get_index_owner(self, field: str, value) -> str:
+        """Return node_id responsible for ``field``/``value`` index key."""
+        key = f"idx:{field}:{value}"
+        # Delegate to ReplicaService logic for owner determination
+        return self.service._owner_for_key(key)
+
     def _iter_peers(self):
         """Yield tuples of (host, port, node_id, client) for all peers."""
         if self.clients_by_id:
