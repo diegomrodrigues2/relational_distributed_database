@@ -24,6 +24,24 @@ class ReplicaListByIndexTest(unittest.TestCase):
             self.assertEqual(list(resp.keys), ["k1"])
             node.db.close()
 
+    def test_service_returns_global_indexed_keys(self):
+        """ListByIndex should use the global index when querying a global field."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, global_index_fields=["tag"])
+            service = ReplicaService(node)
+
+            service.Put(
+                replication_pb2.KeyValue(
+                    key="k1", value=json.dumps({"tag": "blue"}), timestamp=1
+                ),
+                None,
+            )
+
+            req = replication_pb2.IndexQuery(field="tag", value="blue")
+            resp = service.ListByIndex(req, None)
+            self.assertEqual(list(resp.keys), ["k1"])
+            node.db.close()
+
 
 if __name__ == "__main__":
     unittest.main()
