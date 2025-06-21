@@ -32,8 +32,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def _owner_for_key(self, key: str) -> str:
         """Return node_id of partition owner for given key."""
         pmap = getattr(self._node, "partition_map", None) or {}
+        key_for_hash = key
+        if key.startswith("idx:"):
+            parts = key.split(":", 3)
+            if len(parts) >= 3:
+                key_for_hash = ":".join(parts[:3])
         if self._node.hash_ring is not None and self._node.hash_ring._ring:
-            key_hash = hash_key(key)
+            key_hash = hash_key(key_for_hash)
             hashes = [h for h, _ in self._node.hash_ring._ring]
             idx = bisect_right(hashes, key_hash) % len(hashes)
             return pmap.get(idx, self._node.hash_ring._ring[idx][1])
@@ -42,7 +47,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 if start <= key < end:
                     return pmap.get(i, self._node.range_table[i][1])
         if self._node.partition_modulus is not None and self._node.node_index is not None:
-            pid = hash_key(key) % self._node.partition_modulus
+            pid = hash_key(key_for_hash) % self._node.partition_modulus
             return pmap.get(pid, f"node_{pid % len(self._node.peers) if self._node.peers else pid}")
         return self._node.node_id
 
