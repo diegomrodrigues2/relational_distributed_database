@@ -185,6 +185,37 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     skip_id=request.node_id,
                 )
 
+                # ------------------------------------------------------------------
+                # Update global secondary indexes only once by the coordinator
+                if not request.key.startswith("idx:") and self._node.global_index_fields:
+                    try:
+                        data = json.loads(request.value)
+                    except Exception:
+                        data = None
+                    if isinstance(data, dict):
+                        for field in self._node.global_index_fields:
+                            if field not in data:
+                                continue
+                            val = data[field]
+                            idx_key = f"idx:{field}:{val}:{request.key}"
+                            owner = self._owner_for_key(f"idx:{field}:{val}")
+                            if owner == self._node.node_id:
+                                self._node.db.put(
+                                    idx_key,
+                                    "1",
+                                    timestamp=int(request.timestamp),
+                                )
+                                self._node.global_index_manager.add_entry(field, val, request.key)
+                            else:
+                                client = self._node.clients_by_id.get(owner)
+                                if client:
+                                    client.put(
+                                        idx_key,
+                                        "1",
+                                        timestamp=int(request.timestamp),
+                                        node_id=self._node.node_id,
+                                    )
+
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
@@ -291,6 +322,42 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     vector=new_vc.clock,
                     skip_id=request.node_id,
                 )
+
+                # ------------------------------------------------------------------
+                # Remove any global index entries related to this key
+                if not request.key.startswith("idx:") and self._node.global_index_fields:
+                    old_records = []
+                    if isinstance(existing, list):
+                        old_records.extend(existing)
+                    elif existing is not None:
+                        old_records.append(existing)
+                    for old_val in old_records:
+                        try:
+                            data = json.loads(old_val)
+                        except Exception:
+                            continue
+                        if not isinstance(data, dict):
+                            continue
+                        for field in self._node.global_index_fields:
+                            if field not in data:
+                                continue
+                            val = data[field]
+                            idx_key = f"idx:{field}:{val}:{request.key}"
+                            owner = self._owner_for_key(f"idx:{field}:{val}")
+                            if owner == self._node.node_id:
+                                self._node.db.delete(
+                                    idx_key,
+                                    timestamp=int(request.timestamp),
+                                )
+                                self._node.global_index_manager.remove_entry(field, val, request.key)
+                            else:
+                                client = self._node.clients_by_id.get(owner)
+                                if client:
+                                    client.delete(
+                                        idx_key,
+                                        timestamp=int(request.timestamp),
+                                        node_id=self._node.node_id,
+                                    )
 
         return replication_pb2.Empty()
 
