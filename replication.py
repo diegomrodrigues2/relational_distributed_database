@@ -26,6 +26,9 @@ from lsm_db import _merge_version_lists, SimpleLSMDB
 from sstable import TOMBSTONE
 
 
+DEFAULT_NUM_PARTITIONS = 128
+
+
 @dataclass
 class ClusterNode:
     node_id: str
@@ -119,7 +122,10 @@ class NodeCluster:
             # Use a consistent hash ring for owner determination
             self.ring = ConsistentHashRing()
         if num_partitions is None:
-            num_partitions = num_nodes
+            if partition_strategy == "hash" and self.ring is None:
+                num_partitions = DEFAULT_NUM_PARTITIONS
+            else:
+                num_partitions = num_nodes
         if self.ring is None:
             self.num_partitions = num_partitions
             self.partition_ops = [0] * self.num_partitions
@@ -968,7 +974,10 @@ class NodeCluster:
                 new_parts.append((rng, target))
             self.partitions = new_parts
         if self.partitioner is not None:
-            self.partitioner.add_node(node)
+            # ``HashPartitioner`` stores the same node list used by ``NodeCluster``.
+            # Avoid duplicating entries when adding a node.
+            if self.partitioner.nodes is not self.nodes:
+                self.partitioner.add_node(node)
             if hasattr(self.partitioner, "partitions"):
                 self.partitions = self.partitioner.partitions
         self.update_partition_map()

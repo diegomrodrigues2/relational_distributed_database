@@ -30,10 +30,17 @@ class HashPartitionAPITest(unittest.TestCase):
 
                 k1 = compose_key("alpha", "a")
                 k2 = compose_key("bravo", "a")
-                self.assertTrue(cluster.nodes[pid1].client.get(k1))
-                self.assertFalse(cluster.nodes[pid1].client.get(k2))
-                self.assertTrue(cluster.nodes[pid2].client.get(k2))
-                self.assertFalse(cluster.nodes[pid2].client.get(k1))
+                idx1 = int(cluster.partition_map[pid1].split("_")[1])
+                idx2 = int(cluster.partition_map[pid2].split("_")[1])
+                for i, n in enumerate(cluster.nodes):
+                    if i == idx1:
+                        self.assertTrue(n.client.get(k1))
+                    else:
+                        self.assertFalse(n.client.get(k1))
+                    if i == idx2:
+                        self.assertTrue(n.client.get(k2))
+                    else:
+                        self.assertFalse(n.client.get(k2))
             finally:
                 cluster.shutdown()
 
@@ -56,9 +63,10 @@ class GetRangeTest(unittest.TestCase):
 
                 pid = cluster.get_partition_id("alpha")
                 k = compose_key("alpha", "a")
-                self.assertTrue(cluster.nodes[pid].client.get(k))
+                idx = int(cluster.partition_map[pid].split("_")[1])
+                self.assertTrue(cluster.nodes[idx].client.get(k))
                 for i, n in enumerate(cluster.nodes):
-                    if i != pid:
+                    if i != idx:
                         self.assertFalse(n.client.get(k))
 
                 items = cluster.get_range("alpha", "a", "c")
