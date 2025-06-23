@@ -29,6 +29,7 @@ class RebalanceHashClusterTest(unittest.TestCase):
                 num_nodes=2,
                 replication_factor=1,
                 partition_strategy="hash",
+                num_partitions=6,
             )
             try:
                 keys = self._partition_keys(cluster)
@@ -49,6 +50,7 @@ class RebalanceHashClusterTest(unittest.TestCase):
                 num_nodes=3,
                 replication_factor=2,
                 partition_strategy="hash",
+                num_partitions=6,
             )
             try:
                 keys = self._partition_keys(cluster)

@@ -29,10 +29,19 @@ class HashPartitionTest(unittest.TestCase):
                 pid1 = cluster.get_partition_id(key1)
                 pid2 = cluster.get_partition_id(key2)
 
-                self.assertTrue(cluster.nodes[pid1].client.get(key1))
-                self.assertFalse(cluster.nodes[pid1].client.get(key2))
-                self.assertTrue(cluster.nodes[pid2].client.get(key2))
-                self.assertFalse(cluster.nodes[pid2].client.get(key1))
+                owner_idx1 = int(cluster.partition_map[pid1].split("_")[1])
+                owner_idx2 = int(cluster.partition_map[pid2].split("_")[1])
+
+                for i, node in enumerate(cluster.nodes):
+                    if i == owner_idx1:
+                        self.assertTrue(node.client.get(key1))
+                    else:
+                        self.assertFalse(node.client.get(key1))
+                for i, node in enumerate(cluster.nodes):
+                    if i == owner_idx2:
+                        self.assertTrue(node.client.get(key2))
+                    else:
+                        self.assertFalse(node.client.get(key2))
 
                 self.assertEqual(cluster.get(1, key1), "v1")
                 self.assertEqual(cluster.get(2, key2), "v2")
@@ -56,8 +65,9 @@ class HashPartitionTest(unittest.TestCase):
                 counts = [0] * 3
                 for k in keys:
                     pid = cluster.get_partition_id(k)
-                    self.assertIsNotNone(cluster.get(pid, k))
-                    counts[pid] += 1
+                    node_idx = int(cluster.partition_map[pid].split("_")[1])
+                    self.assertIsNotNone(cluster.nodes[node_idx].client.get(k))
+                    counts[node_idx] += 1
 
                 expected = len(keys) / len(counts)
                 for c in counts:

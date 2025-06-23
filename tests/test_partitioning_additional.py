@@ -57,7 +57,8 @@ class HashPartitioningBalanceTest(unittest.TestCase):
                 counts = [0] * 3
                 for k in keys:
                     pid = cluster.get_partition_id(k)
-                    counts[pid] += 1
+                    idx = int(cluster.partition_map[pid].split("_")[1])
+                    counts[idx] += 1
                 expected = len(keys) / len(counts)
                 for c in counts:
                     self.assertTrue(abs(c - expected) <= expected * 0.3)
@@ -90,8 +91,9 @@ class HotspotSaltingTest(unittest.TestCase):
                 for prefix in range(3):
                     salted = f"{prefix}#hot"
                     pid = cluster.get_partition_id(salted)
-                    if cluster.nodes[pid].client.get(salted):
-                        used.add(pid)
+                    idx = int(cluster.partition_map[pid].split("_")[1])
+                    if cluster.nodes[idx].client.get(salted):
+                        used.add(idx)
                 self.assertGreater(len(used), 1)
 
                 self.assertEqual(cluster.get(1, "hot"), "v19")
@@ -107,6 +109,7 @@ class RebalanceAddNodeTest(unittest.TestCase):
                 num_nodes=2,
                 replication_factor=1,
                 partition_strategy="hash",
+                num_partitions=6,
             )
             try:
                 keys = {}
@@ -121,6 +124,7 @@ class RebalanceAddNodeTest(unittest.TestCase):
                     cluster.put(0, k, f"v{pid}")
                 time.sleep(1)
                 cluster.add_node()
+                time.sleep(1)
                 for pid, k in keys.items():
                     val = cluster.get(0, k)
                     self.assertEqual(val, f"v{pid}")

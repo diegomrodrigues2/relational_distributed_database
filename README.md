@@ -441,6 +441,7 @@ Esta seção resume como o cluster divide os dados e encaminha as requisições.
                         num_partitions=6)
   ```
   `num_partitions` define quantas faixas lógicas o hash cria e distribui em round-robin.
+  Quando omitido, o cluster cria 128 partições por padrão (sem anel de hash).
 
 ### Roteamento
 
@@ -490,6 +491,7 @@ cluster = NodeCluster('/tmp/hash_cluster', num_nodes=3,
                       partition_strategy='hash',
                       replication_factor=1)
 ```
+Se `num_partitions` não for informado, o cluster cria 128 partições por padrão (quando não há anel de hash).
 
 Para pré-criar um número maior de partições do que nós, defina
 `num_partitions` explicitamente. As partições extras serão distribuídas em
