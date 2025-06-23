@@ -364,28 +364,16 @@ class NodeCluster:
 
     def get_partition_map(self) -> dict[int, str]:
         """Return mapping from partition id to owning node id."""
-        mapping: dict[int, str] = {}
-        if self.ring is not None and self.ring._ring:
-            for i, (_, nid) in enumerate(self.ring._ring):
-                mapping[i] = nid
-            return mapping
-        if self.partitioner is not None:
-            return self.partitioner.get_partition_map()
-        for pid in range(self.num_partitions):
-            node = self.nodes[pid % len(self.nodes)]
-            mapping[pid] = node.node_id
-        return mapping
+        return dict(self.partition_map)
 
     def update_partition_map(self) -> dict[int, str]:
         """Send current partition map to all nodes via RPC and return it."""
-        mapping = self.get_partition_map()
-        self.partition_map = dict(mapping)
         for node in self.nodes:
             try:
-                node.client.update_partition_map(mapping)
+                node.client.update_partition_map(self.partition_map)
             except Exception:
                 pass
-        return mapping
+        return dict(self.partition_map)
 
     def get_partition_id(
         self, partition_key: str, clustering_key: str | None = None
@@ -801,6 +789,7 @@ class NodeCluster:
         """Move all records for ``partition_id`` from ``src_node`` to ``dst_node``."""
         if src_node is dst_node:
             return
+        self.partition_map[partition_id] = dst_node.node_id
 
         items = self._load_node_items(src_node)
         start_ts = time.time()
@@ -897,6 +886,57 @@ class NodeCluster:
                 src.client.delete(key, timestamp=ts + 1, node_id=src.node_id)
         print(f"moved partition {pid} from {src.node_id} to {dest.node_id}")
 
+    def _rebalance_after_add(self, new_node: ClusterNode) -> None:
+        """Rebalance partitions after adding ``new_node`` for simple hash partitioning."""
+        if self.partition_strategy != "hash" or self.ring is not None:
+            return
+        counts: dict[str, int] = {n.node_id: 0 for n in self.nodes}
+        for pid, nid in self.partition_map.items():
+            counts[nid] = counts.get(nid, 0) + 1
+        num_nodes = len(self.nodes)
+        base = self.num_partitions // num_nodes
+        rem = self.num_partitions % num_nodes
+        targets = {}
+        for i, node in enumerate(self.nodes):
+            targets[node.node_id] = base + (1 if i < rem else 0)
+        need = targets[new_node.node_id] - counts.get(new_node.node_id, 0)
+        if need <= 0:
+            return
+        for node in self.nodes:
+            if node.node_id == new_node.node_id:
+                continue
+            while counts[node.node_id] > targets[node.node_id] and need > 0:
+                pid = next(pid for pid, nid in self.partition_map.items() if nid == node.node_id)
+                self.transfer_partition(node, new_node, pid)
+                self.partition_map[pid] = new_node.node_id
+                counts[node.node_id] -= 1
+                need -= 1
+
+    def _rebalance_after_remove(self, node_id: str) -> None:
+        """Rebalance partitions after removing ``node_id`` for simple hash partitioning."""
+        if self.partition_strategy != "hash" or self.ring is not None or not self.nodes:
+            return
+        removed_node = self.nodes_by_id[node_id]
+        counts: dict[str, int] = {n.node_id: 0 for n in self.nodes}
+        removed_pids = [pid for pid, nid in self.partition_map.items() if nid == node_id]
+        for pid, nid in self.partition_map.items():
+            if nid != node_id and nid in counts:
+                counts[nid] += 1
+        num_nodes = len(self.nodes)
+        base = self.num_partitions // num_nodes
+        rem = self.num_partitions % num_nodes
+        targets = {}
+        for i, node in enumerate(self.nodes):
+            targets[node.node_id] = base + (1 if i < rem else 0)
+        for node in self.nodes:
+            want = targets[node.node_id] - counts[node.node_id]
+            while want > 0 and removed_pids:
+                pid = removed_pids.pop()
+                self.transfer_partition(removed_node, node, pid)
+                self.partition_map[pid] = node.node_id
+                counts[node.node_id] += 1
+                want -= 1
+
     def add_node(self) -> ClusterNode:
         idx = len(self.nodes)
         node_id = f"node_{idx}"
@@ -952,13 +992,7 @@ class NodeCluster:
                         self.transfer_partition(self.nodes_by_id[old_owner_id], node, pid)
 
         if self.partition_strategy == "hash" and self.ring is None:
-            old_count = len(self.nodes) - 1
-            new_count = len(self.nodes)
-            for pid in range(self.num_partitions):
-                old_owner = self.nodes[pid % old_count]
-                new_owner = self.nodes[pid % new_count]
-                if old_owner is not new_owner:
-                    self.transfer_partition(old_owner, new_owner, pid)
+            self._rebalance_after_add(node)
         elif self.key_ranges is not None:
             new_parts = []
             for i, (rng, nd) in enumerate(self.partitions):
@@ -977,8 +1011,7 @@ class NodeCluster:
     def remove_node(self, node_id: str) -> None:
         if node_id not in self.nodes_by_id:
             return
-        node = self.nodes_by_id.pop(node_id)
-        old_nodes = list(self.nodes)
+        node = self.nodes_by_id[node_id]
         self.nodes = [n for n in self.nodes if n.node_id != node_id]
         if self.ring is not None:
             old_ring = list(self.ring._ring)
@@ -987,7 +1020,7 @@ class NodeCluster:
             self._rebuild_ring_partitions()
             if self.nodes:
                 for h, _ in removed_tokens:
-                    idx = next(i for i, t in enumerate(old_ring) if t[0]==h and t[1]==node_id)
+                    idx = next(i for i, t in enumerate(old_ring) if t[0] == h and t[1] == node_id)
                     prev_h = old_ring[idx - 1][0]
                     max_hash = 1 << 160
                     mid = (prev_h + h) // 2 if prev_h < h else ((prev_h + max_hash + h) // 2) % max_hash
@@ -995,16 +1028,9 @@ class NodeCluster:
                     dest_node = self.nodes_by_id[dest_id]
                     pid = self.get_partition_id(str(mid))
                     self.transfer_partition(node, dest_node, pid)
-        node.stop()
 
         if self.partition_strategy == "hash" and self.ring is None and self.nodes:
-            old_count = len(old_nodes)
-            new_count = len(self.nodes)
-            for pid in range(self.num_partitions):
-                old_owner = old_nodes[pid % old_count]
-                new_owner = self.nodes[pid % new_count]
-                if old_owner is not new_owner:
-                    self.transfer_partition(old_owner, new_owner, pid)
+            self._rebalance_after_remove(node_id)
         elif self.key_ranges is not None and self.nodes:
             new_parts = []
             for i, (rng, nd) in enumerate(self.partitions):
@@ -1019,7 +1045,9 @@ class NodeCluster:
             if hasattr(self.partitioner, "partitions"):
                 self.partitions = self.partitioner.partitions
 
+        self.nodes_by_id.pop(node_id)
         self.update_partition_map()
+        node.stop()
 
 
     def shutdown(self):
