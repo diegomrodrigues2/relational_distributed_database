@@ -780,6 +780,40 @@ class NodeCluster:
             self.transfer_partition(old_node, new_node, new_pid)
         self.update_partition_map()
 
+    def merge_partitions(self, pid1: int, pid2: int) -> None:
+        """Merge two adjacent range partitions."""
+        if self.partitioner is None:
+            raise ValueError("range partitions not configured")
+
+        if abs(pid1 - pid2) != 1:
+            raise ValueError("partitions must be adjacent")
+
+        left_pid = min(pid1, pid2)
+        right_pid = left_pid + 1
+        if right_pid >= len(self.partitioner.partitions):
+            raise IndexError("invalid partition id")
+
+        rng_left, node_left = self.partitioner.partitions[left_pid]
+        rng_right, node_right = self.partitioner.partitions[right_pid]
+
+        if rng_left[1] != rng_right[0]:
+            raise ValueError("ranges are not contiguous")
+
+        dest_id, src_id = self.partitioner.merge_partitions(left_pid)
+
+        self.partitions = self.partitioner.partitions
+        self.key_ranges = self.partitioner.key_ranges
+        self.num_partitions = self.partitioner.num_partitions
+        self.partition_ops = [0] * self.num_partitions
+
+        if dest_id != src_id:
+            src_node = self.nodes_by_id[src_id]
+            dest_node = self.nodes_by_id[dest_id]
+            self._move_range_partition(rng_right, src_node, dest_node, right_pid)
+
+        self.partition_map = self.partitioner.get_partition_map()
+        self.update_partition_map()
+
     def _split_key_components(self, key: str) -> tuple[str, str | None]:
         if "|" in key:
             pk, ck = key.split("|", 1)

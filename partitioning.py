@@ -129,6 +129,33 @@ class RangePartitioner(Partitioner):
         self.num_partitions = len(self.partitions)
         return pid + 1, node, new_node
 
+    def merge_partitions(self, left_pid: int):
+        """Merge the range at ``left_pid`` with the next partition."""
+        if left_pid < 0 or left_pid >= len(self.partitions) - 1:
+            raise IndexError("invalid partition id")
+
+        (start1, end1), node_left = self.partitions[left_pid]
+        (start2, end2), node_right = self.partitions[left_pid + 1]
+
+        if end1 != start2:
+            raise ValueError("ranges are not contiguous")
+
+        merged_range = (start1, end2)
+        new_parts = []
+        for i, (rng, nd) in enumerate(self.partitions):
+            if i == left_pid:
+                new_parts.append((merged_range, node_left))
+            elif i == left_pid + 1:
+                continue
+            else:
+                new_parts.append((rng, nd))
+
+        self.partitions = new_parts
+        self.key_ranges = [rng for rng, _ in new_parts]
+        self.num_partitions = len(self.partitions)
+
+        return node_left.node_id, node_right.node_id
+
 
 class HashPartitioner(Partitioner):
     """Modulo based partitioning as used in Dynamo or Cassandra.
