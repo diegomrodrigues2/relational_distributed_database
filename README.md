@@ -765,6 +765,35 @@ Execute apenas os testes de roteamento e do driver:
 python -m unittest tests/test_routing.py tests/test_smart_driver.py -v
 ```
 
+## Dedicated Routing Tier
+
+A standalone gRPC router can relay all client requests to the correct node.
+Start it by passing `start_router=True` when creating the cluster and connect to
+it using `GRPCRouterClient`:
+
+```python
+from replication import NodeCluster
+from replica.client import GRPCRouterClient
+
+cluster = NodeCluster('/tmp/router_cluster', num_nodes=3,
+                      partition_strategy='hash',
+                      start_router=True, router_port=7000)
+
+router = GRPCRouterClient('localhost', 7000)
+router.put('rkey', 'v1')
+print(router.get('rkey'))
+
+# rebalance or split partitions and propagate the new mapping
+import replica.replication_pb2 as pb
+new_map = cluster.update_partition_map()
+router.stub.UpdatePartitionMap(pb.PartitionMap(items=new_map))
+```
+
+This mode centralizes request routing but introduces an extra network hop and
+may become a single point of failure if only one router instance is deployed.
+Prefer it when clients cannot easily maintain the partition map or when a
+uniform entry point is required.
+
 ## Testes
 
 Execute a bateria de testes para validar o sistema. Instale antes as
