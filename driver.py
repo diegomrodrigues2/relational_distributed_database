@@ -13,11 +13,19 @@ class Driver:
         read_your_writes_timeout: int = 5,
         *,
         consistency_mode: str = "lww",
+        load_balance_reads: bool | None = None,
     ) -> None:
-        """Cria o driver e prepara o dicionário de sessões."""
+        """Cria o driver e prepara o dicionário de sessões.
+
+        :param load_balance_reads: distribui leituras entre as réplicas quando
+            ``True``. ``None`` herda a configuração do cluster.
+        """
         self.cluster = cluster
         self.consistency_mode = consistency_mode
         self.read_your_writes_timeout = read_your_writes_timeout
+        if load_balance_reads is None:
+            load_balance_reads = getattr(cluster, "load_balance_reads", False)
+        self.load_balance_reads = bool(load_balance_reads)
         self._sessions = {}
         self.partition_map = cluster.get_partition_map()
         cluster.register_driver(self)
@@ -87,18 +95,40 @@ class Driver:
         if node_id is None:
             self.partition_map = self.cluster.get_partition_map()
             node_id = self.partition_map.get(pid)
-        node = self.cluster.nodes_by_id[node_id]
+
+        candidates: list[str]
+        if self.load_balance_reads and getattr(self.cluster, "ring", None):
+            candidates = self.cluster.ring.get_preference_list(
+                partition_key, self.cluster.replication_factor
+            )
+            random.shuffle(candidates)
+        else:
+            candidates = [node_id]
+
+        recs = None
+        last_exc = None
         key = compose_key(partition_key, clustering_key)
-        try:
-            recs = node.client.get(key)
-        except grpc.RpcError as exc:
-            if exc.code() == grpc.StatusCode.FAILED_PRECONDITION and "NotOwner" in exc.details():
+        for nid in candidates:
+            node = self.cluster.nodes_by_id[nid]
+            try:
+                recs = node.client.get(key)
+                node_id = nid
+                break
+            except grpc.RpcError as exc:
+                last_exc = exc
+                if exc.code() == grpc.StatusCode.FAILED_PRECONDITION and "NotOwner" in exc.details():
+                    continue
+                else:
+                    raise
+        if recs is None:
+            if last_exc is not None and last_exc.code() == grpc.StatusCode.FAILED_PRECONDITION:
                 self.partition_map = self.cluster.get_partition_map()
                 node_id = self.partition_map.get(pid)
                 node = self.cluster.nodes_by_id[node_id]
                 recs = node.client.get(key)
             else:
-                raise
+                raise last_exc
+        
         if not recs:
             return None
         return recs[0][0]
