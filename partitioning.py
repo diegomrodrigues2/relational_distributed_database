@@ -1,5 +1,8 @@
 import hashlib
+import random
+from bisect import bisect_right
 from abc import ABC, abstractmethod
+from hash_ring import HashRing
 
 
 def hash_key(key: str) -> int:
@@ -188,4 +191,44 @@ class HashPartitioner(Partitioner):
         self.num_partitions += 1
 
 
-# TODO: ConsistentHashPartitioner for ring-based distribution
+class ConsistentHashPartitioner(Partitioner):
+    """Partitioner backed by :class:`HashRing` with random tokens."""
+
+    def __init__(self, nodes: list | None = None, *, partitions_per_node: int = 1) -> None:
+        self.ring = HashRing()
+        self.nodes: list = []
+        if nodes:
+            for node in nodes:
+                self.add_node(node, weight=partitions_per_node)
+
+    def get_partition_id(self, key: str) -> int:
+        if not self.ring._ring:
+            return 0
+        key_hash = hash_key(key)
+        hashes = [h for h, _ in self.ring._ring]
+        idx = bisect_right(hashes, key_hash) % len(hashes)
+        return idx
+
+    def add_node(self, node, weight: int = 1) -> None:
+        self.nodes.append(node)
+        replicas = []
+        for _ in range(weight):
+            token = random.getrandbits(160)
+            replicas.append((token, node.node_id))
+            self.ring._ring.append((token, node.node_id))
+        self.ring._nodes.setdefault(node.node_id, []).extend(replicas)
+        self.ring._ring.sort(key=lambda x: x[0])
+
+    def remove_node(self, node) -> None:
+        if node in self.nodes:
+            self.nodes.remove(node)
+        nid = node.node_id
+        if nid in self.ring._nodes:
+            replicas = set(self.ring._nodes.pop(nid))
+            self.ring._ring = [entry for entry in self.ring._ring if entry not in replicas]
+            self.ring._ring.sort(key=lambda x: x[0])
+
+    def get_partition_map(self) -> dict[int, str]:
+        return {i: nid for i, (_, nid) in enumerate(self.ring._ring)}
+
+
