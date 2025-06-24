@@ -135,6 +135,10 @@ class NodeCluster:
             self.num_partitions = 0
             self.partition_ops = []
         self.key_freq: dict[str, int] = {}
+        self.partition_item_counts: dict[int, int] = {
+            i: 0 for i in range(self.num_partitions)
+        }
+        self._known_keys: set[str] = set()
         peers = [
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
@@ -287,6 +291,8 @@ class NodeCluster:
         """Reset partition and key frequency counters."""
         self.partition_ops = [0] * self.num_partitions
         self.key_freq = {}
+        self.partition_item_counts = {i: 0 for i in range(self.num_partitions)}
+        self._known_keys.clear()
 
     def get_hot_partitions(self, threshold: float = 2.0) -> list[int]:
         """Return ids of partitions with ops above ``threshold`` times the average."""
@@ -313,12 +319,7 @@ class NodeCluster:
         """
         candidates = self.get_hot_partitions(threshold)
         for pid in candidates:
-            seen = set()
-            for comp_key in self.key_freq:
-                pk, ck = self._split_key_components(comp_key)
-                if self.get_partition_id(pk, ck) == pid:
-                    seen.add(comp_key)
-            if len(seen) >= min_keys:
+            if self.partition_item_counts.get(pid, 0) >= min_keys:
                 self.split_partition(pid)
                 self.reset_metrics()
 
@@ -331,16 +332,9 @@ class NodeCluster:
         pid = 0
         while pid < self.num_partitions - 1:
             if pid in cold and pid + 1 in cold:
-                seen_left = set()
-                seen_right = set()
-                for comp_key in self.key_freq:
-                    pk, ck = self._split_key_components(comp_key)
-                    pid_cur = self.get_partition_id(pk, ck)
-                    if pid_cur == pid:
-                        seen_left.add(comp_key)
-                    elif pid_cur == pid + 1:
-                        seen_right.add(comp_key)
-                if len(seen_left) <= max_keys and len(seen_right) <= max_keys:
+                left_count = self.partition_item_counts.get(pid, 0)
+                right_count = self.partition_item_counts.get(pid + 1, 0)
+                if left_count <= max_keys and right_count <= max_keys:
                     self.merge_partitions(pid, pid + 1)
                     self.reset_metrics()
                     cold = set(self.get_cold_partitions(threshold))
@@ -354,6 +348,10 @@ class NodeCluster:
     def get_partition_stats(self) -> dict[int, int]:
         """Return a mapping pid -> operation count."""
         return {i: cnt for i, cnt in enumerate(self.partition_ops)}
+
+    def get_partition_item_counts(self) -> dict[int, int]:
+        """Return a mapping pid -> item count since last reset."""
+        return {i: self.partition_item_counts.get(i, 0) for i in range(self.num_partitions)}
 
     def get_node_for_key(
         self, partition_key: str, clustering_key: str | None = None
@@ -409,6 +407,7 @@ class NodeCluster:
         ]
         self.num_partitions = len(ranges)
         self.partition_ops = [0] * self.num_partitions
+        self.partition_item_counts = {i: 0 for i in range(self.num_partitions)}
 
     def _rebuild_ring_partitions(self) -> None:
         """Recalculate partition metadata from the hash ring."""
@@ -416,6 +415,7 @@ class NodeCluster:
             return
         self.num_partitions = len(self.ring._ring)
         self.partition_ops = [0] * self.num_partitions
+        self.partition_item_counts = {i: 0 for i in range(self.num_partitions)}
 
     def get_partition_map(self) -> dict[int, str]:
         """Return mapping from partition id to owning node id."""
@@ -510,6 +510,9 @@ class NodeCluster:
         node = self._coordinator(partition_key, clustering_key)
         node.put(composed_key, value)
         pid = self._pid_for_key(partition_key, clustering_key)
+        if composed_key not in self._known_keys:
+            self.partition_item_counts[pid] = self.partition_item_counts.get(pid, 0) + 1
+            self._known_keys.add(composed_key)
         if pid >= len(self.partition_ops):
             self.partition_ops.extend([0] * (pid + 1 - len(self.partition_ops)))
         self.partition_ops[pid] += 1
@@ -530,6 +533,11 @@ class NodeCluster:
         node = self._coordinator(partition_key, clustering_key)
         node.delete(composed_key)
         pid = self._pid_for_key(partition_key, clustering_key)
+        if composed_key in self._known_keys:
+            self.partition_item_counts[pid] = max(
+                0, self.partition_item_counts.get(pid, 0) - 1
+            )
+            self._known_keys.remove(composed_key)
         if pid >= len(self.partition_ops):
             self.partition_ops.extend([0] * (pid + 1 - len(self.partition_ops)))
         self.partition_ops[pid] += 1
