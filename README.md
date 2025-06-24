@@ -591,7 +591,12 @@ print(cluster.get_hot_keys())
 
 Para distribuir consultas entre as réplicas defina `load_balance_reads=True`
 ao criar o cluster. O método `get` escolherá aleatoriamente um dos nós
-preferidos retornados pelo anel de hash.
+preferidos retornados pelo anel de hash. O `Driver` possui o mesmo
+parâmetro para habilitar o balanceamento apenas do lado do cliente:
+
+```python
+driver = Driver(cluster, load_balance_reads=True)
+```
 
 ```python
 cluster = NodeCluster('/tmp/lb', num_nodes=3,
@@ -752,6 +757,13 @@ mapping = cluster.update_partition_map()
 driver.update_partition_map(mapping)  # ou router.update_partition_map(mapping)
 ```
 
+### Atualização automática do mapa de partições
+
+O `Driver` registra-se no cluster e recebe o novo mapeamento sempre que
+`update_partition_map()` é executado. Dessa forma, ao dividir uma partição ou
+adicionar nós, basta disparar `cluster.update_partition_map()` para que todos
+os drivers conectados atualizem seu cache automaticamente.
+
 ### Cache de leituras
 
 Defina `cache_size` ao criar cada `NodeServer` para habilitar um cache LRU de leituras.
@@ -805,7 +817,11 @@ pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 Também é possível simplesmente executar `python -m unittest` para
-rodar a suíte padrão de testes.
+rodar a suíte padrão de testes. Para testar apenas as funcionalidades do
+`Driver` utilize:
+```bash
+python -m unittest tests/test_smart_driver.py -v
+```
 Esse comando deve ser executado sempre que novas funcionalidades forem
 implementadas ou arquivos forem modificados.
 
