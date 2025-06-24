@@ -1,6 +1,6 @@
 import time
 import grpc
-from . import replication_pb2, replication_pb2_grpc
+from . import replication_pb2, replication_pb2_grpc, router_pb2_grpc
 
 class GRPCReplicaClient:
     """Simple gRPC client for replica nodes."""
@@ -178,8 +178,7 @@ class GRPCRouterClient:
     def _ensure_channel(self):
         if self.channel is None:
             self.channel = grpc.insecure_channel(f"{self.host}:{self.port}")
-            # Router service implements the same Replica RPCs
-            self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
+            self.stub = router_pb2_grpc.RouterStub(self.channel)
 
     def _reset_channel(self):
         if self.channel is not None:

@@ -8,3 +8,5 @@ import sys
 
 _pb2 = import_module("replica.replication_pb2")
 sys.modules.setdefault("replication_pb2", _pb2)
+_router_pb2 = import_module("replica.router_pb2")
+sys.modules.setdefault("router_pb2", _router_pb2)

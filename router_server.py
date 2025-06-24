@@ -2,10 +2,11 @@ import grpc
 from concurrent import futures
 
 from replica import replication_pb2, replication_pb2_grpc
+from replica import router_pb2_grpc
 from replica.client import GRPCReplicaClient
 
 
-class RouterService(replication_pb2_grpc.ReplicaServicer):
+class RouterService(router_pb2_grpc.RouterServicer):
     """gRPC service forwarding requests to the correct partition owner."""
 
     def __init__(self, cluster):
@@ -62,7 +63,7 @@ def run_router(cluster, host="localhost", port=7000):
     """Launch a RouterService for ``cluster`` on the given ``host``/``port``."""
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     service = RouterService(cluster)
-    replication_pb2_grpc.add_ReplicaServicer_to_server(service, server)
+    router_pb2_grpc.add_RouterServicer_to_server(service, server)
     server.add_insecure_port(f"{host}:{port}")
     service.server = server
     server.start()

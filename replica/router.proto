@@ -1,0 +1,12 @@
+syntax = "proto3";
+package router;
+
+import "replica/replication.proto";
+
+service Router {
+  rpc Put(replication.KeyValue) returns (replication.Empty);
+  rpc Delete(replication.KeyRequest) returns (replication.Empty);
+  rpc Get(replication.KeyRequest) returns (replication.ValueResponse);
+  rpc ScanRange(replication.RangeRequest) returns (replication.RangeResponse);
+  rpc UpdatePartitionMap(replication.PartitionMap) returns (replication.Empty);
+}
