@@ -29,7 +29,10 @@ class RouterService(replication_pb2_grpc.ReplicaServicer):
         pk, ck = self._split_key(key)
         pid = self.cluster.get_partition_id(pk, ck)
         owner = self.partition_map.get(pid)
-        return self.clients_by_id[owner]
+        client = self.clients_by_id[owner]
+        # Ensure gRPC channel is initialized after forking
+        client._ensure_channel()
+        return client
 
     # RPC methods -------------------------------------------------------
     def Put(self, request, context):
