@@ -110,6 +110,32 @@ class CoordinatorForwardingTest(unittest.TestCase):
             finally:
                 cluster.shutdown()
 
+    def test_forwarding_with_replication(self):
+        """Forwarded write should reach all preference list replicas."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = NodeCluster(
+                base_path=tmpdir,
+                num_nodes=4,
+                replication_factor=3,
+                partition_strategy="hash",
+                enable_forwarding=True,
+            )
+            try:
+                key = "route:forward-rep"
+                pref_nodes = cluster.ring.get_preference_list(key, 3)
+                wrong_node = next(
+                    n for n in cluster.nodes if n.node_id not in pref_nodes
+                )
+
+                wrong_node.client.put(key, "v3")
+                time.sleep(0.5)
+
+                for nid in pref_nodes:
+                    recs = cluster.nodes_by_id[nid].client.get(key)
+                    self.assertTrue(recs and recs[0][0] == "v3")
+            finally:
+                cluster.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()

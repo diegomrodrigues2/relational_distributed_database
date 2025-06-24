@@ -185,7 +185,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     vector=new_vc.clock,
                     skip_id=(
                         request.node_id
-                        if request.node_id == self._node.node_id
+                        if request.node_id and request.node_id != self._node.node_id
                         else None
                     ),
                 )
@@ -327,7 +327,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     vector=new_vc.clock,
                     skip_id=(
                         request.node_id
-                        if request.node_id == self._node.node_id
+                        if request.node_id and request.node_id != self._node.node_id
                         else None
                     ),
                 )
@@ -966,7 +966,7 @@ class NodeServer:
             peer_list = []
             missing = []
             for node_id in pref_nodes:
-                if node_id == self.node_id:
+                if node_id == self.node_id or node_id == skip_id:
                     continue
                 client = self.clients_by_id.get(node_id)
                 if not client:
@@ -987,7 +987,12 @@ class NodeServer:
             for node_id in pref_nodes:
                 if len(peer_list) >= self.replication_factor - 1 or not missing:
                     break
-                if node_id == self.node_id or any(p[2] == node_id for p in peer_list) or node_id in missing:
+                if (
+                    node_id == self.node_id
+                    or node_id == skip_id
+                    or any(p[2] == node_id for p in peer_list)
+                    or node_id in missing
+                ):
                     continue
                 client = self.clients_by_id.get(node_id)
                 if not client or self.peer_status.get(node_id) is None:
@@ -1002,6 +1007,8 @@ class NodeServer:
             missing = []
             peers = list(self._iter_peers())
             for host, port, node_id, client in peers:
+                if node_id == skip_id:
+                    continue
                 if self.peer_status.get(node_id) is None:
                     if len(peer_list) >= self.replication_factor - 1:
                         self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
@@ -1017,7 +1024,12 @@ class NodeServer:
             for host, port, node_id, client in peers:
                 if len(peer_list) >= self.replication_factor - 1 or not missing:
                     break
-                if any(p[2] == node_id for p in peer_list) or node_id in missing or self.peer_status.get(node_id) is None:
+                if (
+                    node_id == skip_id
+                    or any(p[2] == node_id for p in peer_list)
+                    or node_id in missing
+                    or self.peer_status.get(node_id) is None
+                ):
                     continue
                 hinted = missing.pop(0)
                 peer_list.append((host, port, node_id, hinted, client))
