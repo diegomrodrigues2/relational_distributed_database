@@ -65,6 +65,11 @@ class ReplicaStub(object):
                 request_serializer=replica_dot_replication__pb2.PartitionMap.SerializeToString,
                 response_deserializer=replica_dot_replication__pb2.Empty.FromString,
                 _registered_method=True)
+        self.UpdateHashRing = channel.unary_unary(
+                '/replication.Replica/UpdateHashRing',
+                request_serializer=replica_dot_replication__pb2.HashRing.SerializeToString,
+                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                _registered_method=True)
         self.ListByIndex = channel.unary_unary(
                 '/replication.Replica/ListByIndex',
                 request_serializer=replica_dot_replication__pb2.IndexQuery.SerializeToString,
@@ -112,6 +117,12 @@ class ReplicaServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def UpdateHashRing(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ListByIndex(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -149,6 +160,11 @@ def add_ReplicaServicer_to_server(servicer, server):
             'UpdatePartitionMap': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdatePartitionMap,
                     request_deserializer=replica_dot_replication__pb2.PartitionMap.FromString,
+                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+            ),
+            'UpdateHashRing': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateHashRing,
+                    request_deserializer=replica_dot_replication__pb2.HashRing.FromString,
                     response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
             ),
             'ListByIndex': grpc.unary_unary_rpc_method_handler(
@@ -319,6 +335,33 @@ class Replica(object):
             target,
             '/replication.Replica/UpdatePartitionMap',
             replica_dot_replication__pb2.PartitionMap.SerializeToString,
+            replica_dot_replication__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateHashRing(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/UpdateHashRing',
+            replica_dot_replication__pb2.HashRing.SerializeToString,
             replica_dot_replication__pb2.Empty.FromString,
             options,
             channel_credentials,

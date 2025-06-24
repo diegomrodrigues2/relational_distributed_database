@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19replica/replication.proto\x12\x0breplication\"\x8c\x01\n\nKeyRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12\x0f\n\x07node_id\x18\x03 \x01(\t\x12\r\n\x05op_id\x18\x04 \x01(\t\x12*\n\x06vector\x18\x05 \x01(\x0b\x32\x1a.replication.VersionVector\x12\x12\n\nhinted_for\x18\x06 \x01(\t\"\x99\x01\n\x08KeyValue\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\x12\r\n\x05op_id\x18\x05 \x01(\t\x12*\n\x06vector\x18\x06 \x01(\x0b\x32\x1a.replication.VersionVector\x12\x12\n\nhinted_for\x18\x07 \x01(\t\"^\n\x0eVersionedValue\x12\r\n\x05value\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12*\n\x06vector\x18\x03 \x01(\x0b\x32\x1a.replication.VersionVector\"<\n\rValueResponse\x12+\n\x06values\x18\x01 \x03(\x0b\x32\x1b.replication.VersionedValue\"G\n\x0cRangeRequest\x12\x15\n\rpartition_key\x18\x01 \x01(\t\x12\x10\n\x08start_ck\x18\x02 \x01(\t\x12\x0e\n\x06\x65nd_ck\x18\x03 \x01(\t\"q\n\tRangeItem\x12\x16\n\x0e\x63lustering_key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12*\n\x06vector\x18\x04 \x01(\x0b\x32\x1a.replication.VersionVector\"6\n\rRangeResponse\x12%\n\x05items\x18\x01 \x03(\x0b\x32\x16.replication.RangeItem\"\x07\n\x05\x45mpty\"\x1c\n\tHeartbeat\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"s\n\rVersionVector\x12\x34\n\x05items\x18\x01 \x03(\x0b\x32%.replication.VersionVector.ItemsEntry\x1a,\n\nItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x03:\x02\x38\x01\"q\n\x0cPartitionMap\x12\x33\n\x05items\x18\x01 \x03(\x0b\x32$.replication.PartitionMap.ItemsEntry\x1a,\n\nItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\x05\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x7f\n\rMerkleNodeMsg\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x0c\n\x04hash\x18\x02 \x01(\t\x12(\n\x04left\x18\x03 \x01(\x0b\x32\x1a.replication.MerkleNodeMsg\x12)\n\x05right\x18\x04 \x01(\x0b\x32\x1a.replication.MerkleNodeMsg\"H\n\x0bSegmentTree\x12\x0f\n\x07segment\x18\x01 \x01(\t\x12(\n\x04root\x18\x02 \x01(\x0b\x32\x1a.replication.MerkleNodeMsg\"\x96\x01\n\tOperation\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\x12\r\n\x05op_id\x18\x05 \x01(\t\x12\x0e\n\x06\x64\x65lete\x18\x06 \x01(\x08\x12*\n\x06vector\x18\x07 \x01(\x0b\x32\x1a.replication.VersionVector\"\x84\x02\n\x0c\x46\x65tchRequest\x12*\n\x06vector\x18\x01 \x01(\x0b\x32\x1a.replication.VersionVector\x12#\n\x03ops\x18\x02 \x03(\x0b\x32\x16.replication.Operation\x12\x44\n\x0esegment_hashes\x18\x03 \x03(\x0b\x32,.replication.FetchRequest.SegmentHashesEntry\x12\'\n\x05trees\x18\x04 \x03(\x0b\x32\x18.replication.SegmentTree\x1a\x34\n\x12SegmentHashesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xb1\x01\n\rFetchResponse\x12#\n\x03ops\x18\x01 \x03(\x0b\x32\x16.replication.Operation\x12\x45\n\x0esegment_hashes\x18\x02 \x03(\x0b\x32-.replication.FetchResponse.SegmentHashesEntry\x1a\x34\n\x12SegmentHashesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"*\n\nIndexQuery\x12\r\n\x05\x66ield\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x17\n\x07KeyList\x12\x0c\n\x04keys\x18\x01 \x03(\t2\xbc\x03\n\x07Replica\x12\x30\n\x03Put\x12\x15.replication.KeyValue\x1a\x12.replication.Empty\x12\x35\n\x06\x44\x65lete\x12\x17.replication.KeyRequest\x1a\x12.replication.Empty\x12:\n\x03Get\x12\x17.replication.KeyRequest\x1a\x1a.replication.ValueResponse\x12\x42\n\tScanRange\x12\x19.replication.RangeRequest\x1a\x1a.replication.RangeResponse\x12\x45\n\x0c\x46\x65tchUpdates\x12\x19.replication.FetchRequest\x1a\x1a.replication.FetchResponse\x12\x43\n\x12UpdatePartitionMap\x12\x19.replication.PartitionMap\x1a\x12.replication.Empty\x12<\n\x0bListByIndex\x12\x17.replication.IndexQuery\x1a\x14.replication.KeyList2F\n\x10HeartbeatService\x12\x32\n\x04Ping\x12\x16.replication.Heartbeat\x1a\x12.replication.Emptyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19replica/replication.proto\x12\x0breplication\"\x8c\x01\n\nKeyRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12\x0f\n\x07node_id\x18\x03 \x01(\t\x12\r\n\x05op_id\x18\x04 \x01(\t\x12*\n\x06vector\x18\x05 \x01(\x0b\x32\x1a.replication.VersionVector\x12\x12\n\nhinted_for\x18\x06 \x01(\t\"\x99\x01\n\x08KeyValue\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\x12\r\n\x05op_id\x18\x05 \x01(\t\x12*\n\x06vector\x18\x06 \x01(\x0b\x32\x1a.replication.VersionVector\x12\x12\n\nhinted_for\x18\x07 \x01(\t\"^\n\x0eVersionedValue\x12\r\n\x05value\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x03\x12*\n\x06vector\x18\x03 \x01(\x0b\x32\x1a.replication.VersionVector\"<\n\rValueResponse\x12+\n\x06values\x18\x01 \x03(\x0b\x32\x1b.replication.VersionedValue\"G\n\x0cRangeRequest\x12\x15\n\rpartition_key\x18\x01 \x01(\t\x12\x10\n\x08start_ck\x18\x02 \x01(\t\x12\x0e\n\x06\x65nd_ck\x18\x03 \x01(\t\"q\n\tRangeItem\x12\x16\n\x0e\x63lustering_key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12*\n\x06vector\x18\x04 \x01(\x0b\x32\x1a.replication.VersionVector\"6\n\rRangeResponse\x12%\n\x05items\x18\x01 \x03(\x0b\x32\x16.replication.RangeItem\"\x07\n\x05\x45mpty\"\x1c\n\tHeartbeat\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"s\n\rVersionVector\x12\x34\n\x05items\x18\x01 \x03(\x0b\x32%.replication.VersionVector.ItemsEntry\x1a,\n\nItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x03:\x02\x38\x01\"q\n\x0cPartitionMap\x12\x33\n\x05items\x18\x01 \x03(\x0b\x32$.replication.PartitionMap.ItemsEntry\x1a,\n\nItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\x05\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\".\n\rHashRingEntry\x12\x0c\n\x04hash\x18\x01 \x01(\t\x12\x0f\n\x07node_id\x18\x02 \x01(\t\"5\n\x08HashRing\x12)\n\x05items\x18\x01 \x03(\x0b\x32\x1a.replication.HashRingEntry\"\x7f\n\rMerkleNodeMsg\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x0c\n\x04hash\x18\x02 \x01(\t\x12(\n\x04left\x18\x03 \x01(\x0b\x32\x1a.replication.MerkleNodeMsg\x12)\n\x05right\x18\x04 \x01(\x0b\x32\x1a.replication.MerkleNodeMsg\"H\n\x0bSegmentTree\x12\x0f\n\x07segment\x18\x01 \x01(\t\x12(\n\x04root\x18\x02 \x01(\x0b\x32\x1a.replication.MerkleNodeMsg\"\x96\x01\n\tOperation\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x03\x12\x0f\n\x07node_id\x18\x04 \x01(\t\x12\r\n\x05op_id\x18\x05 \x01(\t\x12\x0e\n\x06\x64\x65lete\x18\x06 \x01(\x08\x12*\n\x06vector\x18\x07 \x01(\x0b\x32\x1a.replication.VersionVector\"\x84\x02\n\x0c\x46\x65tchRequest\x12*\n\x06vector\x18\x01 \x01(\x0b\x32\x1a.replication.VersionVector\x12#\n\x03ops\x18\x02 \x03(\x0b\x32\x16.replication.Operation\x12\x44\n\x0esegment_hashes\x18\x03 \x03(\x0b\x32,.replication.FetchRequest.SegmentHashesEntry\x12\'\n\x05trees\x18\x04 \x03(\x0b\x32\x18.replication.SegmentTree\x1a\x34\n\x12SegmentHashesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xb1\x01\n\rFetchResponse\x12#\n\x03ops\x18\x01 \x03(\x0b\x32\x16.replication.Operation\x12\x45\n\x0esegment_hashes\x18\x02 \x03(\x0b\x32-.replication.FetchResponse.SegmentHashesEntry\x1a\x34\n\x12SegmentHashesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"*\n\nIndexQuery\x12\r\n\x05\x66ield\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x17\n\x07KeyList\x12\x0c\n\x04keys\x18\x01 \x03(\t2\xf9\x03\n\x07Replica\x12\x30\n\x03Put\x12\x15.replication.KeyValue\x1a\x12.replication.Empty\x12\x35\n\x06\x44\x65lete\x12\x17.replication.KeyRequest\x1a\x12.replication.Empty\x12:\n\x03Get\x12\x17.replication.KeyRequest\x1a\x1a.replication.ValueResponse\x12\x42\n\tScanRange\x12\x19.replication.RangeRequest\x1a\x1a.replication.RangeResponse\x12\x45\n\x0c\x46\x65tchUpdates\x12\x19.replication.FetchRequest\x1a\x1a.replication.FetchResponse\x12\x43\n\x12UpdatePartitionMap\x12\x19.replication.PartitionMap\x1a\x12.replication.Empty\x12;\n\x0eUpdateHashRing\x12\x15.replication.HashRing\x1a\x12.replication.Empty\x12<\n\x0bListByIndex\x12\x17.replication.IndexQuery\x1a\x14.replication.KeyList2F\n\x10HeartbeatService\x12\x32\n\x04Ping\x12\x16.replication.Heartbeat\x1a\x12.replication.Emptyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -65,26 +65,30 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_PARTITIONMAP']._serialized_end=1012
   _globals['_PARTITIONMAP_ITEMSENTRY']._serialized_start=968
   _globals['_PARTITIONMAP_ITEMSENTRY']._serialized_end=1012
-  _globals['_MERKLENODEMSG']._serialized_start=1014
-  _globals['_MERKLENODEMSG']._serialized_end=1141
-  _globals['_SEGMENTTREE']._serialized_start=1143
-  _globals['_SEGMENTTREE']._serialized_end=1215
-  _globals['_OPERATION']._serialized_start=1218
-  _globals['_OPERATION']._serialized_end=1368
-  _globals['_FETCHREQUEST']._serialized_start=1371
-  _globals['_FETCHREQUEST']._serialized_end=1631
-  _globals['_FETCHREQUEST_SEGMENTHASHESENTRY']._serialized_start=1579
-  _globals['_FETCHREQUEST_SEGMENTHASHESENTRY']._serialized_end=1631
-  _globals['_FETCHRESPONSE']._serialized_start=1634
-  _globals['_FETCHRESPONSE']._serialized_end=1811
-  _globals['_FETCHRESPONSE_SEGMENTHASHESENTRY']._serialized_start=1579
-  _globals['_FETCHRESPONSE_SEGMENTHASHESENTRY']._serialized_end=1631
-  _globals['_INDEXQUERY']._serialized_start=1813
-  _globals['_INDEXQUERY']._serialized_end=1855
-  _globals['_KEYLIST']._serialized_start=1857
-  _globals['_KEYLIST']._serialized_end=1880
-  _globals['_REPLICA']._serialized_start=1883
-  _globals['_REPLICA']._serialized_end=2327
-  _globals['_HEARTBEATSERVICE']._serialized_start=2329
-  _globals['_HEARTBEATSERVICE']._serialized_end=2399
+  _globals['_HASHRINGENTRY']._serialized_start=1014
+  _globals['_HASHRINGENTRY']._serialized_end=1060
+  _globals['_HASHRING']._serialized_start=1062
+  _globals['_HASHRING']._serialized_end=1115
+  _globals['_MERKLENODEMSG']._serialized_start=1117
+  _globals['_MERKLENODEMSG']._serialized_end=1244
+  _globals['_SEGMENTTREE']._serialized_start=1246
+  _globals['_SEGMENTTREE']._serialized_end=1318
+  _globals['_OPERATION']._serialized_start=1321
+  _globals['_OPERATION']._serialized_end=1471
+  _globals['_FETCHREQUEST']._serialized_start=1474
+  _globals['_FETCHREQUEST']._serialized_end=1734
+  _globals['_FETCHREQUEST_SEGMENTHASHESENTRY']._serialized_start=1682
+  _globals['_FETCHREQUEST_SEGMENTHASHESENTRY']._serialized_end=1734
+  _globals['_FETCHRESPONSE']._serialized_start=1737
+  _globals['_FETCHRESPONSE']._serialized_end=1914
+  _globals['_FETCHRESPONSE_SEGMENTHASHESENTRY']._serialized_start=1682
+  _globals['_FETCHRESPONSE_SEGMENTHASHESENTRY']._serialized_end=1734
+  _globals['_INDEXQUERY']._serialized_start=1916
+  _globals['_INDEXQUERY']._serialized_end=1958
+  _globals['_KEYLIST']._serialized_start=1960
+  _globals['_KEYLIST']._serialized_end=1983
+  _globals['_REPLICA']._serialized_start=1986
+  _globals['_REPLICA']._serialized_end=2491
+  _globals['_HEARTBEATSERVICE']._serialized_start=2493
+  _globals['_HEARTBEATSERVICE']._serialized_end=2563
 # @@protoc_insertion_point(module_scope)

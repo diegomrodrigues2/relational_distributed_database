@@ -18,6 +18,7 @@ from merkle import MerkleNode, build_merkle_tree, diff_trees
 from partitioning import hash_key
 from index_manager import IndexManager
 from global_index_manager import GlobalIndexManager
+from hash_ring import HashRing
 from . import replication_pb2, replication_pb2_grpc
 from .client import GRPCReplicaClient
 
@@ -498,6 +499,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node.update_partition_map(new_map)
         return replication_pb2.Empty()
 
+    def UpdateHashRing(self, request, context):
+        """Replace the node's hash ring."""
+        entries = [(int(e.hash), e.node_id) for e in request.items]
+        self._node.update_hash_ring(entries)
+        return replication_pb2.Empty()
+
     def ListByIndex(self, request, context):
         """Return keys matching an index query."""
         try:
@@ -653,6 +660,18 @@ class NodeServer:
     def update_partition_map(self, new_map) -> None:
         """Update the cached partition map."""
         self.partition_map = new_map or {}
+
+    def update_hash_ring(self, entries) -> None:
+        """Rebuild hash ring from list of ``(hash_int, node_id)`` entries."""
+        if not entries:
+            self.hash_ring = None
+            return
+        ring = HashRing()
+        for h, nid in entries:
+            ring._ring.append((int(h), nid))
+            ring._nodes.setdefault(nid, []).append((int(h), nid))
+        ring._ring.sort(key=lambda x: x[0])
+        self.hash_ring = ring
 
     def query_index(self, field: str, value) -> list[str]:
         """Return list of keys matching ``field``/``value`` in the secondary index."""
