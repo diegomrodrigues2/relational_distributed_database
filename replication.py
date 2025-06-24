@@ -20,7 +20,8 @@ from dataclasses import dataclass
 from concurrent import futures
 
 from replica.grpc_server import run_server
-from replica.client import GRPCReplicaClient
+from replica.client import GRPCReplicaClient, GRPCRouterClient
+from router_server import run_router
 from hash_ring import HashRing as ConsistentHashRing
 from vector_clock import VectorClock
 from lsm_db import _merge_version_lists, SimpleLSMDB
@@ -80,6 +81,8 @@ class NodeCluster:
         index_fields: list[str] | None = None,
         global_index_fields: list[str] | None = None,
         cold_check_interval: float | None = None,
+        start_router: bool = False,
+        router_port: int = 7000,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -116,6 +119,9 @@ class NodeCluster:
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.partition_map: dict[int, str] = {}
+        self.router_process: multiprocessing.Process | None = None
+        self.router_client: GRPCRouterClient | None = None
+        self.router_port = router_port
 
         use_ring = not key_ranges and not (
             partition_strategy == "hash" and replication_factor == 1 and not enable_forwarding
@@ -241,6 +247,16 @@ class NodeCluster:
         else:
             self.partition_map = self.partitioner.get_partition_map()
             self.update_partition_map()
+
+        if start_router:
+            self.router_process = multiprocessing.Process(
+                target=run_router,
+                args=(self, "localhost", router_port),
+                daemon=True,
+            )
+            self.router_process.start()
+            time.sleep(0.2)
+            self.router_client = GRPCRouterClient("localhost", router_port)
 
         self._cold_stop = threading.Event()
         self._cold_thread = None
@@ -1154,6 +1170,12 @@ class NodeCluster:
         if self._cold_thread:
             self._cold_stop.set()
             self._cold_thread.join(timeout=1)
+        if self.router_process is not None:
+            if self.router_process.is_alive():
+                self.router_process.terminate()
+            self.router_process.join()
+            if self.router_client is not None:
+                self.router_client.close()
         for n in self.nodes:
             n.stop()
 
