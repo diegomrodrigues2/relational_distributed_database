@@ -7,9 +7,28 @@ class GRPCReplicaClient:
     def __init__(self, host: str, port: int):
         self.host = host
         self.port = port
-        self.channel = grpc.insecure_channel(f"{host}:{port}")
-        self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
-        self.heartbeat_stub = replication_pb2_grpc.HeartbeatServiceStub(self.channel)
+        self.channel = None
+        self.stub = None
+        self.heartbeat_stub = None
+        self._ensure_channel()
+        import os
+        os.register_at_fork(after_in_child=self._reset_channel)
+
+    def _ensure_channel(self):
+        if self.channel is None:
+            self.channel = grpc.insecure_channel(f"{self.host}:{self.port}")
+            self.stub = replication_pb2_grpc.ReplicaStub(self.channel)
+            self.heartbeat_stub = replication_pb2_grpc.HeartbeatServiceStub(self.channel)
+
+    def _reset_channel(self):
+        if self.channel is not None:
+            try:
+                self.channel.close()
+            except Exception:
+                pass
+        self.channel = None
+        self.stub = None
+        self.heartbeat_stub = None
 
     def put(
         self,
@@ -21,6 +40,7 @@ class GRPCReplicaClient:
         vector=None,
         hinted_for="",
     ):
+        self._ensure_channel()
         if timestamp is None:
             timestamp = int(time.time() * 1000)
         if vector is None:
@@ -57,9 +77,11 @@ class GRPCReplicaClient:
             vector=vv,
             hinted_for=hinted_for,
         )
+        self._ensure_channel()
         self.stub.Delete(request)
 
     def get(self, key):
+        self._ensure_channel()
         request = replication_pb2.KeyRequest(key=key, timestamp=0, node_id="")
         response = self.stub.Get(request)
         results = []
@@ -70,6 +92,7 @@ class GRPCReplicaClient:
         return results
 
     def scan_range(self, partition_key, start_ck, end_ck):
+        self._ensure_channel()
         req = replication_pb2.RangeRequest(
             partition_key=partition_key,
             start_ck=start_ck,
@@ -89,11 +112,13 @@ class GRPCReplicaClient:
         return results
 
     def list_by_index(self, field: str, value) -> list[str]:
+        self._ensure_channel()
         req = replication_pb2.IndexQuery(field=field, value=str(value))
         resp = self.stub.ListByIndex(req)
         return list(resp.keys)
 
     def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None, trees=None):
+        self._ensure_channel()
         """Fetch updates from peer optionally sending our pending ops, hashes and trees."""
         vv = replication_pb2.VersionVector(items=last_seen)
         ops = ops or []
@@ -106,14 +131,27 @@ class GRPCReplicaClient:
         return self.stub.FetchUpdates(req)
 
     def update_partition_map(self, mapping: dict[int, str] | None):
+        self._ensure_channel()
         """Send a new partition map to the replica."""
         req = replication_pb2.PartitionMap(items=mapping or {})
         self.stub.UpdatePartitionMap(req)
 
     def ping(self, node_id: str = ""):
+        self._ensure_channel()
         """Send a heartbeat ping to the remote peer."""
         req = replication_pb2.Heartbeat(node_id=node_id)
         self.heartbeat_stub.Ping(req)
 
     def close(self):
         self.channel.close()
+
+    def __getstate__(self):
+        return {"host": self.host, "port": self.port}
+
+    def __setstate__(self, state):
+        self.host = state["host"]
+        self.port = state["port"]
+        self.channel = None
+        self.stub = None
+        self.heartbeat_stub = None
+        self._ensure_channel()
