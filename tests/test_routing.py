@@ -83,6 +83,33 @@ class CoordinatorForwardingTest(unittest.TestCase):
             finally:
                 cluster.shutdown()
 
+    def test_forwarded_write_replication_factor_three(self):
+        """Write sent to wrong node should replicate to all replicas."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = NodeCluster(
+                base_path=tmpdir,
+                num_nodes=3,
+                replication_factor=3,
+                partition_strategy="hash",
+                enable_forwarding=True,
+            )
+            try:
+                key = "route:rf3"
+                pid = cluster.get_partition_id(key)
+                owner_id = cluster.get_partition_map()[pid]
+                wrong_node = random.choice(
+                    [n for n in cluster.nodes if n.node_id != owner_id]
+                )
+
+                wrong_node.client.put(key, "v2")
+                time.sleep(0.5)
+
+                for node in cluster.nodes:
+                    recs = node.client.get(key)
+                    self.assertTrue(recs and recs[0][0] == "v2")
+            finally:
+                cluster.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()
