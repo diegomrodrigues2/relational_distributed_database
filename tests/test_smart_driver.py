@@ -83,6 +83,39 @@ class SmartDriverTest(unittest.TestCase):
             finally:
                 cluster.shutdown()
 
+    def test_load_balanced_reads_hit_multiple_nodes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster = NodeCluster(
+                base_path=tmpdir,
+                num_nodes=3,
+                replication_factor=3,
+                read_quorum=1,
+                load_balance_reads=True,
+                enable_forwarding=False,
+            )
+            try:
+                driver = Driver(cluster)  # inherits load_balance_reads
+                driver.put("u", "gamma", "x", "v")
+                time.sleep(0.5)
+
+                counts = {}
+                for n in cluster.nodes:
+                    orig = n.client.get
+
+                    def wrap(key, _orig=orig, nid=n.node_id):
+                        counts[nid] = counts.get(nid, 0) + 1
+                        return _orig(key)
+
+                    n.client.get = wrap
+
+                for _ in range(10):
+                    driver.get("u", "gamma", "x")
+
+                hit_nodes = [nid for nid, c in counts.items() if c > 0]
+                self.assertGreaterEqual(len(hit_nodes), 2)
+            finally:
+                cluster.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()

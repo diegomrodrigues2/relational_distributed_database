@@ -727,12 +727,13 @@ print(router.get('other'))
 ### Cliente consciente
 
 O `Driver` mantém em cache o mapa de partições e atualiza-o sempre que recebe um
-erro `NotOwner`.
+erro `NotOwner`. Ele também pode balancear leituras entre as réplicas através do
+parâmetro opcional `load_balance_reads` (padrão: herda do cluster).
 
 ```python
 cluster = NodeCluster('/tmp/driver', num_nodes=3,
                       partition_strategy='hash', enable_forwarding=False)
-driver = Driver(cluster)
+driver = Driver(cluster, load_balance_reads=True)
 driver.put('u', 'key', 'valor')
 print(driver.get('u', 'key'))
 ```
