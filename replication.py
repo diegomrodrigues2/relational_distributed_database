@@ -78,6 +78,7 @@ class NodeCluster:
         load_balance_reads: bool = False,
         index_fields: list[str] | None = None,
         global_index_fields: list[str] | None = None,
+        cold_check_interval: float | None = None,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -110,6 +111,7 @@ class NodeCluster:
         self.load_balance_reads = load_balance_reads
         self.index_fields = index_fields
         self.global_index_fields = global_index_fields
+        self.cold_check_interval = cold_check_interval
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.partition_map: dict[int, str] = {}
@@ -231,6 +233,20 @@ class NodeCluster:
         else:
             self.partitioner = None
 
+        self._cold_stop = threading.Event()
+        self._cold_thread = None
+        if self.cold_check_interval:
+            def _auto_cold():
+                while not self._cold_stop.is_set():
+                    time.sleep(self.cold_check_interval)
+                    try:
+                        self.check_cold_partitions()
+                    except Exception:
+                        pass
+
+            self._cold_thread = threading.Thread(target=_auto_cold, daemon=True)
+            self._cold_thread.start()
+
     def enable_salt(self, key: str, buckets: int) -> None:
         """Enable random prefixing for ``key`` using ``buckets`` variants."""
         if buckets < 1:
@@ -280,6 +296,14 @@ class NodeCluster:
         limit = avg * threshold
         return [i for i, cnt in enumerate(self.partition_ops) if cnt > limit]
 
+    def get_cold_partitions(self, threshold: float = 0.5) -> list[int]:
+        """Return ids of partitions with ops below ``threshold`` times the average."""
+        if not self.partition_ops:
+            return []
+        avg = sum(self.partition_ops) / len(self.partition_ops)
+        limit = avg * threshold
+        return [i for i, cnt in enumerate(self.partition_ops) if cnt < limit]
+
     def check_hot_partitions(self, threshold: float = 2.0, min_keys: int = 2) -> None:
         """Split partitions with heavy traffic involving many different keys.
 
@@ -297,6 +321,31 @@ class NodeCluster:
             if len(seen) >= min_keys:
                 self.split_partition(pid)
                 self.reset_metrics()
+
+    def check_cold_partitions(self, threshold: float = 0.5, max_keys: int = 1) -> None:
+        """Merge adjacent cold partitions with few distinct keys accessed."""
+        if self.partitioner is None:
+            return
+
+        cold = set(self.get_cold_partitions(threshold))
+        pid = 0
+        while pid < self.num_partitions - 1:
+            if pid in cold and pid + 1 in cold:
+                seen_left = set()
+                seen_right = set()
+                for comp_key in self.key_freq:
+                    pk, ck = self._split_key_components(comp_key)
+                    pid_cur = self.get_partition_id(pk, ck)
+                    if pid_cur == pid:
+                        seen_left.add(comp_key)
+                    elif pid_cur == pid + 1:
+                        seen_right.add(comp_key)
+                if len(seen_left) <= max_keys and len(seen_right) <= max_keys:
+                    self.merge_partitions(pid, pid + 1)
+                    self.reset_metrics()
+                    cold = set(self.get_cold_partitions(threshold))
+                    continue
+            pid += 1
 
     def get_hot_keys(self, top_n: int = 5) -> list[str]:
         """Return most frequently accessed keys."""
@@ -1094,6 +1143,9 @@ class NodeCluster:
 
 
     def shutdown(self):
+        if self._cold_thread:
+            self._cold_stop.set()
+            self._cold_thread.join(timeout=1)
         for n in self.nodes:
             n.stop()
 
