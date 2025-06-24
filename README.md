@@ -610,9 +610,16 @@ cluster.check_hot_partitions(threshold=2.0, min_keys=3)
 ```
 
 Também é possível mesclar duas partições vizinhas para reduzir a fragmentação.
-Essa fusão altera apenas o mapeamento de chaves e não move registros
-automaticamente. Utilize `transfer_partition()` para realocar os itens ou deixe
-que as operações de `add_node()` ou `remove_node()` cuidem da cópia.
+Use `merge_partitions(pid1, pid2)` indicando os índices das faixas adjacentes.
+As faixas devem ser contíguas; a fusão apenas atualiza o mapeamento de chaves e não move dados automaticamente.
+Utilize `transfer_partition()` para copiar os registros ou deixe que `add_node()`/`remove_node()` realizem essa tarefa.
+
+O método `check_cold_partitions(threshold=0.5, max_keys=1)` examina as métricas de acesso e executa `merge_partitions` quando duas faixas consecutivas acumulam poucas operações e possuem no máximo `max_keys` chaves distintas.
+
+```python
+cluster.merge_partitions(0, 1)
+cluster.check_cold_partitions(threshold=0.5, max_keys=1)
+```
 
 Para mover registros entre nós utilize `transfer_partition(src, dst, pid)`. Essa
 operação é empregada automaticamente quando novas máquinas entram ou saem do
