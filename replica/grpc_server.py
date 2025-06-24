@@ -183,7 +183,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     request.timestamp,
                     op_id=op_id,
                     vector=new_vc.clock,
-                    skip_id=request.node_id,
+                    skip_id=(
+                        request.node_id
+                        if request.node_id == self._node.node_id
+                        else None
+                    ),
                 )
 
                 # ------------------------------------------------------------------
@@ -321,7 +325,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     request.timestamp,
                     op_id=op_id,
                     vector=new_vc.clock,
-                    skip_id=request.node_id,
+                    skip_id=(
+                        request.node_id
+                        if request.node_id == self._node.node_id
+                        else None
+                    ),
                 )
 
                 # ------------------------------------------------------------------
