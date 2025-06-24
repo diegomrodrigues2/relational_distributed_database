@@ -434,7 +434,20 @@ class NodeCluster:
                 node.client.update_partition_map(self.partition_map)
             except Exception:
                 pass
+        self.update_hash_ring()
         return dict(self.partition_map)
+
+    def update_hash_ring(self) -> None:
+        """Send current hash ring to all nodes if using consistent hashing."""
+        ring = getattr(self.partitioner, "ring", None)
+        if ring is None:
+            return
+        entries = [(str(h), nid) for h, nid in ring._ring]
+        for node in self.nodes:
+            try:
+                node.client.update_hash_ring(entries)
+            except Exception:
+                pass
 
     def get_partition_id(
         self, partition_key: str, clustering_key: str | None = None

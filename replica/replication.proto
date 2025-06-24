@@ -76,6 +76,17 @@ message PartitionMap {
   map<int32, string> items = 1;
 }
 
+// Serialized representation of the hash ring
+message HashRingEntry {
+  string hash = 1;
+  string node_id = 2;
+}
+
+// List of hash ring entries
+message HashRing {
+  repeated HashRingEntry items = 1;
+}
+
 // Node in a Merkle tree
 message MerkleNodeMsg {
   string key = 1;
@@ -134,6 +145,7 @@ service Replica {
   rpc ScanRange(RangeRequest) returns (RangeResponse);
   rpc FetchUpdates(FetchRequest) returns (FetchResponse);
   rpc UpdatePartitionMap(PartitionMap) returns (Empty);
+  rpc UpdateHashRing(HashRing) returns (Empty);
   rpc ListByIndex(IndexQuery) returns (KeyList);
 }
 

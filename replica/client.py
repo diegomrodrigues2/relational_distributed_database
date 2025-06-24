@@ -136,6 +136,12 @@ class GRPCReplicaClient:
         req = replication_pb2.PartitionMap(items=mapping or {})
         self.stub.UpdatePartitionMap(req)
 
+    def update_hash_ring(self, entries):
+        self._ensure_channel()
+        items = [replication_pb2.HashRingEntry(hash=str(h), node_id=nid) for h, nid in (entries or [])]
+        req = replication_pb2.HashRing(items=items)
+        self.stub.UpdateHashRing(req)
+
     def ping(self, node_id: str = ""):
         self._ensure_channel()
         """Send a heartbeat ping to the remote peer."""
