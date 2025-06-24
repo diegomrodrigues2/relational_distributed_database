@@ -14,6 +14,7 @@ from partitioning import (
     compose_key,
     RangePartitioner,
     HashPartitioner,
+    ConsistentHashPartitioner,
 )
 from dataclasses import dataclass
 from concurrent import futures
@@ -115,20 +116,24 @@ class NodeCluster:
         self.key_ranges = None
         self.partitions: list[tuple[tuple, ClusterNode]] = []
         self.partition_map: dict[int, str] = {}
-        if key_ranges:
-            self.ring = None
-        elif partition_strategy == "hash" and replication_factor == 1 and not enable_forwarding:
-            # simple hash partitioning without forwarding or replication
-            self.ring = None
+
+        use_ring = not key_ranges and not (
+            partition_strategy == "hash" and replication_factor == 1 and not enable_forwarding
+        )
+        if use_ring:
+            self.partitioner = ConsistentHashPartitioner(
+                partitions_per_node=self.partitions_per_node
+            )
+            self.ring = self.partitioner.ring
         else:
-            # Use a consistent hash ring for owner determination
-            self.ring = ConsistentHashRing()
+            self.partitioner = None
+            self.ring = None
         if num_partitions is None:
-            if partition_strategy == "hash" and self.ring is None:
+            if partition_strategy == "hash" and not use_ring:
                 num_partitions = DEFAULT_NUM_PARTITIONS
             else:
                 num_partitions = num_nodes
-        if self.ring is None:
+        if not use_ring:
             self.num_partitions = num_partitions
             self.partition_ops = [0] * self.num_partitions
         else:
@@ -143,9 +148,9 @@ class NodeCluster:
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
         ]
-        if self.ring is not None:
+        if use_ring:
             for _, _, nid in peers:
-                self.ring.add_node(nid, weight=self.partitions_per_node)
+                self.partitioner.ring.add_node(nid, weight=self.partitions_per_node)
 
         # Build initial partition map before launching nodes
         if key_ranges is not None:
@@ -160,11 +165,9 @@ class NodeCluster:
             self.partition_map = {
                 i: peers[i % len(peers)][2] for i in range(self.num_partitions)
             }
-        elif self.ring is not None and self.ring._ring:
-            self.partition_map = {
-                i: nid for i, (_, nid) in enumerate(self.ring._ring)
-            }
-            self.num_partitions = len(self.ring._ring)
+        elif use_ring and self.partitioner.ring._ring:
+            self.partition_map = self.partitioner.get_partition_map()
+            self.num_partitions = len(self.partitioner.ring._ring)
         else:
             self.partition_map = {
                 pid: peers[pid % len(peers)][2]
@@ -220,12 +223,13 @@ class NodeCluster:
             self.nodes_by_id[node_id] = node
 
         time.sleep(1)
-        if self.ring is not None and key_ranges is None:
+        if use_ring and key_ranges is None:
+            self.partitioner.nodes = self.nodes
             self._rebuild_ring_partitions()
         if key_ranges is not None:
-            self._setup_partitions(key_ranges)
-
-        if self.ring is None:
+            if not use_ring:
+                self._setup_partitions(key_ranges)
+        if not use_ring:
             if key_ranges is not None:
                 self.partitioner = RangePartitioner(key_ranges, self.nodes)
                 self.partitions = self.partitioner.partitions
@@ -235,7 +239,8 @@ class NodeCluster:
             self.partition_map = self.partitioner.get_partition_map()
             self.update_partition_map()
         else:
-            self.partitioner = None
+            self.partition_map = self.partitioner.get_partition_map()
+            self.update_partition_map()
 
         self._cold_stop = threading.Event()
         self._cold_thread = None
@@ -411,9 +416,10 @@ class NodeCluster:
 
     def _rebuild_ring_partitions(self) -> None:
         """Recalculate partition metadata from the hash ring."""
-        if self.ring is None:
+        ring = getattr(self.partitioner, "ring", None)
+        if ring is None:
             return
-        self.num_partitions = len(self.ring._ring)
+        self.num_partitions = len(ring._ring)
         self.partition_ops = [0] * self.num_partitions
         self.partition_item_counts = {i: 0 for i in range(self.num_partitions)}
 
@@ -434,11 +440,6 @@ class NodeCluster:
         self, partition_key: str, clustering_key: str | None = None
     ) -> int:
         """Return partition id for ``partition_key``."""
-        if self.ring and self.ring._ring:
-            key_hash = hash_key(partition_key)
-            hashes = [h for h, _ in self.ring._ring]
-            idx = bisect_right(hashes, key_hash) % len(hashes)
-            return idx
         if self.partitioner is not None:
             return self.partitioner.get_partition_id(partition_key)
         return hash_key(partition_key) % self.num_partitions
@@ -447,36 +448,18 @@ class NodeCluster:
         """Return node_id responsible for index entry ``field``/``value``."""
         key = f"idx:{field}:{value}"
         pmap = self.partition_map or {}
-        if self.ring is not None and self.ring._ring:
-            key_hash = hash_key(key)
-            hashes = [h for h, _ in self.ring._ring]
-            idx = bisect_right(hashes, key_hash) % len(hashes)
-            return pmap.get(idx, self.ring._ring[idx][1])
-        if self.key_ranges is not None:
-            for i, (rng, node) in enumerate(self.partitions):
-                start, end = rng
-                if start <= key < end:
-                    return pmap.get(i, node.node_id)
-        if self.partitioner is not None:
-            pid = self.partitioner.get_partition_id(key)
-            return pmap.get(pid, self.nodes[pid % len(self.nodes)].node_id)
-        pid = hash_key(key) % self.num_partitions
+        pid = self.get_partition_id(key)
         return pmap.get(pid, self.nodes[pid % len(self.nodes)].node_id)
 
     def _pid_for_key(self, partition_key: str, clustering_key: str | None = None) -> int:
-        if self.ring is not None:
-            return self.get_partition_id(partition_key, clustering_key)
-        if self.partitioner is not None:
-            return self.partitioner.get_partition_id(partition_key)
-        if self.key_ranges is not None:
-            return self._range_partition_id(partition_key)
-        return hash_key(partition_key) % self.num_partitions
+        return self.get_partition_id(partition_key, clustering_key)
 
     def _coordinator(
         self, partition_key: str, clustering_key: str | None = None
     ) -> ClusterNode:
-        if self.ring is not None:
-            node_id = self.ring.get_preference_list(partition_key, 1)[0]
+        ring = getattr(self.partitioner, "ring", None)
+        if ring is not None:
+            node_id = ring.get_preference_list(partition_key, 1)[0]
             return self.nodes_by_id[node_id]
         pid = (
             self.partitioner.get_partition_id(partition_key)
@@ -595,8 +578,9 @@ class NodeCluster:
 
         composed_key = compose_key(partition_key, clustering_key)
         self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
-        if self.load_balance_reads and self.ring is not None:
-            pref_nodes = self.ring.get_preference_list(
+        ring = getattr(self.partitioner, "ring", None)
+        if self.load_balance_reads and ring is not None:
+            pref_nodes = ring.get_preference_list(
                 partition_key, self.replication_factor
             )
             random.shuffle(pref_nodes)
@@ -619,7 +603,7 @@ class NodeCluster:
             if merge:
                 return recs[0][0] if recs else None
             return [(val, vc_dict) for val, ts, vc_dict in recs]
-        if self.partition_strategy == "hash":
+        if self.partition_strategy == "hash" and ring is None:
             node = self._coordinator(partition_key, clustering_key)
             recs = node.client.get(composed_key)
             pid = self._pid_for_key(partition_key, clustering_key)
@@ -639,7 +623,7 @@ class NodeCluster:
             if merge:
                 return recs[0][0] if recs else None
             return [(val, vc_dict) for val, ts, vc_dict in recs]
-        if self.ring is None:
+        if ring is None:
             node = self._coordinator(partition_key, clustering_key)
             recs = node.client.get(composed_key)
             pid = self._pid_for_key(partition_key, clustering_key)
@@ -649,7 +633,7 @@ class NodeCluster:
             if merge:
                 return recs[0][0] if recs else None
             return [(val, vc_dict) for val, ts, vc_dict in recs]
-        pref_nodes = self.ring.get_preference_list(
+        pref_nodes = ring.get_preference_list(
             partition_key, self.replication_factor
         )
         nodes = []
@@ -662,7 +646,7 @@ class NodeCluster:
                 continue
 
         if len(nodes) < self.read_quorum:
-            all_nodes = self.ring.get_preference_list(partition_key, len(self.nodes))
+            all_nodes = ring.get_preference_list(partition_key, len(self.nodes))
             for nid in all_nodes:
                 if len(nodes) >= self.read_quorum:
                     break
@@ -1040,9 +1024,10 @@ class NodeCluster:
         db_path = os.path.join(self.base_path, node_id)
         port = self.base_port + idx
         peers = [("localhost", self.base_port + i, f"node_{i}") for i in range(len(self.nodes) + 1)]
-        if self.ring is not None:
-            old_ring = list(self.ring._ring)
-            self.ring.add_node(node_id, weight=self.partitions_per_node)
+        if isinstance(self.partitioner, ConsistentHashPartitioner):
+            old_ring = list(self.partitioner.ring._ring)
+            self.partitioner.ring.add_node(node_id, weight=self.partitions_per_node)
+            self.partition_map = self.partitioner.get_partition_map()
         p = multiprocessing.Process(
             target=run_server,
             args=(
@@ -1071,9 +1056,10 @@ class NodeCluster:
         node = ClusterNode(node_id, "localhost", port, p, client)
         self.nodes.append(node)
         self.nodes_by_id[node_id] = node
-        if self.ring is not None:
+        if isinstance(self.partitioner, ConsistentHashPartitioner):
+            self.partitioner.nodes = self.nodes
             self._rebuild_ring_partitions()
-            new_ring = list(self.ring._ring)
+            new_ring = list(self.partitioner.ring._ring)
             for i, (h, nid) in enumerate(new_ring):
                 if (h, nid) not in old_ring:
                     prev_h = new_ring[i - 1][0]
@@ -1088,7 +1074,7 @@ class NodeCluster:
                         pid = self.get_partition_id(str(mid))
                         self.transfer_partition(self.nodes_by_id[old_owner_id], node, pid)
 
-        if self.partition_strategy == "hash" and self.ring is None:
+        if self.partition_strategy == "hash" and not isinstance(self.partitioner, ConsistentHashPartitioner):
             self._rebalance_after_add(node)
         elif self.key_ranges is not None:
             new_parts = []
@@ -1098,7 +1084,7 @@ class NodeCluster:
                     self.transfer_partition(nd, target, i)
                 new_parts.append((rng, target))
             self.partitions = new_parts
-        if self.partitioner is not None:
+        if self.partitioner is not None and not isinstance(self.partitioner, ConsistentHashPartitioner):
             # ``HashPartitioner`` stores the same node list used by ``NodeCluster``.
             # Avoid duplicating entries when adding a node.
             if self.partitioner.nodes is not self.nodes:
@@ -1113,10 +1099,11 @@ class NodeCluster:
             return
         node = self.nodes_by_id[node_id]
         self.nodes = [n for n in self.nodes if n.node_id != node_id]
-        if self.ring is not None:
-            old_ring = list(self.ring._ring)
+        if isinstance(self.partitioner, ConsistentHashPartitioner):
+            old_ring = list(self.partitioner.ring._ring)
             removed_tokens = [t for t in old_ring if t[1] == node_id]
-            self.ring.remove_node(node_id)
+            self.partitioner.remove_node(node)
+            self.partition_map = self.partitioner.get_partition_map()
             self._rebuild_ring_partitions()
             if self.nodes:
                 for h, _ in removed_tokens:
@@ -1124,7 +1111,7 @@ class NodeCluster:
                     prev_h = old_ring[idx - 1][0]
                     max_hash = 1 << 160
                     mid = (prev_h + h) // 2 if prev_h < h else ((prev_h + max_hash + h) // 2) % max_hash
-                    dest_id = self.ring.get_preference_list(str(mid), 1)[0]
+                    dest_id = self.partitioner.ring.get_preference_list(str(mid), 1)[0]
                     dest_node = self.nodes_by_id[dest_id]
                     pid = self.get_partition_id(str(mid))
                     self.transfer_partition(node, dest_node, pid)
@@ -1140,7 +1127,7 @@ class NodeCluster:
                 new_parts.append((rng, new_target))
             self.partitions = new_parts
 
-        if self.partitioner is not None:
+        if self.partitioner is not None and not isinstance(self.partitioner, ConsistentHashPartitioner):
             self.partitioner.remove_node(node)
             if hasattr(self.partitioner, "partitions"):
                 self.partitions = self.partitioner.partitions
