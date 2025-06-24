@@ -93,6 +93,7 @@ class NodeCluster:
         self.base_port = base_port
         self.nodes = []
         self.nodes_by_id: dict[str, ClusterNode] = {}
+        self.drivers: list = []
         self.salted_keys: dict[str, int] = {}
         self.consistency_mode = consistency_mode
         if replication_factor is None:
@@ -272,6 +273,11 @@ class NodeCluster:
             self._cold_thread = threading.Thread(target=_auto_cold, daemon=True)
             self._cold_thread.start()
 
+    def register_driver(self, driver) -> None:
+        """Register a Driver instance for partition map updates."""
+        if driver not in self.drivers:
+            self.drivers.append(driver)
+
     def enable_salt(self, key: str, buckets: int) -> None:
         """Enable random prefixing for ``key`` using ``buckets`` variants."""
         if buckets < 1:
@@ -448,6 +454,11 @@ class NodeCluster:
         for node in self.nodes:
             try:
                 node.client.update_partition_map(self.partition_map)
+            except Exception:
+                pass
+        for driver in self.drivers:
+            try:
+                driver.update_partition_map(self.partition_map)
             except Exception:
                 pass
         self.update_hash_ring()
