@@ -768,7 +768,8 @@ python -m unittest tests/test_routing.py tests/test_smart_driver.py -v
 ## Testes
 
 Execute a bateria de testes para validar o sistema. Instale antes as
-dependências listadas em `requirements.txt`:
+dependências listadas em `requirements.txt` (especialmente `grpcio`
+e `protobuf` utilizados nos serviços gRPC):
 ```bash
 pip install -r requirements.txt
 python -m unittest discover -s tests -v
