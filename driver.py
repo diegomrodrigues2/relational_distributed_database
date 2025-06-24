@@ -20,6 +20,7 @@ class Driver:
         self.read_your_writes_timeout = read_your_writes_timeout
         self._sessions = {}
         self.partition_map = cluster.get_partition_map()
+        cluster.register_driver(self)
 
     def update_partition_map(self, mapping: dict[int, str] | None = None) -> None:
         """Replace cached partition map with ``mapping`` or fetch from cluster."""
