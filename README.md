@@ -214,12 +214,36 @@ chamada RPC.
 
 ## Partições proporcionais (vnodes)
 
-Ao usar o anel de hash é possível atribuir múltiplos *tokens* virtuais para cada
-nó. Defina `partitions_per_node` ao criar o cluster para indicar quantas
-partições lógicas cada servidor receberá. O total de partições passa a ser
-`num_nodes * partitions_per_node`, permitindo um balanceamento mais fino e uma
-redistribuição mais suave quando `add_node()` ou `remove_node()` forem
-executados.
+Ao usar o anel de hash o cluster passa a empregar o
+`ConsistentHashPartitioner`. Cada servidor recebe diversos *tokens* virtuais,
+escolhidos aleatoriamente em todo o espaço de 160 bits. Defina
+`partitions_per_node` para indicar quantos tokens cada nó possuirá. O total de
+partições torna-se `num_nodes * partitions_per_node`, permitindo um
+balanceamento mais fino e uma redistribuição suave quando `add_node()` ou
+`remove_node()` forem executados.
+
+```python
+from replication import NodeCluster
+
+# 64 tokens por nó (virtual nodes)
+cluster = NodeCluster(
+    "/tmp/vnodes",
+    num_nodes=3,
+    partition_strategy="hash",
+    partitions_per_node=64,
+)
+
+print(len(cluster.partitioner.ring._ring))  # 192 tokens
+
+orig = cluster.get_partition_map().copy()
+cluster.add_node()  # novo nó recebe ~1/(n+1) das partições
+moved = sum(1 for pid, nid in orig.items()
+            if cluster.get_partition_map()[pid] != nid)
+print(f"{moved/len(orig):.0%} das partições migraram")
+```
+
+O RPC `UpdateHashRing` propaga os novos tokens para as réplicas sempre que o
+anel é alterado (executado automaticamente em `update_partition_map()`).
 
 ### Configuração em anel
 
@@ -645,10 +669,10 @@ cluster.remove_node(node.node_id)
 ```
 
 Após qualquer redistribuição o mapa de partições pode ser enviado a todos os
-nós chamando `cluster.update_partition_map()`. O serviço gRPC expõe o RPC
-`UpdatePartitionMap` que atualiza a tabela local de cada réplica. Os métodos
-`split_partition`, `add_node` e `remove_node` já executam essa chamada
-automaticamente.
+nós chamando `cluster.update_partition_map()`. O serviço gRPC expõe os RPCs
+`UpdatePartitionMap` e `UpdateHashRing` que atualizam respectivamente a tabela de
+partições e o anel de hash de cada réplica. Os métodos `split_partition`,
+`add_node` e `remove_node` já executam essas chamadas automaticamente.
 
 ## Estágio 6 – Roteamento de Requisições
 
@@ -717,8 +741,9 @@ print(driver.get('u', 'key'))
 
 Caso uma partição seja dividida ou o cluster passe por um rebalanceamento,
 execute `cluster.update_partition_map()` para distribuir o novo mapa a todas as
-réplicas pelo RPC `UpdatePartitionMap`. O método retorna o dicionário de
-partições, permitindo que drivers ou roteadores atualizem seu cache:
+réplicas pelos RPCs `UpdatePartitionMap` e `UpdateHashRing`. O método retorna o
+dicionário de partições, permitindo que drivers ou roteadores atualizem seu
+cache:
 
 ```python
 cluster.split_partition(0, "g")
