@@ -19,7 +19,7 @@ from partitioning import hash_key
 from index_manager import IndexManager
 from global_index_manager import GlobalIndexManager
 from hash_ring import HashRing
-from . import replication_pb2, replication_pb2_grpc
+from . import replication_pb2, replication_pb2_grpc, metadata_pb2, metadata_pb2_grpc
 from .client import GRPCReplicaClient
 
 
@@ -567,6 +567,8 @@ class NodeServer:
         cache_size: int = 0,
         index_fields: list[str] | None = None,
         global_index_fields: list[str] | None = None,
+        registry_host: str | None = None,
+        registry_port: int | None = None,
     ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
@@ -591,6 +593,12 @@ class NodeServer:
         self.index_manager.rebuild(self.db)
         self.global_index_fields = list(global_index_fields or [])
         self.global_index_manager = GlobalIndexManager(self.global_index_fields)
+        self.registry_host = registry_host
+        self.registry_port = registry_port
+        self._registry_channel = None
+        self._registry_stub = None
+        self._registry_stop = threading.Event()
+        self._registry_thread = None
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         self.service = ReplicaService(self)
@@ -632,19 +640,7 @@ class NodeServer:
         self.client_map = {}
         self.clients_by_id = {}
         self.peer_status: dict[str, float | None] = {}
-        for peer in self.peers:
-            if len(peer) == 2:
-                ph, pp = peer
-                pid = f"{ph}:{pp}"
-            else:
-                ph, pp, pid = peer
-            if ph == self.host and pp == self.port:
-                continue
-            c = GRPCReplicaClient(ph, pp)
-            self.peer_clients.append(c)
-            self.client_map[f"{ph}:{pp}"] = c
-            self.clients_by_id[pid] = c
-            self.peer_status[pid] = None
+        self._set_peers(self.peers)
 
         self.hints: dict[str, list[tuple]] = {}
         self._replog_fp = None
@@ -690,6 +686,40 @@ class NodeServer:
         key = f"idx:{field}:{value}"
         # Delegate to ReplicaService logic for owner determination
         return self.service._owner_for_key(key)
+
+    # registry helpers ----------------------------------------------------
+    def _set_peers(self, peers) -> None:
+        """Replace peer list and rebuild gRPC clients."""
+        self.peers = peers
+        self.peer_clients = []
+        self.client_map = {}
+        self.clients_by_id = {}
+        self.peer_status = {}
+        for peer in self.peers:
+            if len(peer) == 2:
+                ph, pp = peer
+                pid = f"{ph}:{pp}"
+            else:
+                ph, pp, pid = peer
+            if ph == self.host and pp == self.port:
+                continue
+            c = GRPCReplicaClient(ph, pp)
+            self.peer_clients.append(c)
+            self.client_map[f"{ph}:{pp}"] = c
+            self.clients_by_id[pid] = c
+            self.peer_status[pid] = None
+
+    def _apply_cluster_state(self, state) -> None:
+        """Update peers and partition map from ClusterState message."""
+        peers = [
+            (n.host, n.port, n.node_id)
+            for n in getattr(state, "nodes", [])
+            if n.node_id != self.node_id
+        ]
+        pmap = getattr(state, "partition_map", None)
+        if pmap is not None and hasattr(pmap, "items"):
+            self.partition_map = dict(pmap.items)
+        self._set_peers(peers)
 
     def _iter_peers(self):
         """Yield tuples of (host, port, node_id, client) for all peers."""
@@ -917,6 +947,19 @@ class NodeServer:
                 self.save_hints()
             time.sleep(self.hinted_handoff_interval)
 
+    def _registry_heartbeat_loop(self) -> None:
+        if not self._registry_stub:
+            return
+        while not self._registry_stop.is_set():
+            try:
+                resp = self._registry_stub.Heartbeat(
+                    metadata_pb2.HeartbeatRequest(node_id=self.node_id)
+                )
+                self._apply_cluster_state(resp)
+            except Exception:
+                pass
+            time.sleep(self.heartbeat_interval)
+
     def _start_cleanup_thread(self) -> None:
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             return
@@ -950,6 +993,17 @@ class NodeServer:
             return
         t = threading.Thread(target=self._hinted_handoff_loop, daemon=True)
         self._hinted_thread = t
+        t.start()
+
+    def _start_registry_thread(self) -> None:
+        if (
+            not self.registry_host
+            or not self.registry_port
+            or (self._registry_thread and self._registry_thread.is_alive())
+        ):
+            return
+        t = threading.Thread(target=self._registry_heartbeat_loop, daemon=True)
+        self._registry_thread = t
         t.start()
 
     # replication helpers -------------------------------------------------
@@ -1203,6 +1257,25 @@ class NodeServer:
         self.load_hints()
         self.global_index_manager.rebuild(self.db)
         self.server.start()
+        if self.registry_host and self.registry_port:
+            self._registry_channel = grpc.insecure_channel(
+                f"{self.registry_host}:{self.registry_port}"
+            )
+            self._registry_stub = metadata_pb2_grpc.MetadataServiceStub(
+                self._registry_channel
+            )
+            try:
+                resp = self._registry_stub.RegisterNode(
+                    metadata_pb2.RegisterRequest(
+                        node=metadata_pb2.NodeInfo(
+                            node_id=self.node_id, host=self.host, port=self.port
+                        )
+                    )
+                )
+                self._apply_cluster_state(resp)
+            except Exception:
+                pass
+            self._start_registry_thread()
         if self.replication_factor > 1:
             self._start_cleanup_thread()
             self._start_replay_thread()
@@ -1224,6 +1297,7 @@ class NodeServer:
         self._anti_entropy_stop.set()
         self._heartbeat_stop.set()
         self._hinted_stop.set()
+        self._registry_stop.set()
         if self._cleanup_thread:
             self._cleanup_thread.join()
         if self._replay_thread:
@@ -1234,8 +1308,12 @@ class NodeServer:
             self._heartbeat_thread.join()
         if self._hinted_thread:
             self._hinted_thread.join()
+        if self._registry_thread:
+            self._registry_thread.join()
         for _, _, _, c in self._iter_peers():
             c.close()
+        if self._registry_channel:
+            self._registry_channel.close()
         self.server.stop(0).wait()
 
 
@@ -1257,6 +1335,8 @@ def run_server(
     node_index: int | None = None,
     index_fields: list[str] | None = None,
     global_index_fields: list[str] | None = None,
+    registry_host: str | None = None,
+    registry_port: int | None = None,
 ):
     node = NodeServer(
         db_path,
@@ -1275,5 +1355,7 @@ def run_server(
         node_index=node_index,
         index_fields=index_fields,
         global_index_fields=global_index_fields,
+        registry_host=registry_host,
+        registry_port=registry_port,
     )
     node.start()
