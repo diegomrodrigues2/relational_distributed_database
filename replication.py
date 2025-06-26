@@ -21,7 +21,7 @@ from concurrent import futures
 
 from replica.grpc_server import run_server
 from replica.client import GRPCReplicaClient, GRPCRouterClient
-from replica import metadata_pb2, metadata_pb2_grpc
+from replica import metadata_pb2, metadata_pb2_grpc, replication_pb2
 import grpc
 from router_server import run_router
 from metadata_service import run_metadata_service
@@ -275,9 +275,10 @@ class NodeCluster:
             self.update_partition_map()
 
         if start_router:
+            raddr = self.registry_addr if self.use_registry else None
             self.router_process = multiprocessing.Process(
                 target=run_router,
-                args=(self, "localhost", router_port),
+                args=(self, "localhost", router_port, raddr),
                 daemon=True,
             )
             self.router_process.start()

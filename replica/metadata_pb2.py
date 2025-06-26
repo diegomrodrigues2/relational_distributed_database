@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from replica import replication_pb2 as replica_dot_replication__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16replica/metadata.proto\x12\x08metadata\x1a\x19replica/replication.proto\"7\n\x08NodeInfo\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0c\n\x04host\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\x05\"3\n\x0fRegisterRequest\x12 \n\x04node\x18\x01 \x01(\x0b\x32\x12.metadata.NodeInfo\"#\n\x10HeartbeatRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"c\n\x0c\x43lusterState\x12!\n\x05nodes\x18\x01 \x03(\x0b\x32\x12.metadata.NodeInfo\x12\x30\n\rpartition_map\x18\x02 \x01(\x0b\x32\x19.replication.PartitionMap2\x96\x02\n\x0fMetadataService\x12\x41\n\x0cRegisterNode\x12\x19.metadata.RegisterRequest\x1a\x16.metadata.ClusterState\x12?\n\tHeartbeat\x12\x1a.metadata.HeartbeatRequest\x1a\x16.metadata.ClusterState\x12=\n\x0fGetClusterState\x12\x12.replication.Empty\x1a\x16.metadata.ClusterState\x12@\n\x12UpdateClusterState\x12\x16.metadata.ClusterState\x1a\x12.replication.Emptyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16replica/metadata.proto\x12\x08metadata\x1a\x19replica/replication.proto\"7\n\x08NodeInfo\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0c\n\x04host\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\x05\"3\n\x0fRegisterRequest\x12 \n\x04node\x18\x01 \x01(\x0b\x32\x12.metadata.NodeInfo\"#\n\x10HeartbeatRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"c\n\x0c\x43lusterState\x12!\n\x05nodes\x18\x01 \x03(\x0b\x32\x12.metadata.NodeInfo\x12\x30\n\rpartition_map\x18\x02 \x01(\x0b\x32\x19.replication.PartitionMap2\xd9\x02\n\x0fMetadataService\x12\x41\n\x0cRegisterNode\x12\x19.metadata.RegisterRequest\x1a\x16.metadata.ClusterState\x12?\n\tHeartbeat\x12\x1a.metadata.HeartbeatRequest\x1a\x16.metadata.ClusterState\x12=\n\x0fGetClusterState\x12\x12.replication.Empty\x1a\x16.metadata.ClusterState\x12@\n\x12UpdateClusterState\x12\x16.metadata.ClusterState\x1a\x12.replication.Empty\x12\x41\n\x11WatchClusterState\x12\x12.replication.Empty\x1a\x16.metadata.ClusterState0\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,5 +41,5 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_CLUSTERSTATE']._serialized_start=210
   _globals['_CLUSTERSTATE']._serialized_end=309
   _globals['_METADATASERVICE']._serialized_start=312
-  _globals['_METADATASERVICE']._serialized_end=590
+  _globals['_METADATASERVICE']._serialized_end=657
 # @@protoc_insertion_point(module_scope)

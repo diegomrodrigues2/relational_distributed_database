@@ -599,6 +599,7 @@ class NodeServer:
         self._registry_stub = None
         self._registry_stop = threading.Event()
         self._registry_thread = None
+        self._registry_watch_thread = None
 
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         self.service = ReplicaService(self)
@@ -960,6 +961,19 @@ class NodeServer:
                 pass
             time.sleep(self.heartbeat_interval)
 
+    def _registry_watch_loop(self) -> None:
+        if not self._registry_stub:
+            return
+        while not self._registry_stop.is_set():
+            try:
+                stream = self._registry_stub.WatchClusterState(replication_pb2.Empty())
+                for state in stream:
+                    self._apply_cluster_state(state)
+                    if self._registry_stop.is_set():
+                        break
+            except Exception:
+                time.sleep(self.heartbeat_interval)
+
     def _start_cleanup_thread(self) -> None:
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             return
@@ -1004,6 +1018,17 @@ class NodeServer:
             return
         t = threading.Thread(target=self._registry_heartbeat_loop, daemon=True)
         self._registry_thread = t
+        t.start()
+
+    def _start_registry_watch_thread(self) -> None:
+        if (
+            not self.registry_host
+            or not self.registry_port
+            or (self._registry_watch_thread and self._registry_watch_thread.is_alive())
+        ):
+            return
+        t = threading.Thread(target=self._registry_watch_loop, daemon=True)
+        self._registry_watch_thread = t
         t.start()
 
     # replication helpers -------------------------------------------------
@@ -1276,6 +1301,7 @@ class NodeServer:
             except Exception:
                 pass
             self._start_registry_thread()
+            self._start_registry_watch_thread()
         if self.replication_factor > 1:
             self._start_cleanup_thread()
             self._start_replay_thread()
@@ -1310,6 +1336,8 @@ class NodeServer:
             self._hinted_thread.join()
         if self._registry_thread:
             self._registry_thread.join()
+        if self._registry_watch_thread:
+            self._registry_watch_thread.join()
         for _, _, _, c in self._iter_peers():
             c.close()
         if self._registry_channel:

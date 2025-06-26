@@ -1,7 +1,9 @@
 import time
 import random
 import grpc
+import threading
 from replication import NodeCluster
+from replica import metadata_pb2, metadata_pb2_grpc, replication_pb2
 from partitioning import compose_key
 
 class Driver:
@@ -14,6 +16,8 @@ class Driver:
         *,
         consistency_mode: str = "lww",
         load_balance_reads: bool | None = None,
+        registry_host: str | None = None,
+        registry_port: int | None = None,
     ) -> None:
         """Cria o driver e prepara o dicionário de sessões.
 
@@ -28,12 +32,54 @@ class Driver:
         self.load_balance_reads = bool(load_balance_reads)
         self._sessions = {}
         self.partition_map = cluster.get_partition_map()
+        self.registry_host = registry_host
+        self.registry_port = registry_port
+        self._registry_channel = None
+        self._registry_stub = None
+        self._watch_stop = threading.Event()
+        self._watch_thread = None
+        if registry_host and registry_port:
+            self._registry_channel = grpc.insecure_channel(f"{registry_host}:{registry_port}")
+            self._registry_stub = metadata_pb2_grpc.MetadataServiceStub(self._registry_channel)
+            try:
+                state = self._registry_stub.GetClusterState(replication_pb2.Empty())
+                self.update_partition_map(state.partition_map.items)
+            except Exception:
+                pass
+            self._start_watch_thread()
         cluster.register_driver(self)
+
+    def _watch_loop(self) -> None:
+        if not self._registry_stub:
+            return
+        while not self._watch_stop.is_set():
+            try:
+                stream = self._registry_stub.WatchClusterState(replication_pb2.Empty())
+                for state in stream:
+                    self.update_partition_map(state.partition_map.items)
+                    if self._watch_stop.is_set():
+                        break
+            except Exception:
+                time.sleep(1.0)
+
+    def _start_watch_thread(self) -> None:
+        if self._watch_thread and self._watch_thread.is_alive():
+            return
+        t = threading.Thread(target=self._watch_loop, daemon=True)
+        self._watch_thread = t
+        t.start()
 
     def update_partition_map(self, mapping: dict[int, str] | None = None) -> None:
         """Replace cached partition map with ``mapping`` or fetch from cluster."""
         if mapping is None:
-            mapping = self.cluster.get_partition_map()
+            if self._registry_stub:
+                try:
+                    state = self._registry_stub.GetClusterState(replication_pb2.Empty())
+                    mapping = state.partition_map.items
+                except Exception:
+                    mapping = self.cluster.get_partition_map()
+            else:
+                mapping = self.cluster.get_partition_map()
         self.partition_map = dict(mapping)
 
     def _get_or_create_session(self, user_id: str) -> dict:

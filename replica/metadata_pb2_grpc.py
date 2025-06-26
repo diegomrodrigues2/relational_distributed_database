@@ -6,7 +6,7 @@ import warnings
 from replica import metadata_pb2 as replica_dot_metadata__pb2
 from replica import replication_pb2 as replica_dot_replication__pb2
 
-GRPC_GENERATED_VERSION = '1.73.0'
+GRPC_GENERATED_VERSION = '1.73.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -55,6 +55,11 @@ class MetadataServiceStub(object):
                 request_serializer=replica_dot_metadata__pb2.ClusterState.SerializeToString,
                 response_deserializer=replica_dot_replication__pb2.Empty.FromString,
                 _registered_method=True)
+        self.WatchClusterState = channel.unary_stream(
+                '/metadata.MetadataService/WatchClusterState',
+                request_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                response_deserializer=replica_dot_metadata__pb2.ClusterState.FromString,
+                _registered_method=True)
 
 
 class MetadataServiceServicer(object):
@@ -84,6 +89,12 @@ class MetadataServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def WatchClusterState(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_MetadataServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -106,6 +117,11 @@ def add_MetadataServiceServicer_to_server(servicer, server):
                     servicer.UpdateClusterState,
                     request_deserializer=replica_dot_metadata__pb2.ClusterState.FromString,
                     response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+            ),
+            'WatchClusterState': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchClusterState,
+                    request_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                    response_serializer=replica_dot_metadata__pb2.ClusterState.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -216,6 +232,33 @@ class MetadataService(object):
             '/metadata.MetadataService/UpdateClusterState',
             replica_dot_metadata__pb2.ClusterState.SerializeToString,
             replica_dot_replication__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchClusterState(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/metadata.MetadataService/WatchClusterState',
+            replica_dot_replication__pb2.Empty.SerializeToString,
+            replica_dot_metadata__pb2.ClusterState.FromString,
             options,
             channel_credentials,
             insecure,

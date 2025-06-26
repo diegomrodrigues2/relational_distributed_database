@@ -27,4 +27,5 @@ service MetadataService {
   rpc Heartbeat(HeartbeatRequest) returns (ClusterState);
   rpc GetClusterState(replication.Empty) returns (ClusterState);
   rpc UpdateClusterState(ClusterState) returns (replication.Empty);
+  rpc WatchClusterState(replication.Empty) returns (stream ClusterState);
 }
