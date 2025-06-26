@@ -21,7 +21,10 @@ from concurrent import futures
 
 from replica.grpc_server import run_server
 from replica.client import GRPCReplicaClient, GRPCRouterClient
+from replica import metadata_pb2, metadata_pb2_grpc
+import grpc
 from router_server import run_router
+from metadata_service import run_metadata_service
 from hash_ring import HashRing as ConsistentHashRing
 from vector_clock import VectorClock
 from lsm_db import _merge_version_lists, SimpleLSMDB
@@ -83,6 +86,8 @@ class NodeCluster:
         cold_check_interval: float | None = None,
         start_router: bool = False,
         router_port: int = 7000,
+        use_registry: bool = False,
+        registry_addr: tuple[str, int] | None = None,
     ):
         self.base_path = base_path
         if os.path.exists(base_path):
@@ -123,6 +128,11 @@ class NodeCluster:
         self.router_process: multiprocessing.Process | None = None
         self.router_client: GRPCRouterClient | None = None
         self.router_port = router_port
+        self.use_registry = bool(use_registry)
+        self.registry_addr = registry_addr or ("localhost", 9100)
+        self.registry_process: multiprocessing.Process | None = None
+        self._registry_channel = None
+        self._registry_stub = None
 
         use_ring = not key_ranges and not (
             partition_strategy == "hash" and replication_factor == 1 and not enable_forwarding
@@ -155,6 +165,19 @@ class NodeCluster:
             ("localhost", base_port + i, f"node_{i}")
             for i in range(num_nodes)
         ]
+        if self.use_registry:
+            host, port = self.registry_addr
+            self.registry_process = multiprocessing.Process(
+                target=run_metadata_service,
+                args=(host, port),
+                daemon=True,
+            )
+            self.registry_process.start()
+            time.sleep(0.5)
+            self._registry_channel = grpc.insecure_channel(f"{host}:{port}")
+            self._registry_stub = metadata_pb2_grpc.MetadataServiceStub(
+                self._registry_channel
+            )
         if use_ring:
             for _, _, nid in peers:
                 self.partitioner.ring.add_node(nid, weight=self.partitions_per_node)
@@ -219,6 +242,8 @@ class NodeCluster:
                     "node_index": i if self.ring is None else None,
                     "index_fields": self.index_fields,
                     "global_index_fields": self.global_index_fields,
+                    "registry_host": self.registry_addr[0] if self.use_registry else None,
+                    "registry_port": self.registry_addr[1] if self.use_registry else None,
                 },
                 daemon=True,
             )
@@ -462,6 +487,7 @@ class NodeCluster:
             except Exception:
                 pass
         self.update_hash_ring()
+        self._notify_registry()
         return dict(self.partition_map)
 
     def update_hash_ring(self) -> None:
@@ -475,6 +501,20 @@ class NodeCluster:
                 node.client.update_hash_ring(entries)
             except Exception:
                 pass
+
+    def _notify_registry(self) -> None:
+        if not self.use_registry or not self._registry_stub:
+            return
+        nodes = [
+            metadata_pb2.NodeInfo(node_id=n.node_id, host=n.host, port=n.port)
+            for n in self.nodes
+        ]
+        pmap = replication_pb2.PartitionMap(items=self.partition_map)
+        state = metadata_pb2.ClusterState(nodes=nodes, partition_map=pmap)
+        try:
+            self._registry_stub.UpdateClusterState(state)
+        except Exception:
+            pass
 
     def get_partition_id(
         self, partition_key: str, clustering_key: str | None = None
@@ -1082,14 +1122,16 @@ class NodeCluster:
                 self.write_quorum,
                 self.read_quorum,
             ),
-            kwargs={
-                "consistency_mode": self.consistency_mode,
-                "enable_forwarding": self.enable_forwarding,
-                "index_fields": self.index_fields,
-                "global_index_fields": self.global_index_fields,
-            },
-            daemon=True,
-        )
+                kwargs={
+                    "consistency_mode": self.consistency_mode,
+                    "enable_forwarding": self.enable_forwarding,
+                    "index_fields": self.index_fields,
+                    "global_index_fields": self.global_index_fields,
+                    "registry_host": self.registry_addr[0] if self.use_registry else None,
+                    "registry_port": self.registry_addr[1] if self.use_registry else None,
+                },
+                daemon=True,
+            )
         p.start()
         time.sleep(0.2)
         client = GRPCReplicaClient("localhost", port)
@@ -1189,4 +1231,10 @@ class NodeCluster:
                 self.router_client.close()
         for n in self.nodes:
             n.stop()
+        if self.use_registry and self.registry_process is not None:
+            if self.registry_process.is_alive():
+                self.registry_process.terminate()
+            self.registry_process.join()
+            if self._registry_channel:
+                self._registry_channel.close()
 
