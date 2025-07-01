@@ -126,6 +126,7 @@ sequenceDiagram
 
 ```bash
 python main.py
+# or: python -m api.main
 # or: uvicorn api.main:app --reload
 ```
 This automatically starts a `NodeCluster` during the startup event so the HTTP endpoints are backed by a live cluster.
