@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from database.replication import NodeCluster
+from database.replication.replica import replication_pb2
+import time
 
 app = FastAPI()
 
@@ -7,6 +9,7 @@ app = FastAPI()
 @app.on_event("startup")
 def startup_event() -> None:
     """Initialize the cluster when the API starts."""
+    app.state.cluster_start = time.time()
     app.state.cluster = NodeCluster(base_path="/tmp/api_cluster", num_nodes=3)
 
 
@@ -30,11 +33,116 @@ def put_value(key: str, value: str):
     return {"status": "ok"}
 
 
+@app.get("/cluster/nodes")
+def list_nodes() -> dict:
+    """Return node information aggregated from GetNodeInfo."""
+    cluster = app.state.cluster
+    nodes = []
+    for n in cluster.nodes:
+        info = {
+            "node_id": n.node_id,
+            "host": n.host,
+            "port": n.port,
+        }
+        try:
+            req = replication_pb2.NodeInfoRequest(node_id=n.node_id)
+            resp = n.client.stub.GetNodeInfo(req)
+            info.update(
+                {
+                    "status": resp.status,
+                    "cpu": resp.cpu,
+                    "memory": resp.memory,
+                    "disk": resp.disk,
+                    "uptime": resp.uptime,
+                    "replication_log_size": resp.replication_log_size,
+                    "hints_count": resp.hints_count,
+                }
+            )
+        except Exception:
+            pass
+        nodes.append(info)
+    return {"nodes": nodes}
+
+
+@app.get("/cluster/partitions")
+def list_partitions() -> dict:
+    """Return partition map with operation and item count stats."""
+    cluster = app.state.cluster
+    mapping = cluster.get_partition_map()
+    stats = cluster.get_partition_stats()
+    counts = cluster.get_partition_item_counts()
+    parts = []
+    for pid, owner in mapping.items():
+        parts.append(
+            {
+                "id": pid,
+                "node": owner,
+                "ops": stats.get(pid, 0),
+                "items": counts.get(pid, 0),
+            }
+        )
+    return {"partitions": sorted(parts, key=lambda x: x["id"])}
+
+
+@app.get("/cluster/metrics/time_series")
+def time_series_metrics() -> dict:
+    """Return simple latency/throughput samples and log sizes."""
+    cluster = app.state.cluster
+    latencies = []
+    replog = 0
+    hints = 0
+    for n in cluster.nodes:
+        start = time.time()
+        try:
+            n.client.ping(n.node_id)
+            latencies.append((time.time() - start) * 1000)
+        except Exception:
+            latencies.append(None)
+        try:
+            req = replication_pb2.NodeInfoRequest(node_id=n.node_id)
+            resp = n.client.stub.GetNodeInfo(req)
+            replog += resp.replication_log_size
+            hints += resp.hints_count
+        except Exception:
+            pass
+    total_ops = sum(cluster.get_partition_stats().values())
+    elapsed = max(time.time() - getattr(app.state, "cluster_start", time.time()), 1)
+    throughput = total_ops / elapsed
+    return {
+        "latency_ms": [l for l in latencies if l is not None],
+        "throughput": throughput,
+        "replication_log_size": replog,
+        "hints_count": hints,
+    }
+
+
+@app.get("/cluster/config")
+def cluster_config() -> dict:
+    """Return cluster configuration values."""
+    cluster = app.state.cluster
+    return {
+        "replication_factor": cluster.replication_factor,
+        "write_quorum": cluster.write_quorum,
+        "read_quorum": cluster.read_quorum,
+        "partition_strategy": cluster.partition_strategy,
+        "consistency_mode": cluster.consistency_mode,
+        "partitions_per_node": cluster.partitions_per_node,
+        "num_partitions": cluster.num_partitions,
+    }
+
+
 @app.get("/health")
 def health() -> dict:
     """Return basic cluster information."""
     cluster = app.state.cluster
-    return {"nodes": len(cluster.nodes)}
+    healthy = 0
+    for n in cluster.nodes:
+        try:
+            n.client.ping(n.node_id)
+            healthy += 1
+        except Exception:
+            continue
+    return {"nodes": len(cluster.nodes), "healthy": healthy}
 
 
 if __name__ == "__main__":
