@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import * as dbService from '../services/mockDatabaseService';
+import { getNodes } from '../services/api';
+import * as mockService from '../services/mock';
 import { Node, NodeStatus } from '../types';
 import NodeSelector from './management/NodeSelector';
 import NodeDetail from './management/NodeDetail';
@@ -18,7 +19,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
   const fetchNodes = useCallback(async () => {
     setIsLoading(true);
     try {
-      const nodesData = await dbService.getNodes();
+      const nodesData = await getNodes();
       setNodes(nodesData);
     } catch (error) {
       console.error("Failed to fetch nodes:", error);
@@ -48,7 +49,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
   const handleAddNode = async () => {
     setIsActionLoading(true);
     try {
-        await dbService.addNode();
+        await mockService.addNode();
         await fetchNodes(); // Re-fetch all nodes to get the new list
     } catch (error) {
         console.error("Failed to add node:", error);
@@ -61,7 +62,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
     if (window.confirm(`Are you sure you want to remove ${nodeId}? This action is permanent.`)) {
         setIsActionLoading(true);
         try {
-            await dbService.removeNode(nodeId);
+            await mockService.removeNode(nodeId);
             setSelectedNodeId(null);
             await fetchNodes(); // Re-fetch all nodes
         } catch (error) {
@@ -75,7 +76,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
   const handleStopNode = async (nodeId: string) => {
     setIsActionLoading(true);
     try {
-        const updatedNode = await dbService.stopNode(nodeId);
+        const updatedNode = await mockService.stopNode(nodeId);
         handleUpdateNode(updatedNode);
     } catch (error) {
         console.error("Failed to stop node:", error);
@@ -87,7 +88,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
   const handleStartNode = async (nodeId: string) => {
     setIsActionLoading(true);
     try {
-        const updatedNode = await dbService.startNode(nodeId);
+        const updatedNode = await mockService.startNode(nodeId);
         handleUpdateNode(updatedNode);
     } catch (error) {
         console.error("Failed to start node:", error);

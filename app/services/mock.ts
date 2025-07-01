@@ -1,5 +1,5 @@
 
-import { Node, NodeStatus, Partition, MetricPoint, UserRecord, ClusterConfig, HotspotInfo, ReplicationStatus, WALEntry, StorageEntry, SSTableInfo } from '../types';
+import { Node, NodeStatus, Partition, UserRecord, ClusterConfig, HotspotInfo, ReplicationStatus, WALEntry, StorageEntry, SSTableInfo } from '../types';
 
 let MOCK_NODES: Node[] = [
   { id: 'node_0', address: '192.168.1.100:9000', status: NodeStatus.LIVE, uptime: '28d 4h 12m', cpuUsage: 25.5, memoryUsage: 60.1, diskUsage: 45.2, dataLoad: 1024, replicationLogSize: 5, hintsCount: 12, isCompacting: true },
@@ -110,17 +110,6 @@ const MOCK_SSTABLE_CONTENT: {[nodeId: string]: {[sstableId: string]: StorageEntr
 }
 
 
-const generateMetricData = (points: number, min: number, max: number): MetricPoint[] => {
-  const data: MetricPoint[] = [];
-  const now = Date.now();
-  for (let i = points - 1; i >= 0; i--) {
-    data.push({
-      time: new Date(now - i * 60000).toLocaleTimeString(),
-      value: Math.random() * (max - min) + min,
-    });
-  }
-  return data;
-};
 
 const mockApi = <T,>(data: T, delay: number = 500): Promise<T> => {
     return new Promise(resolve => {
@@ -130,9 +119,8 @@ const mockApi = <T,>(data: T, delay: number = 500): Promise<T> => {
     });
 };
 
-export const getNodes = (): Promise<Node[]> => mockApi(MOCK_NODES);
-export const getPartitions = (): Promise<Partition[]> => mockApi(MOCK_PARTITIONS);
 export const getClusterConfig = (): Promise<ClusterConfig> => mockApi(MOCK_CLUSTER_CONFIG);
+
 export const getHotspots = (): Promise<HotspotInfo> => mockApi(MOCK_HOTSPOTS);
 export const getReplicationStatus = (): Promise<ReplicationStatus[]> => mockApi(MOCK_REPLICATION_STATUS);
 
@@ -142,19 +130,6 @@ export const getSstables = (nodeId: string): Promise<SSTableInfo[]> => mockApi(M
 export const getSstableEntries = (nodeId: string, sstableId: string): Promise<StorageEntry[]> => mockApi(MOCK_SSTABLE_CONTENT[nodeId]?.[sstableId] || []);
 
 
-export const getDashboardTimeSeriesMetrics = (): Promise<{
-  latency: MetricPoint[];
-  throughput: MetricPoint[];
-  replicationLogTotal: MetricPoint[];
-  hintsTotal: MetricPoint[];
-}> => {
-  return mockApi({
-    latency: generateMetricData(20, 10, 50),
-    throughput: generateMetricData(20, 800, 1500),
-    replicationLogTotal: generateMetricData(20, 5, 30),
-    hintsTotal: generateMetricData(20, 0, 50),
-  });
-};
 
 export const getUserRecords = (): Promise<UserRecord[]> => mockApi(MOCK_USER_RECORDS);
 

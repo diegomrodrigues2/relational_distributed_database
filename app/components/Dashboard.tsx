@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import * as dbService from '../services/mockDatabaseService';
+import * as dbService from '../services/api';
 import { Node, Partition, MetricPoint, ClusterConfig } from '../types';
 import ClusterOverview from './dashboard/ClusterOverview';
 import NodeList from './dashboard/NodeList';

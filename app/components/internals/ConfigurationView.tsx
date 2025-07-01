@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getClusterConfig } from '../../services/mockDatabaseService';
+import { getClusterConfig } from '../../services/mock';
 import { ClusterConfig } from '../../types';
 import Card from '../common/Card';
 

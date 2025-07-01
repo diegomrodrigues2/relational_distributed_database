@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { WALEntry, StorageEntry, SSTableInfo } from '../../types';
-import * as dbService from '../../services/mockDatabaseService';
+import * as dbService from '../../services/mock';
 import Card from '../common/Card';
 import Button from '../common/Button';
 
