@@ -137,6 +137,30 @@ message KeyList {
   repeated string keys = 1;
 }
 
+// Request for information about a node
+message NodeInfoRequest {
+  string node_id = 1;
+  string status = 2;
+  double cpu = 3;
+  double memory = 4;
+  double disk = 5;
+  int64 uptime = 6;
+  int32 replication_log_size = 7;
+  int32 hints_count = 8;
+}
+
+// Reply with information about a node
+message NodeInfoResponse {
+  string node_id = 1;
+  string status = 2;
+  double cpu = 3;
+  double memory = 4;
+  double disk = 5;
+  int64 uptime = 6;
+  int32 replication_log_size = 7;
+  int32 hints_count = 8;
+}
+
 // Servico disponibilizado por cada seguidor
 service Replica {
   rpc Put(KeyValue) returns (Empty);
@@ -147,6 +171,7 @@ service Replica {
   rpc UpdatePartitionMap(PartitionMap) returns (Empty);
   rpc UpdateHashRing(HashRing) returns (Empty);
   rpc ListByIndex(IndexQuery) returns (KeyList);
+  rpc GetNodeInfo(NodeInfoRequest) returns (NodeInfoResponse);
 }
 
 // Servico dedicado para heartbeat
