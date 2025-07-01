@@ -1,4 +1,4 @@
-import { Node, NodeStatus, Partition, MetricPoint, ClusterConfig } from '../types';
+import { Node, NodeStatus, Partition, MetricPoint, ClusterConfig, HotspotInfo, ReplicationStatus } from '../types';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -72,4 +72,44 @@ export const getDashboardTimeSeriesMetrics = async (): Promise<{
     replicationLogTotal: [{ time: t, value: data.replication_log_size ?? 0 }],
     hintsTotal: [{ time: t, value: data.hints_count ?? 0 }],
   };
+};
+
+export const getHotspots = async (): Promise<HotspotInfo> => {
+  const data = await fetchJson<any>('/cluster/hotspots');
+  return {
+    hotPartitions: (data.hot_partitions || []).map((p: any) => ({
+      id: String(p.id),
+      operationCount: p.operation_count ?? 0,
+      averageOps: p.average_ops ?? 0,
+    })),
+    hotKeys: (data.hot_keys || []).map((k: any) => ({
+      key: k.key,
+      frequency: k.frequency ?? 0,
+    })),
+  };
+};
+
+export const getReplicationStatus = async (): Promise<ReplicationStatus[]> => {
+  const nodes = await getNodes();
+  const statuses = await Promise.all(
+    nodes.map(async n => {
+      try {
+        const data = await fetchJson<any>(`/nodes/${n.id}/replication_status`);
+        return {
+          nodeId: n.id,
+          replicationLogSize: n.replicationLogSize,
+          lastSeen: data.last_seen ?? {},
+          hints: data.hints ?? {},
+        } as ReplicationStatus;
+      } catch {
+        return {
+          nodeId: n.id,
+          replicationLogSize: n.replicationLogSize,
+          lastSeen: {},
+          hints: {},
+        } as ReplicationStatus;
+      }
+    })
+  );
+  return statuses;
 };

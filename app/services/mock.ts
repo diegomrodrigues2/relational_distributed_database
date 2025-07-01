@@ -1,5 +1,6 @@
 
 import { Node, NodeStatus, Partition, UserRecord, ClusterConfig, HotspotInfo, ReplicationStatus, WALEntry, StorageEntry, SSTableInfo } from '../types';
+import * as api from './api';
 
 let MOCK_NODES: Node[] = [
   { id: 'node_0', address: '192.168.1.100:9000', status: NodeStatus.LIVE, uptime: '28d 4h 12m', cpuUsage: 25.5, memoryUsage: 60.1, diskUsage: 45.2, dataLoad: 1024, replicationLogSize: 5, hintsCount: 12, isCompacting: true },
@@ -36,25 +37,6 @@ const MOCK_CLUSTER_CONFIG: ClusterConfig = {
     hintedHandoffInterval: 1.0,
 };
 
-const MOCK_HOTSPOTS: HotspotInfo = {
-    hotPartitions: [
-        { id: 'p6', operationCount: 12500, averageOps: 3500 },
-        { id: 'p4', operationCount: 9800, averageOps: 3500 },
-    ],
-    hotKeys: [
-        { key: 'user:1001|profile', frequency: 890 },
-        { key: 'product:A-123|inventory', frequency: 750 },
-        { key: 'session:xyz', frequency: 620 },
-    ]
-};
-
-const MOCK_REPLICATION_STATUS: ReplicationStatus[] = [
-    { nodeId: 'node_0', replicationLogSize: 5, lastSeen: { 'node_1': 1520, 'node_2': 1518, 'node_3': 890 }, hints: {'node_4': 12} },
-    { nodeId: 'node_1', replicationLogSize: 2, lastSeen: { 'node_0': 1890, 'node_2': 1518, 'node_3': 888 }, hints: {'node_4': 15} },
-    { nodeId: 'node_2', replicationLogSize: 8, lastSeen: { 'node_0': 1885, 'node_1': 1521, 'node_3': 891 }, hints: {'node_4': 10} },
-    { nodeId: 'node_3', replicationLogSize: 15, lastSeen: { 'node_0': 1870, 'node_1': 1510, 'node_2': 1500 }, hints: {} },
-    { nodeId: 'node_4', replicationLogSize: 0, lastSeen: {}, hints: {} },
-];
 
 
 let MOCK_USER_RECORDS: UserRecord[] = [
@@ -119,10 +101,10 @@ const mockApi = <T,>(data: T, delay: number = 500): Promise<T> => {
     });
 };
 
-export const getClusterConfig = (): Promise<ClusterConfig> => mockApi(MOCK_CLUSTER_CONFIG);
+export const getClusterConfig = (): Promise<ClusterConfig> => api.getClusterConfig();
 
-export const getHotspots = (): Promise<HotspotInfo> => mockApi(MOCK_HOTSPOTS);
-export const getReplicationStatus = (): Promise<ReplicationStatus[]> => mockApi(MOCK_REPLICATION_STATUS);
+export const getHotspots = (): Promise<HotspotInfo> => api.getHotspots();
+export const getReplicationStatus = (): Promise<ReplicationStatus[]> => api.getReplicationStatus();
 
 export const getWalEntries = (nodeId: string): Promise<WALEntry[]> => mockApi(MOCK_WAL_ENTRIES[nodeId] || []);
 export const getMemtableEntries = (nodeId: string): Promise<StorageEntry[]> => mockApi(MOCK_MEMTABLE_ENTRIES[nodeId] || []);
