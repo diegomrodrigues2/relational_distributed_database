@@ -161,6 +161,12 @@ message NodeInfoResponse {
   int32 hints_count = 8;
 }
 
+// Map of replication state per node
+message ReplicationStatusResponse {
+  map<string,int64> last_seen = 1;
+  map<string,int32> hints = 2;
+}
+
 // Servico disponibilizado por cada seguidor
 service Replica {
   rpc Put(KeyValue) returns (Empty);
@@ -172,6 +178,7 @@ service Replica {
   rpc UpdateHashRing(HashRing) returns (Empty);
   rpc ListByIndex(IndexQuery) returns (KeyList);
   rpc GetNodeInfo(NodeInfoRequest) returns (NodeInfoResponse);
+  rpc GetReplicationStatus(NodeInfoRequest) returns (ReplicationStatusResponse);
 }
 
 // Servico dedicado para heartbeat
