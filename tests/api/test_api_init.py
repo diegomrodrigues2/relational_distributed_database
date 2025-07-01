@@ -10,4 +10,6 @@ def test_api_starts_cluster_successfully():
     with TestClient(app) as client:
         resp = client.get("/health")
         assert resp.status_code == 200
-        assert resp.json()["nodes"] > 0
+        data = resp.json()
+        assert data["nodes"] > 0
+        assert data.get("healthy", 0) > 0
