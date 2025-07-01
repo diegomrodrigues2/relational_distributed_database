@@ -529,7 +529,6 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         """Return information about this node."""
         return self._node.get_node_info()
 
-
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""
 
@@ -622,6 +621,7 @@ class NodeServer:
 
         self.server.add_insecure_port(f"{host}:{port}")
 
+        self.start_time = time.time()
         self.clock = LamportClock()
         self.vector_clock = VectorClock()
         self.local_seq = 0
