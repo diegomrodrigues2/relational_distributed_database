@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getReplicationStatus } from '../../services/mock';
+import { getReplicationStatus } from '../../services/api';
 import { ReplicationStatus } from '../../types';
 import Card from '../common/Card';
 
