@@ -35,3 +35,8 @@ def health() -> dict:
     """Return basic cluster information."""
     cluster = app.state.cluster
     return {"nodes": len(cluster.nodes)}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=False)
