@@ -526,20 +526,8 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.KeyList(keys=keys)
 
     def GetNodeInfo(self, request, context):
-        """Return basic node metrics."""
-        uptime = int(time.time() - self._node.start_time)
-        hints_cnt = sum(len(v) for v in self._node.hints.values())
-        return replication_pb2.NodeInfoResponse(
-            node_id=self._node.node_id,
-            status="running",
-            cpu=0.0,
-            memory=0.0,
-            disk=0.0,
-            uptime=uptime,
-            replication_log_size=len(self._node.replication_log),
-            hints_count=hints_cnt,
-        )
-
+        """Return information about this node."""
+        return self._node.get_node_info()
 
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""
@@ -587,6 +575,7 @@ class NodeServer:
     ):
         self.db_path = db_path
         self.db = SimpleLSMDB(db_path=db_path)
+        self.start_time = time.time()
         self.host = host
         self.port = port
         self.node_id = node_id
@@ -876,6 +865,35 @@ class NodeServer:
             ts,
             op_id=op_id,
             vector=vc.clock,
+        )
+
+    def get_node_info(self):
+        """Return runtime statistics for this node."""
+
+        # Actual resource monitoring may require the ``psutil`` package.
+        log_file = self._replication_log_file()
+        hints_file = self._hints_file()
+        log_size = os.path.getsize(log_file) if os.path.exists(log_file) else 0
+        hints_size = os.path.getsize(hints_file) if os.path.exists(hints_file) else 0
+        try:
+            import psutil  # type: ignore
+
+            cpu = psutil.cpu_percent(interval=None)
+            memory = psutil.virtual_memory().percent
+            disk = psutil.disk_usage(self.db_path).percent
+        except Exception:
+            cpu = memory = disk = 0.0
+
+        uptime = time.time() - self.start_time
+        return replication_pb2.NodeInfoResponse(
+            node_id=self.node_id,
+            status="running",
+            cpu=cpu,
+            memory=memory,
+            disk=disk,
+            uptime=int(uptime),
+            replication_log_size=log_size,
+            hints_count=hints_size,
         )
 
     def cleanup_replication_log(self) -> None:
