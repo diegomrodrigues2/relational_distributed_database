@@ -1,0 +1,6 @@
+{
+  "name": "Distributed Database UI",
+  "description": "A classic graphical user interface for managing and monitoring a distributed database, providing views for administrators and end-users.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
