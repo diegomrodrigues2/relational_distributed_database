@@ -529,6 +529,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         """Return information about this node."""
         return self._node.get_node_info()
 
+    def GetReplicationStatus(self, request, context):
+        """Return replication metadata like last seen sequences and hints."""
+        return self._node.get_replication_status()
+
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""
 
@@ -894,6 +898,15 @@ class NodeServer:
             uptime=int(uptime),
             replication_log_size=log_size,
             hints_count=hints_size,
+        )
+
+    def get_replication_status(self):
+        """Return last seen sequence numbers and hint counts."""
+
+        hints_count = {peer: len(ops) for peer, ops in self.hints.items()}
+        return replication_pb2.ReplicationStatusResponse(
+            last_seen={peer: int(seq) for peer, seq in self.last_seen.items()},
+            hints=hints_count,
         )
 
     def cleanup_replication_log(self) -> None:
