@@ -11,14 +11,14 @@ from collections import OrderedDict
 import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
-from lamport import LamportClock
-from vector_clock import VectorClock
-from lsm_db import SimpleLSMDB
-from merkle import MerkleNode, build_merkle_tree, diff_trees
-from partitioning import hash_key
-from index_manager import IndexManager
-from global_index_manager import GlobalIndexManager
-from hash_ring import HashRing
+from ...utils.lamport import LamportClock
+from ...utils.vector_clock import VectorClock
+from ...lsm.lsm_db import SimpleLSMDB
+from ...utils.merkle import MerkleNode, build_merkle_tree, diff_trees
+from ...clustering.partitioning import hash_key
+from ...clustering.index_manager import IndexManager
+from ...clustering.global_index_manager import GlobalIndexManager
+from ...clustering.hash_ring import HashRing
 from . import replication_pb2, replication_pb2_grpc, metadata_pb2, metadata_pb2_grpc
 from .client import GRPCReplicaClient
 
@@ -649,7 +649,9 @@ class NodeServer:
 
         # Initialize CRDT instances for configured keys
         self.crdts = {}
-        from crdt import GCounter, ORSet
+        # Import CRDT implementations from the utils package. This path changed
+        # when the project was reorganised into packages.
+        from ...utils.crdt import GCounter, ORSet
         for key, typ in self.crdt_config.items():
             if typ == "gcounter" or typ == GCounter:
                 cls = GCounter if typ == "gcounter" else typ

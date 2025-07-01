@@ -7,8 +7,8 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replication import NodeCluster
-from replica.grpc_server import NodeServer
+from database.replication import NodeCluster
+from database.replication.replica.grpc_server import NodeServer
 
 
 class ClusterIndexingTest(unittest.TestCase):

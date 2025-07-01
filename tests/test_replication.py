@@ -8,9 +8,9 @@ import json
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replication import NodeCluster, ClusterNode
-from replica.grpc_server import run_server
-from replica.client import GRPCReplicaClient
+from database.replication import NodeCluster, ClusterNode
+from database.replication.replica.grpc_server import run_server
+from database.replication.replica.client import GRPCReplicaClient
 
 
 class ReplicationManagerTest(unittest.TestCase):

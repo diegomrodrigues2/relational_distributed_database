@@ -5,8 +5,8 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replication import NodeCluster
-from partitioning import compose_key
+from database.replication import NodeCluster
+from database.clustering.partitioning import compose_key
 
 class HotspotMetricsTest(unittest.TestCase):
     def test_metrics_increment(self):

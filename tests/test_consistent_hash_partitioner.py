@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from partitioning import ConsistentHashPartitioner
+from database.clustering.partitioning import ConsistentHashPartitioner
 
 
 class ConsistentHashPartitionerTest(unittest.TestCase):

@@ -1,7 +1,7 @@
 import os
 import json
-from vector_clock import VectorClock
-from partitioning import compose_key
+from ..utils.vector_clock import VectorClock
+from ..clustering.partitioning import compose_key
 
 class WriteAheadLog(object):
     """Log de pré-escrita para garantir durabilidade."""

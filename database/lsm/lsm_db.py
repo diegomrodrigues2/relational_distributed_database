@@ -2,12 +2,12 @@ import os
 import json
 import threading
 import time
-from mem_table import MemTable
-from sstable import SSTableManager, TOMBSTONE
-from wal import WriteAheadLog
-from merkle import compute_segment_hashes
-from vector_clock import VectorClock
-from partitioning import compose_key
+from .mem_table import MemTable
+from .sstable import SSTableManager, TOMBSTONE
+from .wal import WriteAheadLog
+from ..utils.merkle import compute_segment_hashes
+from ..utils.vector_clock import VectorClock
+from ..clustering.partitioning import compose_key
 
 
 def _merge_version_lists(current, new_list):

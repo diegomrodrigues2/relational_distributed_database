@@ -4,7 +4,7 @@ from concurrent import futures
 import threading
 import queue
 
-from replica import metadata_pb2, metadata_pb2_grpc, replication_pb2
+from ..replication.replica import metadata_pb2, metadata_pb2_grpc, replication_pb2
 
 
 class MetadataService(metadata_pb2_grpc.MetadataServiceServicer):

@@ -6,8 +6,8 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replication import NodeCluster
-from lsm_db import SimpleLSMDB
+from database.replication import NodeCluster
+from database.lsm.lsm_db import SimpleLSMDB
 
 
 class NodeClusterInitTest(unittest.TestCase):

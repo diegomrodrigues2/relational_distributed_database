@@ -7,7 +7,7 @@ import random
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replication import NodeCluster
+from database.replication import NodeCluster
 
 
 class VirtualNodeRebalanceTest(unittest.TestCase):

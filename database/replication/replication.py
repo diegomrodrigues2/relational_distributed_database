@@ -9,7 +9,7 @@ import hashlib
 import random
 import json
 from bisect import bisect_right
-from partitioning import (
+from ..clustering.partitioning import (
     hash_key,
     compose_key,
     RangePartitioner,
@@ -19,16 +19,16 @@ from partitioning import (
 from dataclasses import dataclass
 from concurrent import futures
 
-from replica.grpc_server import run_server
-from replica.client import GRPCReplicaClient, GRPCRouterClient
-from replica import metadata_pb2, metadata_pb2_grpc, replication_pb2
+from .replica.grpc_server import run_server
+from .replica.client import GRPCReplicaClient, GRPCRouterClient
+from .replica import metadata_pb2, metadata_pb2_grpc, replication_pb2
 import grpc
-from router_server import run_router
-from metadata_service import run_metadata_service
-from hash_ring import HashRing as ConsistentHashRing
-from vector_clock import VectorClock
-from lsm_db import _merge_version_lists, SimpleLSMDB
-from sstable import TOMBSTONE
+from ..clustering.router_server import run_router
+from ..clustering.metadata_service import run_metadata_service
+from ..clustering.hash_ring import HashRing as ConsistentHashRing
+from ..utils.vector_clock import VectorClock
+from ..lsm.lsm_db import _merge_version_lists, SimpleLSMDB
+from ..lsm.sstable import TOMBSTONE
 
 
 DEFAULT_NUM_PARTITIONS = 128

@@ -2,7 +2,7 @@ import hashlib
 import random
 from bisect import bisect_right
 from abc import ABC, abstractmethod
-from hash_ring import HashRing
+from .hash_ring import HashRing
 
 
 def hash_key(key: str) -> int:

@@ -1,4 +1,4 @@
-from vector_clock import VectorClock
+from ..utils.vector_clock import VectorClock
 
 
 class RBNode:

@@ -5,8 +5,8 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from wal import WriteAheadLog
-from vector_clock import VectorClock
+from database.lsm.wal import WriteAheadLog
+from database.utils.vector_clock import VectorClock
 
 class WriteAheadLogTest(unittest.TestCase):
     def test_append_writes_newlines_and_read_all(self):

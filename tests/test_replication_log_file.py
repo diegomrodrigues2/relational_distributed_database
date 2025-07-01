@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replica.grpc_server import NodeServer
+from database.replication.replica.grpc_server import NodeServer
 
 class ReplicationLogFileTest(unittest.TestCase):
     def test_log_persisted_and_loaded(self):

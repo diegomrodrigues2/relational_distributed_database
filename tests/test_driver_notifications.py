@@ -6,9 +6,9 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replication import NodeCluster
+from database.replication import NodeCluster
 from driver import Driver
-from partitioning import compose_key
+from database.clustering.partitioning import compose_key
 
 
 class DriverNotificationTest(unittest.TestCase):
