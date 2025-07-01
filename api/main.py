@@ -84,6 +84,31 @@ def list_partitions() -> dict:
     return {"partitions": sorted(parts, key=lambda x: x["id"])}
 
 
+@app.get("/cluster/hotspots")
+def cluster_hotspots() -> dict:
+    """Return hot partitions and keys based on access frequency."""
+    cluster = app.state.cluster
+    hot_ids = cluster.get_hot_partitions()
+    avg = (
+        sum(cluster.partition_ops) / len(cluster.partition_ops)
+        if cluster.partition_ops
+        else 0
+    )
+    hot_parts = [
+        {
+            "id": pid,
+            "operation_count": cluster.partition_ops[pid],
+            "average_ops": avg,
+        }
+        for pid in hot_ids
+    ]
+    hot_keys = [
+        {"key": k, "frequency": cluster.key_freq.get(k, 0)}
+        for k in cluster.get_hot_keys()
+    ]
+    return {"hot_partitions": hot_parts, "hot_keys": hot_keys}
+
+
 @app.get("/cluster/metrics/time_series")
 def time_series_metrics() -> dict:
     """Return simple latency/throughput samples and log sizes."""
@@ -129,6 +154,24 @@ def cluster_config() -> dict:
         "partitions_per_node": cluster.partitions_per_node,
         "num_partitions": cluster.num_partitions,
     }
+
+
+@app.get("/nodes/{node_id}/replication_status")
+def node_replication_status(node_id: str) -> dict:
+    """Return replication status information for ``node_id``."""
+    cluster = app.state.cluster
+    node = cluster.nodes_by_id.get(node_id)
+    if node is None:
+        return {"error": "node not found"}
+    try:
+        req = replication_pb2.NodeInfoRequest(node_id=node_id)
+        resp = node.client.stub.GetReplicationStatus(req)
+        return {
+            "last_seen": dict(resp.last_seen),
+            "hints": dict(resp.hints),
+        }
+    except Exception:
+        return {"error": "unreachable"}
 
 
 @app.get("/health")
