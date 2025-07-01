@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getHotspots } from '../../services/mockDatabaseService';
+import { getHotspots } from '../../services/mock';
 import { HotspotInfo } from '../../types';
 import Card from '../common/Card';
 
