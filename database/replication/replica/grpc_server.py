@@ -525,6 +525,21 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             keys = self._node.query_index(request.field, value)
         return replication_pb2.KeyList(keys=keys)
 
+    def GetNodeInfo(self, request, context):
+        """Return basic node metrics."""
+        uptime = int(time.time() - self._node.start_time)
+        hints_cnt = sum(len(v) for v in self._node.hints.values())
+        return replication_pb2.NodeInfoResponse(
+            node_id=self._node.node_id,
+            status="running",
+            cpu=0.0,
+            memory=0.0,
+            disk=0.0,
+            uptime=uptime,
+            replication_log_size=len(self._node.replication_log),
+            hints_count=hints_cnt,
+        )
+
 
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""
@@ -617,6 +632,7 @@ class NodeServer:
 
         self.server.add_insecure_port(f"{host}:{port}")
 
+        self.start_time = time.time()
         self.clock = LamportClock()
         self.vector_clock = VectorClock()
         self.local_seq = 0

@@ -3,11 +3,12 @@ import sys
 import tempfile
 import unittest
 import time
+import grpc
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from database.replication.replica.grpc_server import NodeServer, ReplicaService
-from database.replication.replica import replication_pb2
+from database.replication.replica import replication_pb2, replication_pb2_grpc
 from database.utils.vector_clock import VectorClock
 
 
@@ -173,6 +174,26 @@ class GetMultipleVersionsTest(unittest.TestCase):
             self.assertEqual(values, ["va", "vb"])
 
             node.db.close()
+
+
+class NodeInfoRPCTest(unittest.TestCase):
+    def test_get_node_info_rpc(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, port=9100, node_id="A", peers=[])
+            node.server.start()
+            try:
+                channel = grpc.insecure_channel(f"{node.host}:{node.port}")
+                stub = replication_pb2_grpc.ReplicaStub(channel)
+                req = replication_pb2.NodeInfoRequest(node_id="A")
+                resp = stub.GetNodeInfo(req)
+                self.assertEqual(resp.node_id, "A")
+                self.assertTrue(resp.uptime >= 0)
+                self.assertGreaterEqual(resp.replication_log_size, 0)
+                self.assertGreaterEqual(resp.hints_count, 0)
+                channel.close()
+            finally:
+                node.server.stop(0).wait()
+                node.db.close()
 
 
 if __name__ == "__main__":
