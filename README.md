@@ -120,6 +120,16 @@ sequenceDiagram
    ```
    The script creates a local cluster with multiple nodes and replicates operations between them.
 
+### FastAPI server
+
+`main.py` runs a small FastAPI application. Launch it with
+
+```bash
+python main.py
+# or: uvicorn api.main:app --reload
+```
+This automatically starts a `NodeCluster` during the startup event so the HTTP endpoints are backed by a live cluster.
+
 For per-user consistency use the `Driver`:
 
 ```python
