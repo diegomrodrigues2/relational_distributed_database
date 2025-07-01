@@ -196,5 +196,23 @@ class NodeInfoRPCTest(unittest.TestCase):
                 node.db.close()
 
 
+class ReplicationStatusRPCTest(unittest.TestCase):
+    def test_get_replication_status_rpc(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, port=9100, node_id="A", peers=[])
+            node.server.start()
+            try:
+                channel = grpc.insecure_channel(f"{node.host}:{node.port}")
+                stub = replication_pb2_grpc.ReplicaStub(channel)
+                req = replication_pb2.NodeInfoRequest(node_id="A")
+                resp = stub.GetReplicationStatus(req)
+                self.assertEqual(dict(resp.last_seen), {})
+                self.assertEqual(dict(resp.hints), {})
+                channel.close()
+            finally:
+                node.server.stop(0).wait()
+                node.db.close()
+
+
 if __name__ == "__main__":
     unittest.main()
