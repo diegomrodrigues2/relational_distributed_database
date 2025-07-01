@@ -2,8 +2,8 @@ import os
 import tempfile
 import unittest
 
-from replica.grpc_server import NodeServer, ReplicaService
-from replica import replication_pb2
+from database.replication.replica.grpc_server import NodeServer, ReplicaService
+from database.replication.replica import replication_pb2
 
 class IndexManagerTest(unittest.TestCase):
     def test_put_updates_index(self):

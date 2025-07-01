@@ -2,7 +2,7 @@ import json
 import os
 import threading
 from typing import Iterable, Any
-from sstable import TOMBSTONE
+from ..lsm.sstable import TOMBSTONE
 
 
 class IndexManager:

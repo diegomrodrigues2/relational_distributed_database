@@ -5,11 +5,11 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from lsm_db import SimpleLSMDB
-from merkle import merkle_root, compute_segment_hashes, build_merkle_tree
+from database.lsm.lsm_db import SimpleLSMDB
+from database.utils.merkle import merkle_root, compute_segment_hashes, build_merkle_tree
 import json
-from replica.grpc_server import ReplicaService, NodeServer
-from replica import replication_pb2
+from database.replication.replica.grpc_server import ReplicaService, NodeServer
+from database.replication.replica import replication_pb2
 
 
 class MerkleUtilsTest(unittest.TestCase):

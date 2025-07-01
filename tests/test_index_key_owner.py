@@ -7,8 +7,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from types import SimpleNamespace
 
-from replica.grpc_server import ReplicaService
-from hash_ring import HashRing
+from database.replication.replica.grpc_server import ReplicaService
+from database.clustering.hash_ring import HashRing
 
 
 class IndexKeyOwnerTest(unittest.TestCase):

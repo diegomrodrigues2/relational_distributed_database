@@ -3,9 +3,14 @@ from concurrent import futures
 import threading
 import time
 
-from replica import replication_pb2, replication_pb2_grpc
-from replica import router_pb2_grpc, metadata_pb2, metadata_pb2_grpc
-from replica.client import GRPCReplicaClient
+from ..replication.replica import (
+    replication_pb2,
+    replication_pb2_grpc,
+    router_pb2_grpc,
+    metadata_pb2,
+    metadata_pb2_grpc,
+)
+from ..replication.replica.client import GRPCReplicaClient
 
 
 class RouterService(router_pb2_grpc.RouterServicer):

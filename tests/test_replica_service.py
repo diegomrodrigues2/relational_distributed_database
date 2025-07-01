@@ -6,9 +6,9 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replica.grpc_server import NodeServer, ReplicaService
-from replica import replication_pb2
-from vector_clock import VectorClock
+from database.replication.replica.grpc_server import NodeServer, ReplicaService
+from database.replication.replica import replication_pb2
+from database.utils.vector_clock import VectorClock
 
 
 class ReplicaServiceTimestampTest(unittest.TestCase):

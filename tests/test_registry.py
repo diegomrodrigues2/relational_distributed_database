@@ -7,9 +7,9 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import grpc
-from replication import NodeCluster
+from database.replication import NodeCluster
 from driver import Driver
-from replica import metadata_pb2_grpc, replication_pb2
+from database.replication.replica import metadata_pb2_grpc, replication_pb2
 
 
 class RegistryIntegrationTest(unittest.TestCase):

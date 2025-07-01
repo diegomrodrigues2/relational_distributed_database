@@ -2,9 +2,9 @@ import time
 import random
 import grpc
 import threading
-from replication import NodeCluster
-from replica import metadata_pb2, metadata_pb2_grpc, replication_pb2
-from partitioning import compose_key
+from database.replication import NodeCluster
+from database.replication.replica import metadata_pb2, metadata_pb2_grpc, replication_pb2
+from database.clustering.partitioning import compose_key
 
 class Driver:
     """Interface entre usuários e o cluster garantindo certas consistências."""

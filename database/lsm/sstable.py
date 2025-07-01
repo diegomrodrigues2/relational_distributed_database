@@ -1,8 +1,8 @@
 import os
 import json
 import time
-from vector_clock import VectorClock
-from partitioning import compose_key
+from ..utils.vector_clock import VectorClock
+from ..clustering.partitioning import compose_key
 
 SSTABLE_SPARSE_INDEX_INTERVAL = 100 # Intervalo para o índice esparso (a cada 100 linhas, por exemplo)
 TOMBSTONE = "__TOMBSTONE__" # Marcador para exclusão

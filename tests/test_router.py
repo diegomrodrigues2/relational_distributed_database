@@ -6,8 +6,8 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from replication import NodeCluster
-from replica import replication_pb2
+from database.replication import NodeCluster
+from database.replication.replica import replication_pb2
 
 
 class RouterMapUpdateTest(unittest.TestCase):

@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from replica.grpc_server import NodeServer
+from database.replication.replica.grpc_server import NodeServer
 
 class GlobalIndexManagerTest(unittest.TestCase):
     def test_rebuild_on_startup(self):

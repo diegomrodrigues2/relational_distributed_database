@@ -2,9 +2,9 @@ import tempfile
 import json
 import unittest
 
-from crdt import GCounter, ORSet
-from replica.grpc_server import NodeServer, ReplicaService
-from replica import replication_pb2
+from database.utils.crdt import GCounter, ORSet
+from database.replication.replica.grpc_server import NodeServer, ReplicaService
+from database.replication.replica import replication_pb2
 
 
 class GCounterUnitTest(unittest.TestCase):
