@@ -507,3 +507,18 @@ Several small scripts under `examples/` start the cluster with different options
 - `router_cluster.py` – starts the gRPC router and writes via the router client.
 - `registry_cluster.py` – uses the metadata registry together with the router.
 
+
+## Running the examples on Windows
+
+To avoid compatibility issues on Windows, run the project inside Docker. First install **Docker Desktop**, then build and run the image from the repository root:
+
+```bash
+docker build -t py_db .
+docker run -p 8000:8000 -p 5173:5173 py_db
+```
+
+This starts `hash_cluster.py`, which also launches the API and React UI in the background. You can run a different example by overriding the command:
+
+```bash
+docker run -p 8000:8000 -p 5173:5173 py_db python examples/range_cluster.py
+```
