@@ -876,9 +876,3 @@ Esse comando inicia o `hash_cluster.py`, que lança a interface React em segundo
 docker run -p 8000:8000 -p 5173:5173 py_db python examples/range_cluster.py
 ```
 
-Em ambientes remotos sem acesso ao `localhost` (como o Google Colab) utilize a opção `--tunnel` para expor apenas a interface através do ngrok:
-
-```bash
-python examples/hash_cluster.py --tunnel
-```
-O endereço público da interface será exibido assim que o túnel estiver ativo. Defina `NGROK_AUTHTOKEN` para usar sua conta do ngrok.
