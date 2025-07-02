@@ -1,17 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { getHotspots } from '../../services/api';
+import { getHotspots, checkHotPartitions } from '../../services/api';
 import { HotspotInfo } from '../../types';
 import Card from '../common/Card';
+import Button from '../common/Button';
 
 const HotspotsView: React.FC = () => {
     const [hotspots, setHotspots] = useState<HotspotInfo | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    const fetchData = async () => {
+        const data = await getHotspots();
+        setHotspots(data);
+    };
+
+    const handleCheck = async () => {
+        setIsLoading(true);
+        try {
+            await checkHotPartitions();
+            await fetchData();
+        } catch (error) {
+            console.error("Failed to check hot partitions:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
         const fetchHotspots = async () => {
             try {
-                const data = await getHotspots();
-                setHotspots(data);
+                await fetchData();
             } catch (error) {
                 console.error("Failed to fetch hotspot data:", error);
             } finally {
@@ -32,9 +49,12 @@ const HotspotsView: React.FC = () => {
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="overflow-x-auto">
-                <div className="p-4 border-b border-green-800/60">
-                    <h3 className="text-lg font-semibold text-green-100">Hot Partitions</h3>
-                    <p className="text-sm text-green-300">Partitions with the highest operational load.</p>
+                <div className="p-4 border-b border-green-800/60 flex items-center justify-between">
+                    <div>
+                        <h3 className="text-lg font-semibold text-green-100">Hot Partitions</h3>
+                        <p className="text-sm text-green-300">Partitions with the highest operational load.</p>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={handleCheck}>Check</Button>
                 </div>
                 <table className="w-full text-sm text-left text-green-300">
                     <thead className="text-xs text-green-400 uppercase bg-green-900/30">
