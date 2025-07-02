@@ -200,6 +200,28 @@ def mark_hot_key(key: str, buckets: int, migrate: bool = False) -> dict:
     return {"status": "ok"}
 
 
+@app.post("/cluster/actions/split_partition")
+def split_partition(pid: int, split_key: str | None = None) -> dict:
+    """Split the partition ``pid`` at ``split_key`` if provided."""
+    cluster = app.state.cluster
+    try:
+        cluster.split_partition(pid, split_key)
+        return {"status": "ok"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/cluster/actions/merge_partitions")
+def merge_partitions(pid1: int, pid2: int) -> dict:
+    """Merge adjacent partitions ``pid1`` and ``pid2``."""
+    cluster = app.state.cluster
+    try:
+        cluster.merge_partitions(pid1, pid2)
+        return {"status": "ok"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @app.post("/cluster/actions/rebalance")
 def rebalance() -> dict:
     """Re-send the current partition map to all nodes."""
