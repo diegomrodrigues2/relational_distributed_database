@@ -550,7 +550,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
     def GetSSTableContent(self, request, context):
         """Return all key/value pairs for a specific SSTable."""
-        entries = self._node.get_sstable_content(request.id)
+        # ``SSTableContentRequest`` defines the field ``sstable_id`` to specify
+        # which table should be returned. Older versions used ``id`` so handle
+        # both for compatibility.
+        sst_id = getattr(request, "sstable_id", None) or getattr(request, "id", "")
+        entries = self._node.get_sstable_content(sst_id)
         return replication_pb2.StorageEntriesResponse(entries=entries)
 
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
