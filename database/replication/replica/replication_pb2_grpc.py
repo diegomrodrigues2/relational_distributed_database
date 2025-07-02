@@ -85,6 +85,26 @@ class ReplicaStub(object):
                 request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
                 response_deserializer=replica_dot_replication__pb2.ReplicationStatusResponse.FromString,
                 _registered_method=True)
+        self.GetWalEntries = channel.unary_unary(
+                '/replication.Replica/GetWalEntries',
+                request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
+                response_deserializer=replica_dot_replication__pb2.WalEntriesResponse.FromString,
+                _registered_method=True)
+        self.GetMemtableEntries = channel.unary_unary(
+                '/replication.Replica/GetMemtableEntries',
+                request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
+                response_deserializer=replica_dot_replication__pb2.StorageEntriesResponse.FromString,
+                _registered_method=True)
+        self.GetSSTables = channel.unary_unary(
+                '/replication.Replica/GetSSTables',
+                request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
+                response_deserializer=replica_dot_replication__pb2.SSTableInfoResponse.FromString,
+                _registered_method=True)
+        self.GetSSTableContent = channel.unary_unary(
+                '/replication.Replica/GetSSTableContent',
+                request_serializer=replica_dot_replication__pb2.SSTableContentRequest.SerializeToString,
+                response_deserializer=replica_dot_replication__pb2.StorageEntriesResponse.FromString,
+                _registered_method=True)
 
 
 class ReplicaServicer(object):
@@ -151,6 +171,30 @@ class ReplicaServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetWalEntries(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetMemtableEntries(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSSTables(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSSTableContent(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ReplicaServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -203,6 +247,26 @@ def add_ReplicaServicer_to_server(servicer, server):
                     servicer.GetReplicationStatus,
                     request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
                     response_serializer=replica_dot_replication__pb2.ReplicationStatusResponse.SerializeToString,
+            ),
+            'GetWalEntries': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetWalEntries,
+                    request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
+                    response_serializer=replica_dot_replication__pb2.WalEntriesResponse.SerializeToString,
+            ),
+            'GetMemtableEntries': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetMemtableEntries,
+                    request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
+                    response_serializer=replica_dot_replication__pb2.StorageEntriesResponse.SerializeToString,
+            ),
+            'GetSSTables': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSSTables,
+                    request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
+                    response_serializer=replica_dot_replication__pb2.SSTableInfoResponse.SerializeToString,
+            ),
+            'GetSSTableContent': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSSTableContent,
+                    request_deserializer=replica_dot_replication__pb2.SSTableContentRequest.FromString,
+                    response_serializer=replica_dot_replication__pb2.StorageEntriesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -476,6 +540,114 @@ class Replica(object):
             '/replication.Replica/GetReplicationStatus',
             replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
             replica_dot_replication__pb2.ReplicationStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetWalEntries(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/GetWalEntries',
+            replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
+            replica_dot_replication__pb2.WalEntriesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetMemtableEntries(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/GetMemtableEntries',
+            replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
+            replica_dot_replication__pb2.StorageEntriesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSSTables(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/GetSSTables',
+            replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
+            replica_dot_replication__pb2.SSTableInfoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSSTableContent(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/GetSSTableContent',
+            replica_dot_replication__pb2.SSTableContentRequest.SerializeToString,
+            replica_dot_replication__pb2.StorageEntriesResponse.FromString,
             options,
             channel_credentials,
             insecure,
