@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from api.main import app
 from database.replication import NodeCluster
-from .service_runner import start_services, ngrok
+from examples.service_runner import start_services, ngrok
 
 
 def main(tunnel: bool = False):
