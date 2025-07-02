@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import * as mockDatabaseService from '../services/mockDatabaseService';
+import * as mockDatabaseService from '../services/databaseService';
 import { UserRecord } from '../types';
 import DataTable from './databrowser/DataTable';
 import DataEditorModal from './databrowser/DataEditorModal';
