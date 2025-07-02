@@ -496,3 +496,14 @@ app/                 # Frontend web application
  setup_router.sh     # helper script to run the router
  tests/              # test cases
 ```
+
+## Example configurations
+
+Several small scripts under `examples/` start the cluster with different options. Each one also launches the API and React UI in the background. Run them with `python examples/<file>.py` and visit the printed URLs.
+
+- `hash_cluster.py` – three-node hash-partitioned cluster using LWW.
+- `range_cluster.py` – cluster with two explicit key ranges and sample composite keys.
+- `index_cluster.py` – enables `index_fields` and stores indexed records.
+- `router_cluster.py` – starts the gRPC router and writes via the router client.
+- `registry_cluster.py` – uses the metadata registry together with the router.
+
