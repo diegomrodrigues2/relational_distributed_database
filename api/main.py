@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from database.replication import NodeCluster
 from database.replication.replica import replication_pb2
+from concurrent.futures import ThreadPoolExecutor
 import time
 
 app = FastAPI()
@@ -119,33 +120,50 @@ def cluster_hotspots() -> dict:
 @app.get("/cluster/metrics/time_series")
 def time_series_metrics() -> dict:
     """Return simple latency/throughput samples and log sizes."""
+    # simple cache to avoid recomputation when the dashboard refreshes rapidly
+    cache = getattr(app.state, "_time_series_cache", None)
+    now = time.time()
+    if cache and now - cache.get("ts", 0) < 1:
+        return cache["data"]
+
     cluster = app.state.cluster
-    latencies = []
-    replog = 0
-    hints = 0
-    for n in cluster.nodes:
+
+    def collect(n):
         start = time.time()
+        latency = None
         try:
             n.client.ping(n.node_id)
-            latencies.append((time.time() - start) * 1000)
+            latency = (time.time() - start) * 1000
         except Exception:
-            latencies.append(None)
+            pass
+        rep = 0
+        hint = 0
         try:
             req = replication_pb2.NodeInfoRequest(node_id=n.node_id)
             resp = n.client.stub.GetNodeInfo(req)
-            replog += resp.replication_log_size
-            hints += resp.hints_count
+            rep = resp.replication_log_size
+            hint = resp.hints_count
         except Exception:
             pass
+        return latency, rep, hint
+
+    with ThreadPoolExecutor(max_workers=len(cluster.nodes)) as ex:
+        results = list(ex.map(collect, cluster.nodes))
+
+    latencies = [lat for lat, _, _ in results if lat is not None]
+    replog = sum(rep for _, rep, _ in results)
+    hints = sum(h for _, _, h in results)
     total_ops = sum(cluster.get_partition_stats().values())
     elapsed = max(time.time() - getattr(app.state, "cluster_start", time.time()), 1)
     throughput = total_ops / elapsed
-    return {
-        "latency_ms": [l for l in latencies if l is not None],
+    data = {
+        "latency_ms": latencies,
         "throughput": throughput,
         "replication_log_size": replog,
         "hints_count": hints,
     }
+    app.state._time_series_cache = {"ts": now, "data": data}
+    return data
 
 
 @app.get("/cluster/config")
