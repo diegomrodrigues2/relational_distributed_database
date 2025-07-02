@@ -217,4 +217,34 @@ export const getSstableEntries = async (
     value: e.value,
     vectorClock: e.vector_clock ?? {},
   }));
+
+export const checkHotPartitions = async (): Promise<void> => {
+  await fetchJson<{ status: string }>('/cluster/actions/check_hot_partitions', {
+    method: 'POST',
+  });
+};
+
+export const resetMetrics = async (): Promise<void> => {
+  await fetchJson<{ status: string }>('/cluster/actions/reset_metrics', {
+    method: 'POST',
+  });
+};
+
+export const markHotKey = async (
+  key: string,
+  buckets: number,
+  migrate = false,
+): Promise<void> => {
+  const params = new URLSearchParams({ key, buckets: String(buckets) });
+  if (migrate) params.append('migrate', 'true');
+  await fetchJson<{ status: string }>(
+    `/cluster/actions/mark_hot_key?${params.toString()}`,
+    { method: 'POST' },
+  );
+};
+
+export const rebalance = async (): Promise<void> => {
+  await fetchJson<{ status: string }>('/cluster/actions/rebalance', {
+    method: 'POST',
+  });
 };
