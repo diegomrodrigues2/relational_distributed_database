@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { WALEntry, StorageEntry, SSTableInfo } from '../../types';
-import * as dbService from '../../services/mockDatabaseService';
+import * as storageService from '../../services/storageService';
 import Card from '../common/Card';
 import Button from '../common/Button';
 
@@ -32,7 +32,7 @@ const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        dbService.getWalEntries(nodeId).then(data => {
+        storageService.getWalEntries(nodeId).then(data => {
             setEntries(data);
             setIsLoading(false);
         });
@@ -72,7 +72,7 @@ const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        dbService.getMemtableEntries(nodeId).then(data => {
+        storageService.getMemtableEntries(nodeId).then(data => {
             setEntries(data);
             setIsLoading(false);
         });
@@ -109,7 +109,7 @@ const SSTablesView: React.FC<{nodeId: string}> = ({ nodeId }) => {
 
     useEffect(() => {
         setIsLoading(true);
-        dbService.getSstables(nodeId).then(data => {
+        storageService.getSstables(nodeId).then(data => {
             setTables(data);
             setIsLoading(false);
         });
