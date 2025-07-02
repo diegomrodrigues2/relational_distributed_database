@@ -2,12 +2,29 @@ import os
 import subprocess
 import time
 import json
+import socket
 
 from api.main import app
 from database.replication import NodeCluster
 
+try:
+    from pyngrok import ngrok  # type: ignore
+except Exception:
+    ngrok = None
 
-def start_services():
+
+def wait_port(port: int, host: str = "127.0.0.1", timeout: float = 30.0) -> bool:
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection((host, port), 1):
+                return True
+        except OSError:
+            time.sleep(0.5)
+    return False
+
+
+def start_services(tunnel: bool = False):
     api_proc = subprocess.Popen([
         "uvicorn",
         "api.main:app",
@@ -19,18 +36,33 @@ def start_services():
         "run",
         "dev",
     ], cwd=os.path.join(os.path.dirname(__file__), "..", "app"))
-    print("API running at http://localhost:8000")
-    print("Frontend running at http://localhost:5173")
+    wait_port(8000)
+    ui_ready = wait_port(5173)
+
+    if tunnel and ngrok:
+        api_url = ngrok.connect(8000, bind_tls=True).public_url
+        ui_url = (
+            ngrok.connect(5173, bind_tls=True).public_url if ui_ready else None
+        )
+    else:
+        api_url = "http://localhost:8000"
+        ui_url = "http://localhost:5173" if ui_ready else None
+
+    print(f"API running at {api_url}")
+    if ui_url:
+        print(f"Frontend running at {ui_url}")
+    else:
+        print("Frontend failed to start on port 5173")
     return api_proc, frontend_proc
 
 
-def main():
+def main(tunnel: bool = False):
     app.router.on_startup.clear()
     cluster = NodeCluster(base_path="/tmp/index_cluster", num_nodes=3, index_fields=["color"])
     cluster.put(0, "p1", json.dumps({"color": "red"}))
     cluster.put(0, "p2", json.dumps({"color": "blue"}))
     app.state.cluster = cluster
-    api_proc, front_proc = start_services()
+    api_proc, front_proc = start_services(tunnel)
     try:
         while True:
             time.sleep(1)
@@ -40,7 +72,18 @@ def main():
         api_proc.terminate()
         front_proc.terminate()
         cluster.shutdown()
+        if tunnel and ngrok:
+            ngrok.kill()
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--tunnel",
+        action="store_true",
+        help="Expose API and UI using ngrok",
+    )
+    args = parser.parse_args()
+    main(tunnel=args.tunnel)

@@ -875,3 +875,17 @@ Esse comando inicia o `hash_cluster.py`, que também lança a API e a interface 
 ```bash
 docker run -p 8000:8000 -p 5173:5173 py_db python examples/range_cluster.py
 ```
+
+Em ambientes remotos sem acesso ao `localhost` (como o Google Colab) utilize a opção `--tunnel` para expor a API e a interface através do ngrok:
+
+```bash
+python examples/hash_cluster.py --tunnel
+```
+Os endereços públicos serão exibidos assim que o túnel estiver ativo. Defina `NGROK_AUTHTOKEN` para usar sua conta do ngrok.
+
+Antes de executar um exemplo pela primeira vez, instale as dependências da interface:
+
+```bash
+cd app && npm install
+```
+Os scripts aguardam a porta 5173 ficar disponível; caso a interface não inicie o túnel correspondente será ignorado.
