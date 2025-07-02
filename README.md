@@ -507,6 +507,13 @@ Several small scripts under `examples/` start the cluster with different options
 - `router_cluster.py` – starts the gRPC router and writes via the router client.
 - `registry_cluster.py` – uses the metadata registry together with the router.
 
+When executing inside environments without direct access to localhost (e.g. Google Colab) pass `--tunnel` to expose both services via ngrok:
+
+```bash
+python examples/hash_cluster.py --tunnel
+```
+The external URLs will be printed once the tunnels are ready. Set `NGROK_AUTHTOKEN` to use your own ngrok account.
+
 
 ## Running the examples on Windows
 
