@@ -142,6 +142,74 @@ class GRPCReplicaClient:
         req = replication_pb2.HashRing(items=items)
         self.stub.UpdateHashRing(req)
 
+    def get_wal_entries(self) -> list[tuple[str, str, str | None, dict]]:
+        self._ensure_channel()
+        """Return WAL operations currently stored on the remote node."""
+        req = replication_pb2.NodeInfoRequest()
+        resp = self.stub.GetWalEntries(req)
+        results = []
+        for entry in resp.entries:
+            results.append(
+                (
+                    entry.type,
+                    entry.key,
+                    entry.value if entry.value else None,
+                    dict(entry.vector.items),
+                )
+            )
+        return results
+
+    def get_memtable_entries(self) -> list[tuple[str, str | None, dict]]:
+        self._ensure_channel()
+        """Return key/value pairs stored in the remote MemTable."""
+        req = replication_pb2.NodeInfoRequest()
+        resp = self.stub.GetMemtableEntries(req)
+        results = []
+        for entry in resp.entries:
+            results.append(
+                (
+                    entry.key,
+                    entry.value if entry.value else None,
+                    dict(entry.vector.items),
+                )
+            )
+        return results
+
+    def get_sstables(self) -> list[tuple[str, int, int, int, str, str]]:
+        self._ensure_channel()
+        """Return metadata describing SSTables stored on disk."""
+        req = replication_pb2.NodeInfoRequest()
+        resp = self.stub.GetSSTables(req)
+        results = []
+        for table in resp.tables:
+            results.append(
+                (
+                    table.id,
+                    table.level,
+                    table.size,
+                    table.item_count,
+                    table.start_key,
+                    table.end_key,
+                )
+            )
+        return results
+
+    def get_sstable_content(self, sstable_id: str, node_id: str = "") -> list[tuple[str, str | None, dict]]:
+        self._ensure_channel()
+        """Return all key/value pairs stored in the given SSTable."""
+        req = replication_pb2.SSTableContentRequest(node_id=node_id, sstable_id=sstable_id)
+        resp = self.stub.GetSSTableContent(req)
+        results = []
+        for entry in resp.entries:
+            results.append(
+                (
+                    entry.key,
+                    entry.value if entry.value else None,
+                    dict(entry.vector.items),
+                )
+            )
+        return results
+
     def ping(self, node_id: str = ""):
         self._ensure_channel()
         """Send a heartbeat ping to the remote peer."""
