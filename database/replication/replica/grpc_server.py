@@ -533,6 +533,26 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         """Return replication metadata like last seen sequences and hints."""
         return self._node.get_replication_status()
 
+    def GetWalEntries(self, request, context):
+        """Return entries currently stored in the node WAL."""
+        entries = self._node.get_wal_entries()
+        return replication_pb2.WALEntries(entries=entries)
+
+    def GetMemtableEntries(self, request, context):
+        """Return key/value pairs stored in the MemTable."""
+        entries = self._node.get_memtable_entries()
+        return replication_pb2.StorageEntries(entries=entries)
+
+    def GetSSTables(self, request, context):
+        """Return metadata for SSTable segments on disk."""
+        tables = self._node.get_sstables()
+        return replication_pb2.SSTablesInfo(tables=tables)
+
+    def GetSSTableContent(self, request, context):
+        """Return all key/value pairs for a specific SSTable."""
+        entries = self._node.get_sstable_content(request.id)
+        return replication_pb2.StorageEntries(entries=entries)
+
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""
 
@@ -908,6 +928,96 @@ class NodeServer:
             last_seen={peer: int(seq) for peer, seq in self.last_seen.items()},
             hints=hints_count,
         )
+
+    def get_wal_entries(self):
+        """Return WAL operations still stored on disk."""
+        entries = []
+        for _idx, op_type, key, (val, vc) in self.db.wal.read_all():
+            entries.append(
+                replication_pb2.WALEntry(
+                    type=op_type,
+                    key=key,
+                    value="" if val is None else str(val),
+                    vector=replication_pb2.VersionVector(items=vc.clock),
+                )
+            )
+        return entries
+
+    def get_memtable_entries(self):
+        """Return current MemTable items."""
+        entries = []
+        for key, versions in self.db.memtable.get_sorted_items():
+            for val, vc in versions:
+                if val == "__TOMBSTONE__":
+                    continue
+                entries.append(
+                    replication_pb2.StorageEntry(
+                        key=key,
+                        value=str(val),
+                        vector=replication_pb2.VersionVector(items=vc.clock),
+                    )
+                )
+        return entries
+
+    def get_sstables(self):
+        """Return metadata about SSTables stored by this node."""
+        tables = []
+        for _ts, path, _index in self.db.sstable_manager.sstable_segments:
+            size = os.path.getsize(path) // 1024
+            item_count = 0
+            first_key = last_key = ""
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    k = data.get("key", "")
+                    if not first_key:
+                        first_key = k
+                    last_key = k
+                    item_count += 1
+            tables.append(
+                replication_pb2.SSTableInfo(
+                    id=os.path.basename(path),
+                    level=0,
+                    size=size,
+                    item_count=item_count,
+                    start_key=first_key,
+                    end_key=last_key,
+                )
+            )
+        return tables
+
+    def get_sstable_content(self, sstable_id: str):
+        """Return all entries stored in ``sstable_id``."""
+        entries = []
+        for _ts, path, _index in self.db.sstable_manager.sstable_segments:
+            if os.path.basename(path) != sstable_id:
+                continue
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    entries.append(
+                        replication_pb2.StorageEntry(
+                            key=data.get("key", ""),
+                            value=str(data.get("value", "")),
+                            vector=replication_pb2.VersionVector(
+                                items=data.get("vector", {})
+                            ),
+                        )
+                    )
+            break
+        return entries
 
     def cleanup_replication_log(self) -> None:
         """Remove acknowledged operations from replication_log."""
