@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import * as dbService from '../services/mockDatabaseService';
+import * as mockDatabaseService from '../services/mockDatabaseService';
 import { UserRecord } from '../types';
 import DataTable from './databrowser/DataTable';
 import DataEditorModal from './databrowser/DataEditorModal';
@@ -16,7 +16,7 @@ const DataBrowser: React.FC = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const recordsData = await dbService.getUserRecords();
+      const recordsData = await mockDatabaseService.getUserRecords();
       setRecords(recordsData);
       setFilteredRecords(recordsData);
     } catch (error) {
@@ -59,15 +59,15 @@ const DataBrowser: React.FC = () => {
   };
 
   const handleSaveRecord = async (record: UserRecord) => {
-    await dbService.saveUserRecord(record);
+    await mockDatabaseService.saveUserRecord(record);
     handleCloseModal();
-    fetchData(); // Refresh data
+    await fetchData(); // Refresh data
   };
 
   const handleDeleteRecord = async (partitionKey: string, clusteringKey: string) => {
     if (window.confirm(`Are you sure you want to delete record with key ${partitionKey} | ${clusteringKey}?`)) {
-        await dbService.deleteUserRecord(partitionKey, clusteringKey);
-        fetchData();
+        await mockDatabaseService.deleteUserRecord(partitionKey, clusteringKey);
+        await fetchData();
     }
   };
 
