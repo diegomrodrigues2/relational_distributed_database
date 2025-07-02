@@ -163,6 +163,38 @@ def cluster_config() -> dict:
     }
 
 
+@app.post("/cluster/actions/check_hot_partitions")
+def check_hot_partitions(threshold: float = 2.0, min_keys: int = 2) -> dict:
+    """Split hot partitions based on access metrics."""
+    cluster = app.state.cluster
+    cluster.check_hot_partitions(threshold=threshold, min_keys=min_keys)
+    return {"status": "ok"}
+
+
+@app.post("/cluster/actions/reset_metrics")
+def reset_metrics() -> dict:
+    """Reset access frequency metrics for partitions and keys."""
+    cluster = app.state.cluster
+    cluster.reset_metrics()
+    return {"status": "ok"}
+
+
+@app.post("/cluster/actions/mark_hot_key")
+def mark_hot_key(key: str, buckets: int, migrate: bool = False) -> dict:
+    """Start salting ``key`` using ``buckets`` buckets."""
+    cluster = app.state.cluster
+    cluster.mark_hot_key(key, buckets, migrate=migrate)
+    return {"status": "ok"}
+
+
+@app.post("/cluster/actions/rebalance")
+def rebalance() -> dict:
+    """Propagate the current partition map to all nodes."""
+    cluster = app.state.cluster
+    cluster.update_partition_map()
+    return {"status": "ok"}
+
+
 @app.get("/nodes/{node_id}/replication_status")
 def node_replication_status(node_id: str) -> dict:
     """Return replication status information for ``node_id``."""

@@ -131,6 +131,13 @@ python main.py
 ```
 This automatically starts a `NodeCluster` during the startup event so the HTTP endpoints are backed by a live cluster.
 
+Management actions are available under the `/cluster/actions` prefix:
+
+* `POST /cluster/actions/check_hot_partitions` – split hot partitions based on metrics
+* `POST /cluster/actions/reset_metrics` – reset access counters
+* `POST /cluster/actions/mark_hot_key` – salt and optionally migrate a specific key
+* `POST /cluster/actions/rebalance` – propagate the current partition map to all nodes
+
 For per-user consistency use the `Driver`:
 
 ```python
