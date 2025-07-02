@@ -167,6 +167,52 @@ message ReplicationStatusResponse {
   map<string,int32> hints = 2;
 }
 
+// Entry stored in the Write Ahead Log
+message WalEntry {
+  string type = 1;
+  string key = 2;
+  string value = 3;
+  VersionVector vector = 4;
+}
+
+// Response with WAL entries
+message WalEntriesResponse {
+  repeated WalEntry entries = 1;
+}
+
+// Generic storage entry used for MemTable and SSTables
+message StorageEntry {
+  string key = 1;
+  string value = 2;
+  VersionVector vector = 3;
+}
+
+// Response containing storage entries
+message StorageEntriesResponse {
+  repeated StorageEntry entries = 1;
+}
+
+// Information about a SSTable on disk
+message SSTableInfo {
+  string id = 1;
+  int32 level = 2;
+  int64 size = 3;
+  int32 item_count = 4;
+  string start_key = 5;
+  string end_key = 6;
+}
+
+// Response listing available SSTables
+message SSTableInfoResponse {
+  repeated SSTableInfo tables = 1;
+}
+
+// Request content of a specific SSTable
+message SSTableContentRequest {
+  string node_id = 1;
+  string sstable_id = 2;
+}
+
 // Servico disponibilizado por cada seguidor
 service Replica {
   rpc Put(KeyValue) returns (Empty);
@@ -179,6 +225,10 @@ service Replica {
   rpc ListByIndex(IndexQuery) returns (KeyList);
   rpc GetNodeInfo(NodeInfoRequest) returns (NodeInfoResponse);
   rpc GetReplicationStatus(NodeInfoRequest) returns (ReplicationStatusResponse);
+  rpc GetWalEntries(NodeInfoRequest) returns (WalEntriesResponse);
+  rpc GetMemtableEntries(NodeInfoRequest) returns (StorageEntriesResponse);
+  rpc GetSSTables(NodeInfoRequest) returns (SSTableInfoResponse);
+  rpc GetSSTableContent(SSTableContentRequest) returns (StorageEntriesResponse);
 }
 
 // Servico dedicado para heartbeat
