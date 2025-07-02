@@ -1,38 +1,10 @@
 import os
-import subprocess
 import time
 
 from api.main import app
 from database.replication import NodeCluster
 from database.clustering.partitioning import compose_key
-
-try:
-    from pyngrok import ngrok  # type: ignore
-except Exception:
-    ngrok = None
-
-
-def start_services(tunnel: bool = False):
-    api_proc = subprocess.Popen([
-        "uvicorn",
-        "api.main:app",
-        "--port",
-        "8000",
-    ])
-    frontend_proc = subprocess.Popen([
-        "npm",
-        "run",
-        "dev",
-    ], cwd=os.path.join(os.path.dirname(__file__), "..", "app"))
-    if tunnel and ngrok:
-        api_url = ngrok.connect(8000, bind_tls=True).public_url
-        ui_url = ngrok.connect(5173, bind_tls=True).public_url
-    else:
-        api_url = "http://localhost:8000"
-        ui_url = "http://localhost:5173"
-    print(f"API running at {api_url}")
-    print(f"Frontend running at {ui_url}")
-    return api_proc, frontend_proc
+from .service_runner import start_services, ngrok
 
 
 def main(tunnel: bool = False):
