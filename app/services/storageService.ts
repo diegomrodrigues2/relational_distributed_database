@@ -106,10 +106,10 @@ export const getClusterConfig = (): Promise<ClusterConfig> => api.getClusterConf
 export const getHotspots = (): Promise<HotspotInfo> => api.getHotspots();
 export const getReplicationStatus = (): Promise<ReplicationStatus[]> => api.getReplicationStatus();
 
-export const getWalEntries = (nodeId: string): Promise<WALEntry[]> => mockApi(MOCK_WAL_ENTRIES[nodeId] || []);
-export const getMemtableEntries = (nodeId: string): Promise<StorageEntry[]> => mockApi(MOCK_MEMTABLE_ENTRIES[nodeId] || []);
-export const getSstables = (nodeId: string): Promise<SSTableInfo[]> => mockApi(MOCK_SSTABLES[nodeId] || []);
-export const getSstableEntries = (nodeId: string, sstableId: string): Promise<StorageEntry[]> => mockApi(MOCK_SSTABLE_CONTENT[nodeId]?.[sstableId] || []);
+export const getWalEntries = (nodeId: string): Promise<WALEntry[]> => api.getWalEntries(nodeId);
+export const getMemtableEntries = (nodeId: string): Promise<StorageEntry[]> => api.getMemtableEntries(nodeId);
+export const getSstables = (nodeId: string): Promise<SSTableInfo[]> => api.getSstables(nodeId);
+export const getSstableEntries = (nodeId: string, sstableId: string): Promise<StorageEntry[]> => api.getSstableEntries(nodeId, sstableId);
 
 
 

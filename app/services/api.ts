@@ -1,4 +1,15 @@
-import { Node, NodeStatus, Partition, MetricPoint, ClusterConfig, HotspotInfo, ReplicationStatus } from '../types';
+import {
+  Node,
+  NodeStatus,
+  Partition,
+  MetricPoint,
+  ClusterConfig,
+  HotspotInfo,
+  ReplicationStatus,
+  WALEntry,
+  StorageEntry,
+  SSTableInfo,
+} from '../types';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -154,4 +165,56 @@ export const startNode = async (nodeId: string): Promise<Node> => {
   const nodes = await getNodes();
   const node = nodes.find(n => n.id === nodeId)!;
   return node;
+};
+
+export const getWalEntries = async (nodeId: string): Promise<WALEntry[]> => {
+  const data = await fetchJson<{ entries: any[] }>(
+    `/nodes/${encodeURIComponent(nodeId)}/wal`,
+  );
+  return (data.entries || []).map(e => ({
+    type: e.type,
+    key: e.key,
+    value: e.value ?? undefined,
+    vectorClock: e.vector_clock ?? {},
+  }));
+};
+
+export const getMemtableEntries = async (
+  nodeId: string,
+): Promise<StorageEntry[]> => {
+  const data = await fetchJson<{ entries: any[] }>(
+    `/nodes/${encodeURIComponent(nodeId)}/memtable`,
+  );
+  return (data.entries || []).map(e => ({
+    key: e.key,
+    value: e.value,
+    vectorClock: e.vector_clock ?? {},
+  }));
+};
+
+export const getSstables = async (nodeId: string): Promise<SSTableInfo[]> => {
+  const data = await fetchJson<{ tables: any[] }>(
+    `/nodes/${encodeURIComponent(nodeId)}/sstables`,
+  );
+  return (data.tables || []).map(t => ({
+    id: t.id,
+    level: t.level ?? 0,
+    size: t.size ?? 0,
+    itemCount: t.item_count ?? 0,
+    keyRange: [t.key_range?.[0] ?? '', t.key_range?.[1] ?? ''],
+  }));
+};
+
+export const getSstableEntries = async (
+  nodeId: string,
+  sstableId: string,
+): Promise<StorageEntry[]> => {
+  const data = await fetchJson<{ entries: any[] }>(
+    `/nodes/${encodeURIComponent(nodeId)}/sstables/${encodeURIComponent(sstableId)}`,
+  );
+  return (data.entries || []).map(e => ({
+    key: e.key,
+    value: e.value,
+    vectorClock: e.vector_clock ?? {},
+  }));
 };
