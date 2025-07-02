@@ -144,6 +144,32 @@ value = driver.get("alice", "k", "1")
 cluster.shutdown()
 ```
 
+### Data CRUD API
+
+The REST server offers simple endpoints to manage data stored in the cluster.
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/data/records` | List all records in the cluster |
+| `POST` | `/data/records` | Insert a new record using a JSON body |
+| `PUT` | `/data/records/{partition_key}/{clustering_key}` | Update an existing record (send `value` as query param) |
+| `DELETE` | `/data/records/{partition_key}/{clustering_key}` | Remove a record |
+| `GET` | `/data/records/scan_range` | Retrieve items for a partition between two clustering keys |
+
+Example usage with `curl`:
+
+```bash
+curl -X POST http://localhost:8000/data/records \
+     -H "Content-Type: application/json" \
+     -d '{"partitionKey":"alpha","clusteringKey":"a","value":"v1"}'
+
+curl http://localhost:8000/data/records
+
+curl -X PUT "http://localhost:8000/data/records/alpha/a?value=v2"
+
+curl -X DELETE http://localhost:8000/data/records/alpha/a
+```
+
 ### Topology aware driver
 
 The driver keeps a local cache of the partition map obtained with `get_partition_map()`. Requests go directly to the responsible node. If a `NotOwner` error is returned (for example after a partition migration) the driver refreshes the cache and retries.
