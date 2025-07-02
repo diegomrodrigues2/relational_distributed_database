@@ -13,11 +13,23 @@ class Record(BaseModel):
     value: str
 
 
+class HotKey(BaseModel):
+    key: str
+    buckets: int = 2
+    migrate: bool = False
+
+
 @app.on_event("startup")
 def startup_event() -> None:
     """Initialize the cluster when the API starts."""
     app.state.cluster_start = time.time()
-    app.state.cluster = NodeCluster(base_path="/tmp/api_cluster", num_nodes=3)
+    app.state.cluster = NodeCluster(
+        base_path="/tmp/api_cluster",
+        num_nodes=3,
+        replication_factor=1,
+        partition_strategy="hash",
+        num_partitions=2,
+    )
 
 
 @app.on_event("shutdown")
@@ -161,6 +173,31 @@ def cluster_config() -> dict:
         "partitions_per_node": cluster.partitions_per_node,
         "num_partitions": cluster.num_partitions,
     }
+
+
+@app.post("/cluster/actions/check_hot_partitions")
+def check_hot_partitions_endpoint() -> dict:
+    """Trigger hotspot detection and split busy partitions."""
+    cluster = app.state.cluster
+    before = cluster.num_partitions
+    cluster.check_hot_partitions(threshold=1.0)
+    return {"num_partitions": cluster.num_partitions, "before": before}
+
+
+@app.post("/cluster/actions/reset_metrics")
+def reset_metrics_endpoint() -> dict:
+    """Reset hotspot metrics counters."""
+    cluster = app.state.cluster
+    cluster.reset_metrics()
+    return {"status": "ok"}
+
+
+@app.post("/cluster/actions/mark_hot_key")
+def mark_hot_key_endpoint(req: HotKey) -> dict:
+    """Enable salting for a specific hot key."""
+    cluster = app.state.cluster
+    cluster.mark_hot_key(req.key, buckets=req.buckets, migrate=req.migrate)
+    return {"status": "ok"}
 
 
 @app.get("/nodes/{node_id}/replication_status")
