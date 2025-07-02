@@ -1,4 +1,5 @@
 import time
+import os
 import grpc
 from . import replication_pb2, replication_pb2_grpc, router_pb2_grpc
 
@@ -11,8 +12,8 @@ class GRPCReplicaClient:
         self.stub = None
         self.heartbeat_stub = None
         self._ensure_channel()
-        import os
-        os.register_at_fork(after_in_child=self._reset_channel)
+        if hasattr(os, "register_at_fork"):
+            os.register_at_fork(after_in_child=self._reset_channel)
 
     def _ensure_channel(self):
         if self.channel is None:
@@ -240,8 +241,8 @@ class GRPCRouterClient:
         self.channel = None
         self.stub = None
         self._ensure_channel()
-        import os
-        os.register_at_fork(after_in_child=self._reset_channel)
+        if hasattr(os, "register_at_fork"):
+            os.register_at_fork(after_in_child=self._reset_channel)
 
     def _ensure_channel(self):
         if self.channel is None:
