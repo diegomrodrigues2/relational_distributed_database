@@ -217,7 +217,7 @@ export const getSstableEntries = async (
     value: e.value,
     vectorClock: e.vector_clock ?? {},
   }));
-
+};
 export const checkHotPartitions = async (): Promise<void> => {
   await fetchJson<{ status: string }>('/cluster/actions/check_hot_partitions', {
     method: 'POST',
