@@ -536,22 +536,22 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def GetWalEntries(self, request, context):
         """Return entries currently stored in the node WAL."""
         entries = self._node.get_wal_entries()
-        return replication_pb2.WALEntries(entries=entries)
+        return replication_pb2.WalEntriesResponse(entries=entries)
 
     def GetMemtableEntries(self, request, context):
         """Return key/value pairs stored in the MemTable."""
         entries = self._node.get_memtable_entries()
-        return replication_pb2.StorageEntries(entries=entries)
+        return replication_pb2.StorageEntriesResponse(entries=entries)
 
     def GetSSTables(self, request, context):
         """Return metadata for SSTable segments on disk."""
         tables = self._node.get_sstables()
-        return replication_pb2.SSTablesInfo(tables=tables)
+        return replication_pb2.SSTableInfoResponse(tables=tables)
 
     def GetSSTableContent(self, request, context):
         """Return all key/value pairs for a specific SSTable."""
         entries = self._node.get_sstable_content(request.id)
-        return replication_pb2.StorageEntries(entries=entries)
+        return replication_pb2.StorageEntriesResponse(entries=entries)
 
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""
@@ -934,7 +934,7 @@ class NodeServer:
         entries = []
         for _idx, op_type, key, (val, vc) in self.db.wal.read_all():
             entries.append(
-                replication_pb2.WALEntry(
+                replication_pb2.WalEntry(
                     type=op_type,
                     key=key,
                     value="" if val is None else str(val),
