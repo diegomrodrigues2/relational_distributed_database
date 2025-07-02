@@ -532,6 +532,27 @@ class NodeCluster:
         pid = self.get_partition_id(key)
         return pmap.get(pid, self.nodes[pid % len(self.nodes)].node_id)
 
+    def secondary_query(self, field: str, value) -> list[str]:
+        """Query secondary indexes across all cluster nodes.
+
+        Results from every node are merged and sorted. Due to asynchronous
+        replication the returned keys may be stale or contain duplicates until
+        anti entropy synchronizes all nodes."""
+
+        results: set[str] = set()
+
+        def _call(node: ClusterNode) -> list[str]:
+            try:
+                return node.client.list_by_index(field, value)
+            except Exception:
+                return []
+
+        with futures.ThreadPoolExecutor(max_workers=len(self.nodes)) as ex:
+            for keys in ex.map(_call, self.nodes):
+                results.update(keys)
+
+        return sorted(results)
+
     def _pid_for_key(self, partition_key: str, clustering_key: str | None = None) -> int:
         return self.get_partition_id(partition_key, clustering_key)
 
