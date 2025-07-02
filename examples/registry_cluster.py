@@ -3,10 +3,10 @@ import time
 
 from api.main import app
 from database.replication import NodeCluster
-from .service_runner import start_frontend, ngrok
+from .service_runner import start_frontend
 
 
-def main(tunnel: bool = False):
+def main() -> None:
     app.router.on_startup.clear()
     ranges = [("a", "m"), ("m", "z")]
     cluster = NodeCluster(
@@ -18,7 +18,7 @@ def main(tunnel: bool = False):
     )
     cluster.router_client.put("reg1", "v1")
     app.state.cluster = cluster
-    front_proc = start_frontend(tunnel)
+    front_proc = start_frontend()
     print("API running at http://localhost:8000")
     try:
         import uvicorn
@@ -26,18 +26,7 @@ def main(tunnel: bool = False):
     finally:
         front_proc.terminate()
         cluster.shutdown()
-        if tunnel and ngrok:
-            ngrok.kill()
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--tunnel",
-        action="store_true",
-        help="Expose API and UI using ngrok",
-    )
-    args = parser.parse_args()
-    main(tunnel=args.tunnel)
+    main()

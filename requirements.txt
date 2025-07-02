@@ -6,4 +6,3 @@ protobuf<7.0.0,>=6.30.0
 fastapi
 uvicorn
 httpx<0.25
-pyngrok
