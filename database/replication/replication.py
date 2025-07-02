@@ -1018,6 +1018,34 @@ class NodeCluster:
         db.close()
         return {k: [tpl for tpl in v if tpl[0] != TOMBSTONE] for k, v in merged.items()}
 
+    def list_records(self) -> list[tuple[str, str | None, object]]:
+        """Return all records currently stored across the cluster.
+
+        The method iterates over the known keys (``self._known_keys``). When the
+        set is empty it loads the keys from disk for each node using
+        :py:meth:`_load_node_items`. For each discovered key the value is fetched
+        via :py:meth:`get` and tombstones are ignored. The resulting list is
+        ordered by primary and clustering keys.
+        """
+
+        key_set: set[str] = set(self._known_keys)
+        if not key_set:
+            for node in self.nodes:
+                try:
+                    key_set.update(self._load_node_items(node).keys())
+                except Exception:
+                    continue
+
+        records: list[tuple[str, str | None, object]] = []
+        for key in sorted(key_set):
+            pk, ck = self._split_key_components(key)
+            value = self.get(0, pk, ck)
+            if value is None or value == TOMBSTONE:
+                continue
+            records.append((pk, ck, value))
+
+        return records
+
     def _move_hash_partition(self, pid: int, src: ClusterNode, dest: ClusterNode) -> None:
         items = self._load_node_items(src)
         for key, versions in items.items():
