@@ -1,17 +1,5 @@
 import { UserRecord } from '../types';
-
-const API_BASE = 'http://localhost:8000';
-
-const fetchJson = async <T>(path: string, options?: RequestInit): Promise<T> => {
-  const resp = await fetch(`${API_BASE}${path}`, options);
-  if (!resp.ok) {
-    throw new Error(`Request failed: ${resp.status}`);
-  }
-  if (resp.headers.get('content-length') === '0' || resp.status === 204) {
-    return {} as T;
-  }
-  return resp.json() as Promise<T>;
-};
+import { fetchJson } from './request';
 
 export const getUserRecords = async (): Promise<UserRecord[]> => {
   const data = await fetchJson<{ records: { partition_key: string; clustering_key: string; value: string }[] }>('/data/records');
