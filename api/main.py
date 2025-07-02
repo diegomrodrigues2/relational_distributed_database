@@ -247,6 +247,14 @@ def scan_range(
     return {"items": items}
 
 
+@app.get("/data/query_index")
+def query_index(field: str, value: str) -> dict:
+    """Return keys matching ``field``/``value`` from secondary indexes."""
+    cluster = app.state.cluster
+    keys = cluster.secondary_query(field, value)
+    return {"keys": keys}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=False)
