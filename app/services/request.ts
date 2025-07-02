@@ -1,4 +1,6 @@
-export const API_BASE = 'http://localhost:8000';
+export const API_BASE =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE) ||
+  'http://localhost:8000';
 
 export const fetchJson = async <T>(path: string, options?: RequestInit): Promise<T> => {
   const resp = await fetch(`${API_BASE}${path}`, options);
