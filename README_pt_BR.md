@@ -860,3 +860,18 @@ curl "http://localhost:8000/data/query_index?field=color&value=red"
 - `lsm_db.py`, `mem_table.py`, `wal.py`, `sstable.py` – implementação da LSM Tree.
 - `replication.py` e `replica/` – lógica de replicação gRPC e serviços.
 - `tests/` – casos de teste.
+
+## Executando os exemplos no Windows
+
+Para evitar problemas de compatibilidade no Windows, utilize o Docker. Primeiro instale o **Docker Desktop**, depois construa e execute a imagem na raiz do repositório:
+
+```bash
+docker build -t py_db .
+docker run -p 8000:8000 -p 5173:5173 py_db
+```
+
+Esse comando inicia o `hash_cluster.py`, que também lança a API e a interface React em segundo plano. Para rodar outro exemplo, basta sobrescrever o comando:
+
+```bash
+docker run -p 8000:8000 -p 5173:5173 py_db python examples/range_cluster.py
+```
