@@ -214,5 +214,70 @@ class ReplicationStatusRPCTest(unittest.TestCase):
                 node.db.close()
 
 
+class StorageRPCTest(unittest.TestCase):
+    def test_get_wal_entries_rpc(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, port=9101, node_id="A", peers=[])
+            node.server.start()
+            try:
+                node.db.put("k1", "v1")
+                node.db.put("k2", "v2")
+
+                channel = grpc.insecure_channel(f"{node.host}:{node.port}")
+                stub = replication_pb2_grpc.ReplicaStub(channel)
+                req = replication_pb2.NodeInfoRequest(node_id="A")
+                resp = stub.GetWalEntries(req)
+                channel.close()
+
+                self.assertEqual(len(resp.entries), 2)
+                keys = sorted(entry.key for entry in resp.entries)
+                self.assertEqual(keys, ["k1", "k2"])
+            finally:
+                node.server.stop(0).wait()
+                node.db.close()
+
+    def test_get_memtable_entries_rpc(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, port=9102, node_id="A", peers=[])
+            node.server.start()
+            try:
+                node.db.put("k1", "v1")
+                node.db.put("k2", "v2")
+
+                channel = grpc.insecure_channel(f"{node.host}:{node.port}")
+                stub = replication_pb2_grpc.ReplicaStub(channel)
+                req = replication_pb2.NodeInfoRequest(node_id="A")
+                resp = stub.GetMemtableEntries(req)
+                channel.close()
+
+                self.assertEqual(len(resp.entries), 2)
+                keys = sorted(entry.key for entry in resp.entries)
+                self.assertEqual(keys, ["k1", "k2"])
+            finally:
+                node.server.stop(0).wait()
+                node.db.close()
+
+    def test_get_sstables_rpc(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, port=9103, node_id="A", peers=[])
+            node.server.start()
+            try:
+                node.db.put("k1", "v1")
+                node.db.put("k2", "v2")
+                node.db._flush_memtable_to_sstable()
+
+                channel = grpc.insecure_channel(f"{node.host}:{node.port}")
+                stub = replication_pb2_grpc.ReplicaStub(channel)
+                req = replication_pb2.NodeInfoRequest(node_id="A")
+                resp = stub.GetSSTables(req)
+                channel.close()
+
+                self.assertTrue(len(resp.tables) >= 1)
+                self.assertEqual(resp.tables[0].item_count, 2)
+            finally:
+                node.server.stop(0).wait()
+                node.db.close()
+
+
 if __name__ == "__main__":
     unittest.main()
