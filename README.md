@@ -155,6 +155,7 @@ The REST server offers simple endpoints to manage data stored in the cluster.
 | `PUT` | `/data/records/{partition_key}/{clustering_key}` | Update an existing record (send `value` as query param) |
 | `DELETE` | `/data/records/{partition_key}/{clustering_key}` | Remove a record |
 | `GET` | `/data/records/scan_range` | Retrieve items for a partition between two clustering keys |
+| `GET` | `/data/query_index` | Retrieve keys from a secondary index |
 
 Example usage with `curl`:
 
@@ -168,6 +169,9 @@ curl http://localhost:8000/data/records
 curl -X PUT "http://localhost:8000/data/records/alpha/a?value=v2"
 
 curl -X DELETE http://localhost:8000/data/records/alpha/a
+
+curl "http://localhost:8000/data/query_index?field=color&value=red"
+# {"keys": ["p1"]}
 ```
 
 ### Topology aware driver

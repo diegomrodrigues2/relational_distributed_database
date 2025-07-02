@@ -825,6 +825,15 @@ python -m unittest tests/test_smart_driver.py -v
 Esse comando deve ser executado sempre que novas funcionalidades forem
 implementadas ou arquivos forem modificados.
 
+### Consulta de índice via API
+
+Para recuperar as chaves de um valor indexado pela API HTTP:
+
+```bash
+curl "http://localhost:8000/data/query_index?field=color&value=red"
+# {"keys": ["p1"]}
+```
+
 ## Estrutura de arquivos
 
 - `main.py` – exemplo de inicialização do cluster.
