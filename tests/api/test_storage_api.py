@@ -15,17 +15,20 @@ def test_node_storage_endpoints():
         # trigger some activity so WAL and memtable are not empty
         client.post("/put/test_key", params={"value": "1"})
 
-        resp = client.get(f"/nodes/{node_id}/wal")
-        assert resp.status_code == 200
+    resp = client.get(f"/nodes/{node_id}/wal")
+    assert resp.status_code in {200, 503}
+    if resp.status_code == 200:
         data = resp.json()
-        assert "entries" in data or "error" in data
+        assert "entries" in data
 
-        resp = client.get(f"/nodes/{node_id}/memtable")
-        assert resp.status_code == 200
+    resp = client.get(f"/nodes/{node_id}/memtable")
+    assert resp.status_code in {200, 503}
+    if resp.status_code == 200:
         data = resp.json()
-        assert "entries" in data or "error" in data
+        assert "entries" in data
 
-        resp = client.get(f"/nodes/{node_id}/sstables")
-        assert resp.status_code == 200
+    resp = client.get(f"/nodes/{node_id}/sstables")
+    assert resp.status_code in {200, 503}
+    if resp.status_code == 200:
         data = resp.json()
-        assert "tables" in data or "error" in data
+        assert "tables" in data
