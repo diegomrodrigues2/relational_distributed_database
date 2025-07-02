@@ -4,7 +4,7 @@ import time
 from api.main import app
 from database.replication import NodeCluster
 from database.clustering.partitioning import compose_key
-from .service_runner import start_services, ngrok
+from .service_runner import start_frontend, ngrok
 
 
 def main(tunnel: bool = False):
@@ -14,14 +14,12 @@ def main(tunnel: bool = False):
     cluster.put(0, compose_key("a", "1"), "v1")
     cluster.put(0, compose_key("b", "2"), "v2")
     app.state.cluster = cluster
-    api_proc, front_proc = start_services(tunnel)
+    front_proc = start_frontend(tunnel)
+    print("API running at http://localhost:8000")
     try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        pass
+        import uvicorn
+        uvicorn.run("api.main:app", port=8000)
     finally:
-        api_proc.terminate()
         front_proc.terminate()
         cluster.shutdown()
         if tunnel and ngrok:

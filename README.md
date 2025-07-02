@@ -499,7 +499,7 @@ app/                 # Frontend web application
 
 ## Example configurations
 
-Several small scripts under `examples/` start the cluster with different options. Each one also launches the API and React UI in the background. Run them with `python examples/<file>.py` and visit the printed URLs.
+Several small scripts under `examples/` start the cluster with different options. Each one launches the React UI in the background while the API runs in the foreground. Run them with `python examples/<file>.py` and visit the printed URLs.
 
 - `hash_cluster.py` – three-node hash-partitioned cluster using LWW.
 - `range_cluster.py` – cluster with two explicit key ranges and sample composite keys.
@@ -507,12 +507,12 @@ Several small scripts under `examples/` start the cluster with different options
 - `router_cluster.py` – starts the gRPC router and writes via the router client.
 - `registry_cluster.py` – uses the metadata registry together with the router.
 
-When executing inside environments without direct access to localhost (e.g. Google Colab) pass `--tunnel` to expose both services via ngrok:
+When executing inside environments without direct access to localhost (e.g. Google Colab) pass `--tunnel` to expose the UI via ngrok:
 
 ```bash
 python examples/hash_cluster.py --tunnel
 ```
-The external URLs will be printed once the tunnels are ready. Set `NGROK_AUTHTOKEN` to use your own ngrok account.
+The UI URL will be printed once the tunnel is ready. Set `NGROK_AUTHTOKEN` to use your own ngrok account.
 
 
 ## Running the examples on Windows
