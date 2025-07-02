@@ -163,6 +163,34 @@ def cluster_config() -> dict:
     }
 
 
+@app.post("/cluster/actions/add_node")
+def add_node() -> dict:
+    """Add a new node to the cluster and return its id."""
+    node = app.state.cluster.add_node()
+    return {"status": "ok", "node_id": node.node_id}
+
+
+@app.delete("/cluster/actions/remove_node/{node_id}")
+def remove_node(node_id: str) -> dict:
+    """Remove ``node_id`` from the cluster."""
+    app.state.cluster.remove_node(node_id)
+    return {"status": "ok"}
+
+
+@app.post("/nodes/{node_id}/stop")
+def stop_node(node_id: str) -> dict:
+    """Stop the node identified by ``node_id``."""
+    app.state.cluster.stop_node(node_id)
+    return {"status": "ok"}
+
+
+@app.post("/nodes/{node_id}/start")
+def start_node(node_id: str) -> dict:
+    """Start the node identified by ``node_id``."""
+    app.state.cluster.start_node(node_id)
+    return {"status": "ok"}
+
+
 @app.get("/nodes/{node_id}/replication_status")
 def node_replication_status(node_id: str) -> dict:
     """Return replication status information for ``node_id``."""
