@@ -870,15 +870,15 @@ docker build -t py_db .
 docker run -p 8000:8000 -p 5173:5173 py_db
 ```
 
-Esse comando inicia o `hash_cluster.py`, que também lança a API e a interface React em segundo plano. Para rodar outro exemplo, basta sobrescrever o comando:
+Esse comando inicia o `hash_cluster.py`, que lança a interface React em segundo plano enquanto a API roda em primeiro plano. Para rodar outro exemplo, basta sobrescrever o comando:
 
 ```bash
 docker run -p 8000:8000 -p 5173:5173 py_db python examples/range_cluster.py
 ```
 
-Em ambientes remotos sem acesso ao `localhost` (como o Google Colab) utilize a opção `--tunnel` para expor a API e a interface através do ngrok:
+Em ambientes remotos sem acesso ao `localhost` (como o Google Colab) utilize a opção `--tunnel` para expor apenas a interface através do ngrok:
 
 ```bash
 python examples/hash_cluster.py --tunnel
 ```
-Os endereços públicos serão exibidos assim que o túnel estiver ativo. Defina `NGROK_AUTHTOKEN` para usar sua conta do ngrok.
+O endereço público da interface será exibido assim que o túnel estiver ativo. Defina `NGROK_AUTHTOKEN` para usar sua conta do ngrok.
