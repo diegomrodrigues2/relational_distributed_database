@@ -22,6 +22,7 @@ def test_records_crud_and_scan():
 
         resp = client.put("/data/records/alpha/a", params={"value": "v2"})
         assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
 
         time.sleep(0.1)
         resp = client.get("/data/records")
@@ -33,11 +34,14 @@ def test_records_crud_and_scan():
             params={"partition_key": "alpha", "start_ck": "a", "end_ck": "b"},
         )
         assert resp.status_code == 200
-        items = [(i["clustering_key"], i["value"]) for i in resp.json().get("items", [])]
+        data = resp.json()
+        assert "items" in data
+        items = [(i["clustering_key"], i["value"]) for i in data.get("items", [])]
         assert ("a", "v2") in items
 
         resp = client.delete("/data/records/alpha/a")
         assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
 
         time.sleep(0.1)
         resp = client.get("/data/records")
