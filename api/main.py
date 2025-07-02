@@ -177,6 +177,29 @@ def remove_node(node_id: str) -> dict:
     return {"status": "ok"}
 
 
+@app.post("/cluster/actions/check_hot_partitions")
+def check_hot_partitions(threshold: float = 2.0, min_keys: int = 2) -> dict:
+    """Check for hot partitions and split them if needed."""
+    cluster = app.state.cluster
+    cluster.check_hot_partitions(threshold=threshold, min_keys=min_keys)
+    return {"status": "ok"}
+
+
+@app.post("/cluster/actions/reset_metrics")
+def reset_metrics() -> dict:
+    """Reset partition and key frequency metrics."""
+    app.state.cluster.reset_metrics()
+    return {"status": "ok"}
+
+
+@app.post("/cluster/actions/mark_hot_key")
+def mark_hot_key(key: str, buckets: int, migrate: bool = False) -> dict:
+    """Enable salting for ``key`` using ``buckets`` variants."""
+    cluster = app.state.cluster
+    cluster.mark_hot_key(key, buckets=buckets, migrate=migrate)
+    return {"status": "ok"}
+
+
 @app.post("/nodes/{node_id}/stop")
 def stop_node(node_id: str) -> dict:
     """Stop the node identified by ``node_id``."""
