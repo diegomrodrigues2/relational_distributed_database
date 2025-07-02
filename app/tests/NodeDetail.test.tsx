@@ -49,4 +49,20 @@ describe('NodeDetail', () => {
     fireEvent.click(screen.getByText('Remove Node'))
     expect(onRemove).toHaveBeenCalledWith(node.id)
   })
+
+  it('disables actions when loading', () => {
+    render(
+      <NodeDetail
+        node={node}
+        onRemove={() => {}}
+        onStop={() => {}}
+        onStart={() => {}}
+        isLoading={true}
+      />
+    )
+
+    expect(screen.getByText('Start')).toBeDisabled()
+    expect(screen.getByText('Stop')).toBeDisabled()
+    expect(screen.getByText('Remove Node')).toBeDisabled()
+  })
 })
