@@ -200,6 +200,14 @@ def mark_hot_key(key: str, buckets: int, migrate: bool = False) -> dict:
     return {"status": "ok"}
 
 
+@app.post("/cluster/actions/rebalance")
+def rebalance() -> dict:
+    """Re-send the current partition map to all nodes."""
+    cluster = app.state.cluster
+    cluster.update_partition_map()
+    return {"status": "ok"}
+
+
 @app.post("/nodes/{node_id}/stop")
 def stop_node(node_id: str) -> dict:
     """Stop the node identified by ``node_id``."""
