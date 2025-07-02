@@ -17,8 +17,10 @@ def test_query_index_endpoint():
         old_cluster.shutdown()
         app.state.cluster = NodeCluster(base_path=tmpdir, num_nodes=2, index_fields=["color"])
 
-        data = {"partitionKey": "p1", "value": json.dumps({"color": "red"})}
-        resp = client.post("/data/records", json=data)
+        resp = client.post(
+            "/put/p1",
+            params={"value": json.dumps({"color": "red"})},
+        )
         assert resp.status_code == 200
 
         time.sleep(0.5)
