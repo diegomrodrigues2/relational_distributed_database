@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from database.replication import NodeCluster
 from database.replication.replica import replication_pb2
@@ -250,7 +250,7 @@ def node_replication_status(node_id: str) -> dict:
     cluster = app.state.cluster
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
-        return {"error": "node not found"}
+        raise HTTPException(status_code=404, detail="node not found")
     try:
         req = replication_pb2.NodeInfoRequest(node_id=node_id)
         resp = node.client.stub.GetReplicationStatus(req)
@@ -259,7 +259,7 @@ def node_replication_status(node_id: str) -> dict:
             "hints": dict(resp.hints),
         }
     except Exception:
-        return {"error": "unreachable"}
+        raise HTTPException(status_code=503, detail="unreachable")
 
 
 @app.get("/nodes/{node_id}/wal")
@@ -268,7 +268,7 @@ def node_wal(node_id: str) -> dict:
     cluster = app.state.cluster
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
-        return {"error": "node not found"}
+        raise HTTPException(status_code=404, detail="node not found")
     try:
         entries = node.client.get_wal_entries()
         results = [
@@ -282,7 +282,7 @@ def node_wal(node_id: str) -> dict:
         ]
         return {"entries": results}
     except Exception:
-        return {"error": "unreachable"}
+        raise HTTPException(status_code=503, detail="unreachable")
 
 
 @app.get("/nodes/{node_id}/memtable")
@@ -291,7 +291,7 @@ def node_memtable(node_id: str) -> dict:
     cluster = app.state.cluster
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
-        return {"error": "node not found"}
+        raise HTTPException(status_code=404, detail="node not found")
     try:
         entries = node.client.get_memtable_entries()
         results = [
@@ -304,7 +304,7 @@ def node_memtable(node_id: str) -> dict:
         ]
         return {"entries": results}
     except Exception:
-        return {"error": "unreachable"}
+        raise HTTPException(status_code=503, detail="unreachable")
 
 
 @app.get("/nodes/{node_id}/sstables")
@@ -313,7 +313,7 @@ def node_sstables(node_id: str) -> dict:
     cluster = app.state.cluster
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
-        return {"error": "node not found"}
+        raise HTTPException(status_code=404, detail="node not found")
     try:
         tables = node.client.get_sstables()
         results = [
@@ -328,7 +328,7 @@ def node_sstables(node_id: str) -> dict:
         ]
         return {"tables": results}
     except Exception:
-        return {"error": "unreachable"}
+        raise HTTPException(status_code=503, detail="unreachable")
 
 
 @app.get("/health")
