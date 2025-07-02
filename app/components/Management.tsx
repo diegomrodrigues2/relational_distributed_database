@@ -5,6 +5,7 @@ import { Node } from '../types';
 import NodeSelector from './management/NodeSelector';
 import NodeDetail from './management/NodeDetail';
 import ClusterActions from './management/ClusterActions';
+import PartitionActions from './management/PartitionActions';
 
 interface ManagementProps {
   initialSelectedNodeId: string | null;
@@ -123,10 +124,10 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
             isActionLoading={isActionLoading}
           />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 space-y-6">
           {selectedNode ? (
-            <NodeDetail 
-                node={selectedNode} 
+            <NodeDetail
+                node={selectedNode}
                 onRemove={handleRemoveNode}
                 onStop={handleStopNode}
                 onStart={handleStartNode}
@@ -135,6 +136,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
           ) : (
             <ClusterActions onAddNode={handleAddNode} isLoading={isActionLoading}/>
           )}
+          <PartitionActions />
         </div>
       </div>
     </div>

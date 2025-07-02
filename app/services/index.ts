@@ -10,4 +10,6 @@ export {
   getMemtableEntries,
   getSstables,
   getSstableEntries,
+  splitPartition,
+  mergePartitions,
 } from './api';

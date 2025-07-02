@@ -243,6 +243,32 @@ export const markHotKey = async (
   );
 };
 
+export const splitPartition = async (
+  pid: number,
+  splitKey?: string,
+): Promise<void> => {
+  const params = new URLSearchParams({ pid: String(pid) });
+  if (splitKey) params.append('split_key', splitKey);
+  await fetchJson<{ status: string }>(
+    `/cluster/actions/split_partition?${params.toString()}`,
+    { method: 'POST' },
+  );
+};
+
+export const mergePartitions = async (
+  pid1: number,
+  pid2: number,
+): Promise<void> => {
+  const params = new URLSearchParams({
+    pid1: String(pid1),
+    pid2: String(pid2),
+  });
+  await fetchJson<{ status: string }>(
+    `/cluster/actions/merge_partitions?${params.toString()}`,
+    { method: 'POST' },
+  );
+};
+
 export const rebalance = async (): Promise<void> => {
   await fetchJson<{ status: string }>('/cluster/actions/rebalance', {
     method: 'POST',
