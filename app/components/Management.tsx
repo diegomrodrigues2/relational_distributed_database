@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getNodes } from '../services/api';
-import * as mockService from '../services/mock';
-import { Node, NodeStatus } from '../types';
+import { addNode, removeNode, stopNode, startNode } from '../services/api';
+import { Node } from '../types';
 import NodeSelector from './management/NodeSelector';
 import NodeDetail from './management/NodeDetail';
 import ClusterActions from './management/ClusterActions';
@@ -49,7 +49,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
   const handleAddNode = async () => {
     setIsActionLoading(true);
     try {
-        await mockService.addNode();
+        await addNode();
         await fetchNodes(); // Re-fetch all nodes to get the new list
     } catch (error) {
         console.error("Failed to add node:", error);
@@ -62,7 +62,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
     if (window.confirm(`Are you sure you want to remove ${nodeId}? This action is permanent.`)) {
         setIsActionLoading(true);
         try {
-            await mockService.removeNode(nodeId);
+            await removeNode(nodeId);
             setSelectedNodeId(null);
             await fetchNodes(); // Re-fetch all nodes
         } catch (error) {
@@ -76,7 +76,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
   const handleStopNode = async (nodeId: string) => {
     setIsActionLoading(true);
     try {
-        const updatedNode = await mockService.stopNode(nodeId);
+        const updatedNode = await stopNode(nodeId);
         handleUpdateNode(updatedNode);
     } catch (error) {
         console.error("Failed to stop node:", error);
@@ -88,7 +88,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
   const handleStartNode = async (nodeId: string) => {
     setIsActionLoading(true);
     try {
-        const updatedNode = await mockService.startNode(nodeId);
+        const updatedNode = await startNode(nodeId);
         handleUpdateNode(updatedNode);
     } catch (error) {
         console.error("Failed to start node:", error);
