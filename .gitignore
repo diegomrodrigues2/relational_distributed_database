@@ -15,3 +15,7 @@ replica/replication_pb2_grpc.py
 .env
 *.db
 
+
+# Frontend dependencies
+app/node_modules/
+
