@@ -183,7 +183,13 @@ The API also exposes maintenance operations to manage the cluster:
 | `POST` | `/cluster/actions/check_hot_partitions` | Split partitions with heavy traffic |
 | `POST` | `/cluster/actions/reset_metrics` | Reset hotspot counters |
 | `POST` | `/cluster/actions/mark_hot_key` | Enable salting for a hot key |
+| `POST` | `/cluster/actions/split_partition` | Manually divide a partition |
+| `POST` | `/cluster/actions/merge_partitions` | Merge two adjacent partitions |
 | `POST` | `/cluster/actions/rebalance` | Evenly redistribute partitions |
+
+`split_partition` expects `pid` (partition id) and an optional `split_key` that
+defines the new boundary. `merge_partitions` receives `pid1` and `pid2` for the
+two consecutive partitions to be joined.
 
 Example:
 
@@ -191,8 +197,13 @@ Example:
 curl -X POST "http://localhost:8000/cluster/actions/reset_metrics"
 curl -X POST "http://localhost:8000/cluster/actions/check_hot_partitions"
 curl -X POST "http://localhost:8000/cluster/actions/mark_hot_key?key=hot&buckets=4"
+curl -X POST "http://localhost:8000/cluster/actions/split_partition?pid=0&split_key=g"
+curl -X POST "http://localhost:8000/cluster/actions/merge_partitions?pid1=0&pid2=1"
 curl -X POST "http://localhost:8000/cluster/actions/rebalance"
 ```
+
+The management dashboard under `app/` exposes buttons for these split and merge
+operations alongside other cluster tasks.
 
 ### Topology aware driver
 
