@@ -2,10 +2,16 @@ import { Node, NodeStatus, Partition, MetricPoint, ClusterConfig, HotspotInfo, R
 
 const API_BASE = 'http://localhost:8000';
 
-const fetchJson = async <T>(path: string): Promise<T> => {
-  const resp = await fetch(`${API_BASE}${path}`);
+const fetchJson = async <T>(path: string, options?: RequestInit): Promise<T> => {
+  const resp = await fetch(`${API_BASE}${path}`, options);
   if (!resp.ok) {
     throw new Error(`Request failed: ${resp.status}`);
+  }
+  if (
+    resp.status === 204 ||
+    (resp.headers && 'get' in resp.headers && resp.headers.get('content-length') === '0')
+  ) {
+    return {} as T;
   }
   return resp.json() as Promise<T>;
 };
@@ -112,4 +118,40 @@ export const getReplicationStatus = async (): Promise<ReplicationStatus[]> => {
     })
   );
   return statuses;
+};
+
+export const addNode = async (): Promise<string> => {
+  const data = await fetchJson<{ status: string; node_id: string }>(
+    '/cluster/actions/add_node',
+    { method: 'POST' },
+  );
+  return data.node_id;
+};
+
+export const removeNode = async (nodeId: string): Promise<string> => {
+  await fetchJson<{ status: string }>(
+    `/cluster/actions/remove_node/${encodeURIComponent(nodeId)}`,
+    { method: 'DELETE' },
+  );
+  return nodeId;
+};
+
+export const stopNode = async (nodeId: string): Promise<Node> => {
+  await fetchJson<{ status: string }>(
+    `/nodes/${encodeURIComponent(nodeId)}/stop`,
+    { method: 'POST' },
+  );
+  const nodes = await getNodes();
+  const node = nodes.find(n => n.id === nodeId)!;
+  return node;
+};
+
+export const startNode = async (nodeId: string): Promise<Node> => {
+  await fetchJson<{ status: string }>(
+    `/nodes/${encodeURIComponent(nodeId)}/start`,
+    { method: 'POST' },
+  );
+  const nodes = await getNodes();
+  const node = nodes.find(n => n.id === nodeId)!;
+  return node;
 };
