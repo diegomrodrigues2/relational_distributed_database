@@ -14,7 +14,10 @@ def start_services(tunnel: bool = False):
         "api.main:app",
         "--port",
         "8000",
-    ])
+    ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT
+    )
     frontend_proc = subprocess.Popen(
         ["npm", "run", "dev"],
         cwd=os.path.join(os.path.dirname(__file__), "..", "app"),
