@@ -587,6 +587,26 @@ print(cluster.get_hot_partitions())
 print(cluster.get_hot_keys())
 ```
 
+### Ações de cluster via API
+
+A API HTTP também oferece rotas para manutenção do cluster:
+
+| Método | Caminho | Descrição |
+| ------ | ------- | --------- |
+| `POST` | `/cluster/actions/check_hot_partitions` | Divide partições muito movimentadas |
+| `POST` | `/cluster/actions/reset_metrics` | Zera os contadores de hotspot |
+| `POST` | `/cluster/actions/mark_hot_key` | Ativa salting para uma chave quente |
+| `POST` | `/cluster/actions/rebalance` | Redistribui partições entre os nós |
+
+Exemplo de uso:
+
+```bash
+curl -X POST http://localhost:8000/cluster/actions/reset_metrics
+curl -X POST http://localhost:8000/cluster/actions/check_hot_partitions
+curl -X POST "http://localhost:8000/cluster/actions/mark_hot_key?key=hot&buckets=4"
+curl -X POST http://localhost:8000/cluster/actions/rebalance
+```
+
 ## Balanceamento de leituras
 
 Para distribuir consultas entre as réplicas defina `load_balance_reads=True`

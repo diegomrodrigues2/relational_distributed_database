@@ -170,6 +170,26 @@ curl -X PUT "http://localhost:8000/data/records/alpha/a?value=v2"
 curl -X DELETE http://localhost:8000/data/records/alpha/a
 ```
 
+### Cluster actions API
+
+The API also exposes maintenance operations to manage the cluster:
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `POST` | `/cluster/actions/check_hot_partitions` | Split partitions with heavy traffic |
+| `POST` | `/cluster/actions/reset_metrics` | Reset hotspot counters |
+| `POST` | `/cluster/actions/mark_hot_key` | Enable salting for a hot key |
+| `POST` | `/cluster/actions/rebalance` | Evenly redistribute partitions |
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8000/cluster/actions/reset_metrics"
+curl -X POST "http://localhost:8000/cluster/actions/check_hot_partitions"
+curl -X POST "http://localhost:8000/cluster/actions/mark_hot_key?key=hot&buckets=4"
+curl -X POST "http://localhost:8000/cluster/actions/rebalance"
+```
+
 ### Topology aware driver
 
 The driver keeps a local cache of the partition map obtained with `get_partition_map()`. Requests go directly to the responsible node. If a `NotOwner` error is returned (for example after a partition migration) the driver refreshes the cache and retries.
