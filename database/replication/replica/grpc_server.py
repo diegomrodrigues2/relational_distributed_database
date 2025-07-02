@@ -1075,8 +1075,8 @@ class NodeServer:
         while not self._hinted_stop.is_set():
             updated = False
             for peer_id, hints in list(self.hints.items()):
-                if self.peer_status.get(peer_id) is None:
-                    continue
+                # Attempt handoff regardless of heartbeat status to reduce
+                # latency when a node comes back online.
                 client = self.clients_by_id.get(peer_id) or self.client_map.get(peer_id)
                 if not client:
                     continue
