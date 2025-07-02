@@ -882,3 +882,10 @@ Em ambientes remotos sem acesso ao `localhost` (como o Google Colab) utilize a o
 python examples/hash_cluster.py --tunnel
 ```
 Os endereços públicos serão exibidos assim que o túnel estiver ativo. Defina `NGROK_AUTHTOKEN` para usar sua conta do ngrok.
+
+Antes de executar um exemplo pela primeira vez, instale as dependências da interface:
+
+```bash
+cd app && npm install
+```
+Os scripts aguardam a porta 5173 ficar disponível; caso a interface não inicie o túnel correspondente será ignorado.
