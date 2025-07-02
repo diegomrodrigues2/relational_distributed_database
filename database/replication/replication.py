@@ -1247,6 +1247,55 @@ class NodeCluster:
         self.update_partition_map()
         node.stop()
 
+    def stop_node(self, node_id: str) -> None:
+        """Stop the process for ``node_id`` without altering membership."""
+        node = self.nodes_by_id.get(node_id)
+        if not node:
+            return
+        node.stop()
+
+    def start_node(self, node_id: str) -> None:
+        """Restart a previously stopped node using stored configuration."""
+        node = self.nodes_by_id.get(node_id)
+        if not node:
+            return
+        if node.process.is_alive():
+            return
+
+        db_path = os.path.join(self.base_path, node.node_id)
+        peers = [(n.host, n.port, n.node_id) for n in self.nodes]
+        p = multiprocessing.Process(
+            target=run_server,
+            args=(
+                db_path,
+                node.host,
+                node.port,
+                node.node_id,
+                peers,
+                self.ring,
+                self.partition_map,
+                self.replication_factor,
+                self.write_quorum,
+                self.read_quorum,
+            ),
+            kwargs={
+                "consistency_mode": self.consistency_mode,
+                "enable_forwarding": self.enable_forwarding,
+                "partition_modulus": self.num_partitions if self.ring is None else None,
+                "node_index": self.nodes.index(node) if self.ring is None else None,
+                "index_fields": self.index_fields,
+                "global_index_fields": self.global_index_fields,
+                "registry_host": self.registry_addr[0] if self.use_registry else None,
+                "registry_port": self.registry_addr[1] if self.use_registry else None,
+            },
+            daemon=True,
+        )
+        p.start()
+        time.sleep(0.2)
+        node.process = p
+        node.client = GRPCReplicaClient(node.host, node.port)
+        self.update_partition_map()
+
 
     def shutdown(self):
         if self._cold_thread:
