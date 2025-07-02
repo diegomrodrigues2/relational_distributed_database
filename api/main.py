@@ -209,6 +209,75 @@ def node_replication_status(node_id: str) -> dict:
         return {"error": "unreachable"}
 
 
+@app.get("/nodes/{node_id}/wal")
+def node_wal(node_id: str) -> dict:
+    """Return Write Ahead Log entries stored on ``node_id``."""
+    cluster = app.state.cluster
+    node = cluster.nodes_by_id.get(node_id)
+    if node is None:
+        return {"error": "node not found"}
+    try:
+        entries = node.client.get_wal_entries()
+        results = [
+            {
+                "type": e[0],
+                "key": e[1],
+                "value": e[2],
+                "vector_clock": e[3],
+            }
+            for e in entries
+        ]
+        return {"entries": results}
+    except Exception:
+        return {"error": "unreachable"}
+
+
+@app.get("/nodes/{node_id}/memtable")
+def node_memtable(node_id: str) -> dict:
+    """Return current MemTable contents for ``node_id``."""
+    cluster = app.state.cluster
+    node = cluster.nodes_by_id.get(node_id)
+    if node is None:
+        return {"error": "node not found"}
+    try:
+        entries = node.client.get_memtable_entries()
+        results = [
+            {
+                "key": e[0],
+                "value": e[1],
+                "vector_clock": e[2],
+            }
+            for e in entries
+        ]
+        return {"entries": results}
+    except Exception:
+        return {"error": "unreachable"}
+
+
+@app.get("/nodes/{node_id}/sstables")
+def node_sstables(node_id: str) -> dict:
+    """Return metadata for SSTables stored by ``node_id``."""
+    cluster = app.state.cluster
+    node = cluster.nodes_by_id.get(node_id)
+    if node is None:
+        return {"error": "node not found"}
+    try:
+        tables = node.client.get_sstables()
+        results = [
+            {
+                "id": t[0],
+                "level": t[1],
+                "size": t[2],
+                "item_count": t[3],
+                "key_range": [t[4], t[5]],
+            }
+            for t in tables
+        ]
+        return {"tables": results}
+    except Exception:
+        return {"error": "unreachable"}
+
+
 @app.get("/health")
 def health() -> dict:
     """Return basic cluster information."""
