@@ -1,9 +1,16 @@
 from fastapi import FastAPI
+from pydantic import BaseModel
 from database.replication import NodeCluster
 from database.replication.replica import replication_pb2
 import time
 
 app = FastAPI()
+
+
+class Record(BaseModel):
+    partitionKey: str
+    clusteringKey: str | None = None
+    value: str
 
 
 @app.on_event("startup")
@@ -186,6 +193,58 @@ def health() -> dict:
         except Exception:
             continue
     return {"nodes": len(cluster.nodes), "healthy": healthy}
+
+
+@app.get("/data/records")
+def list_records_endpoint() -> dict:
+    """Return all records stored in the cluster."""
+    cluster = app.state.cluster
+    records = [
+        {
+            "partition_key": pk,
+            "clustering_key": ck,
+            "value": val,
+        }
+        for pk, ck, val in cluster.list_records()
+    ]
+    return {"records": records}
+
+
+@app.post("/data/records")
+def create_record(record: Record) -> dict:
+    """Insert ``record`` into the cluster."""
+    cluster = app.state.cluster
+    cluster.put(0, record.partitionKey, record.clusteringKey, record.value)
+    return {"status": "ok"}
+
+
+@app.put("/data/records/{partition_key}/{clustering_key}")
+def update_record(partition_key: str, clustering_key: str, value: str) -> dict:
+    """Update an existing record."""
+    cluster = app.state.cluster
+    cluster.put(0, partition_key, clustering_key, value)
+    return {"status": "ok"}
+
+
+@app.delete("/data/records/{partition_key}/{clustering_key}")
+def delete_record(partition_key: str, clustering_key: str) -> dict:
+    """Delete a record from the cluster."""
+    cluster = app.state.cluster
+    cluster.delete(0, partition_key, clustering_key)
+    return {"status": "ok"}
+
+
+@app.get("/data/records/scan_range")
+def scan_range(
+    partition_key: str, start_ck: str, end_ck: str
+) -> dict:
+    """Return items for ``partition_key`` between ``start_ck`` and ``end_ck``."""
+    cluster = app.state.cluster
+    items = [
+        {"clustering_key": ck, "value": val}
+        for ck, val in cluster.get_range(partition_key, start_ck, end_ck)
+    ]
+    return {"items": items}
 
 
 if __name__ == "__main__":
