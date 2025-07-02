@@ -1,14 +1,17 @@
 import os
+import platform
 import subprocess
 
 
 def start_frontend() -> subprocess.Popen:
     """Start the React UI in the background."""
+    cmd = ["npm", "run", "dev"]
     proc = subprocess.Popen(
-        ["npm", "run", "dev"],
+        cmd,
         cwd=os.path.join(os.path.dirname(__file__), "..", "app"),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
+        shell=platform.system() == "Windows",
     )
     ui_url = "http://localhost:5173"
     print(f"Frontend running at {ui_url}")
@@ -17,12 +20,8 @@ def start_frontend() -> subprocess.Popen:
 
 def start_services() -> tuple[subprocess.Popen, subprocess.Popen]:
     """Start API and frontend servers."""
-    api_proc = subprocess.Popen([
-        "uvicorn",
-        "api.main:app",
-        "--port",
-        "8000",
-    ])
+    cmd = ["uvicorn", "api.main:app", "--port", "8000"]
+    api_proc = subprocess.Popen(cmd, shell=platform.system() == "Windows")
     frontend_proc = start_frontend()
     api_url = "http://localhost:8000"
     print(f"API running at {api_url}")
