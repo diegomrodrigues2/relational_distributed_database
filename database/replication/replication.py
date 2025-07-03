@@ -99,6 +99,8 @@ class NodeCluster:
         self.nodes = []
         self.nodes_by_id: dict[str, ClusterNode] = {}
         self.drivers: list = []
+        self._tx_lock = threading.Lock()
+        self._tx_counter = 0
         self.salted_keys: dict[str, int] = {}
         self.consistency_mode = consistency_mode
         if replication_factor is None:
@@ -303,6 +305,12 @@ class NodeCluster:
         """Register a Driver instance for partition map updates."""
         if driver not in self.drivers:
             self.drivers.append(driver)
+
+    def next_txid(self) -> str:
+        """Return a new sequential transaction id as string."""
+        with self._tx_lock:
+            self._tx_counter += 1
+            return str(self._tx_counter)
 
     def enable_salt(self, key: str, buckets: int) -> None:
         """Enable random prefixing for ``key`` using ``buckets`` variants."""
@@ -659,9 +667,9 @@ class NodeCluster:
                 return None if merge else []
             if merge:
                 if self.consistency_mode in ("vector", "crdt"):
-                    best_val, best_vc = merged[0]
+                    best_val, best_vc, *_ = merged[0]
                     best_ts = best_vc.clock.get("ts", 0)
-                    for val, vc in merged[1:]:
+                    for val, vc, *_ in merged[1:]:
                         cmp = vc.compare(best_vc)
                         ts = vc.clock.get("ts", 0)
                         if cmp == ">" or (cmp is None and ts > best_ts):
@@ -670,13 +678,13 @@ class NodeCluster:
                     best_val = None
                     best_ts = -1
                     best_vc = None
-                    for val, vc in merged:
+                    for val, vc, *_ in merged:
                         ts = vc.clock.get("ts", 0)
                         if ts > best_ts:
                             best_val, best_vc, best_ts = val, vc, ts
                 return best_val
             else:
-                return [(val, vc.clock) for val, vc in merged]
+                return [(val, vc.clock) for val, vc, *_ in merged]
 
         composed_key = compose_key(partition_key, clustering_key)
         self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
@@ -788,9 +796,9 @@ class NodeCluster:
 
         if merge:
             if self.consistency_mode in ("vector", "crdt"):
-                best_val, best_vc = merged[0]
+                best_val, best_vc, *_ = merged[0]
                 best_ts = best_vc.clock.get("ts", 0)
-                for val, vc in merged[1:]:
+                for val, vc, *_ in merged[1:]:
                     cmp = vc.compare(best_vc)
                     ts = vc.clock.get("ts", 0)
                     if cmp == ">" or (cmp is None and ts > best_ts):
@@ -799,7 +807,7 @@ class NodeCluster:
                 best_val = None
                 best_ts = -1
                 best_vc = None
-                for val, vc in merged:
+                for val, vc, *_ in merged:
                     ts = vc.clock.get("ts", 0)
                     if ts > best_ts:
                         best_val, best_vc, best_ts = val, vc, ts
@@ -840,7 +848,7 @@ class NodeCluster:
 
             return best_val
         else:
-            return [(val, vc.clock) for val, vc in merged]
+            return [(val, vc.clock) for val, vc, *_ in merged]
 
         def _repair(n):
             try:
@@ -886,9 +894,9 @@ class NodeCluster:
                 versions = [v for v in merged[ck] if v[0] != TOMBSTONE]
                 if not versions:
                     continue
-                best_val, best_vc = versions[0]
+                best_val, best_vc, *_ = versions[0]
                 best_ts = best_vc.clock.get("ts", 0)
-                for val, vc in versions[1:]:
+                for val, vc, *_ in versions[1:]:
                     cmp = vc.compare(best_vc)
                     ts = vc.clock.get("ts", 0)
                     if cmp == ">" or (cmp is None and ts > best_ts):
@@ -996,7 +1004,7 @@ class NodeCluster:
             else:
                 if not belongs(pk, ck):
                     continue
-            for val, vc in versions:
+            for val, vc, *_ in versions:
                 ts = vc.clock.get("ts", 0)
                 dst_node.client.put(
                     key, val, timestamp=ts, node_id=dst_node.node_id, vector=vc.clock
@@ -1078,7 +1086,7 @@ class NodeCluster:
             )
             if target_pid != pid:
                 continue
-            for val, vc in versions:
+            for val, vc, *_ in versions:
                 ts = vc.clock.get("ts", 0)
                 dest.client.put(key, val, timestamp=ts, node_id=dest.node_id, vector=vc.clock)
                 src.client.delete(key, timestamp=ts + 1, node_id=src.node_id)
@@ -1091,7 +1099,7 @@ class NodeCluster:
             pk, ck = self._split_key_components(key)
             if not (start <= pk < end):
                 continue
-            for val, vc in versions:
+            for val, vc, *_ in versions:
                 ts = vc.clock.get("ts", 0)
                 dest.client.put(key, val, timestamp=ts, node_id=dest.node_id, vector=vc.clock)
                 src.client.delete(key, timestamp=ts + 1, node_id=src.node_id)

@@ -27,22 +27,33 @@ def _merge_version_lists(current, new_list):
     if not current:
         return list(new_list)
     result = list(current)
-    for val, vc in new_list:
+    for item in new_list:
+        val, vc = item[0], item[1]
+        created = item[2] if len(item) > 2 else None
+        deleted = item[3] if len(item) > 3 else None
         add_new = True
         updated = []
-        for c_val, c_vc in result:
+        for cur in result:
+            c_val, c_vc = cur[0], cur[1]
+            c_created = cur[2] if len(cur) > 2 else None
+            c_deleted = cur[3] if len(cur) > 3 else None
             cmp = vc.compare(c_vc)
             if cmp == ">":
                 continue
             if cmp == "<":
                 add_new = False
-                updated.append((c_val, c_vc))
+                updated.append((c_val, c_vc, c_created, c_deleted))
             else:
-                if vc.clock == c_vc.clock and val == c_val:
+                if (
+                    vc.clock == c_vc.clock
+                    and val == c_val
+                    and created == c_created
+                    and deleted == c_deleted
+                ):
                     add_new = False
-                updated.append((c_val, c_vc))
+                updated.append((c_val, c_vc, c_created, c_deleted))
         if add_new:
-            updated.append((val, vc))
+            updated.append((val, vc, created, deleted))
         result = updated
     return result
 

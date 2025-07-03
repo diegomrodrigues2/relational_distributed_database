@@ -17,7 +17,9 @@ class WriteAheadLog(object):
             with open(self.wal_file_path, 'w') as f:
                 pass # Apenas cria o arquivo
     
-    def append(self, entry_type, key, value, vector_clock=None, *, clustering_key=None):
+    def append(
+        self, entry_type, key, value, vector_clock=None, *, clustering_key=None
+    ):
         """Adiciona registro ao WAL com o vetor associado."""
         if vector_clock is None:
             vector_clock = VectorClock()
@@ -49,7 +51,10 @@ class WriteAheadLog(object):
                             0,
                             data.get("type"),
                             data.get("key"),
-                            (data.get("value"), VectorClock(data.get("vector", {}))),
+                            (
+                                data.get("value"),
+                                VectorClock(data.get("vector", {})),
+                            ),
                         )
                     )
                 except json.JSONDecodeError:
