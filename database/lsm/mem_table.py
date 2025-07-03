@@ -152,21 +152,27 @@ class MemTable:
 
     # API pública compatível
     def put(self, key, value):
-        """Insere ou atualiza entradas ``(valor, vector_clock)``.
+        """Insere ou atualiza entradas ``(valor, vector_clock, created_txid, deleted_txid)``.
 
         Pode existir mais de uma versão por chave caso os vetores sejam
         concorrentes. Quando uma nova versão domina outra existente, esta é
         descartada. Se for dominada, a nova é ignorada.
         """
-        val, vc = value
+        val = value[0]
+        vc = value[1]
+        created = value[2] if len(value) > 2 else None
+        deleted = value[3] if len(value) > 3 else None
         current = self._tree.search(key)
         if current is None:
-            self._tree.insert(key, [(val, vc)])
+            self._tree.insert(key, [(val, vc, created, deleted)])
             return
 
         new_list = []
         add_new = True
-        for cur_val, cur_vc in current:
+        for cur in current:
+            cur_val, cur_vc = cur[0], cur[1]
+            cur_created = cur[2] if len(cur) > 2 else None
+            cur_deleted = cur[3] if len(cur) > 3 else None
             cmp = vc.compare(cur_vc)
             if cmp == ">":
                 # nova versão é mais recente, descarta a antiga
@@ -174,17 +180,26 @@ class MemTable:
             if cmp == "<":
                 # existente é mais recente
                 add_new = False
-                new_list.append((cur_val, cur_vc))
+                new_list.append((cur_val, cur_vc, cur_created, cur_deleted))
                 continue
             # concorrentes ou iguais
-            if vc.clock == cur_vc.clock and val == cur_val:
+            if (
+                vc.clock == cur_vc.clock
+                and val == cur_val
+                and created == cur_created
+                and deleted == cur_deleted
+            ):
                 add_new = False
-            new_list.append((cur_val, cur_vc))
+            new_list.append((cur_val, cur_vc, cur_created, cur_deleted))
 
         if add_new:
-            new_list.append((val, vc))
+            new_list.append((val, vc, created, deleted))
 
         self._tree.insert(key, new_list)
+
+    def set_versions(self, key, versions):
+        """Replace versions list for ``key`` without merging."""
+        self._tree.insert(key, versions)
 
     def get(self, key):
         """Retorna lista de ``(valor, vector_clock)`` para a chave."""

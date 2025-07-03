@@ -15,23 +15,33 @@ def _merge_version_lists(current, new_list):
     if not current:
         return list(new_list)
     result = list(current)
-    for val, vc in new_list:
+    for item in new_list:
+        val, vc = item[0], item[1]
+        created = item[2] if len(item) > 2 else None
+        deleted = item[3] if len(item) > 3 else None
         add_new = True
         updated = []
-        for c_val, c_vc in result:
+        for cur in result:
+            c_val, c_vc = cur[0], cur[1]
+            c_created = cur[2] if len(cur) > 2 else None
+            c_deleted = cur[3] if len(cur) > 3 else None
             cmp = vc.compare(c_vc)
             if cmp == ">":
-                # nova versão domina existente
                 continue
             if cmp == "<":
                 add_new = False
-                updated.append((c_val, c_vc))
+                updated.append((c_val, c_vc, c_created, c_deleted))
             else:
-                if vc.clock == c_vc.clock and val == c_val:
+                if (
+                    vc.clock == c_vc.clock
+                    and val == c_val
+                    and created == c_created
+                    and deleted == c_deleted
+                ):
                     add_new = False
-                updated.append((c_val, c_vc))
+                updated.append((c_val, c_vc, c_created, c_deleted))
         if add_new:
-            updated.append((val, vc))
+            updated.append((val, vc, created, deleted))
         result = updated
     return result
 
@@ -98,7 +108,7 @@ class SimpleLSMDB:
         # múltiplas versões por chave.
         sorted_data = []
         for k, versions in self.memtable.get_sorted_items():
-            for val, vc in versions:
+            for val, vc, *_ in versions:
                 sorted_data.append((k, val, vc))
 
         # Escreve o SSTable
@@ -113,7 +123,16 @@ class SimpleLSMDB:
         self._start_compaction_async()
         self.segment_hashes = compute_segment_hashes(self)
 
-    def put(self, key, value, *, timestamp=None, vector_clock=None, clustering_key=None):
+    def put(
+        self,
+        key,
+        value,
+        *,
+        timestamp=None,
+        vector_clock=None,
+        clustering_key=None,
+        tx_id=None,
+    ):
         """Insere ou atualiza uma chave."""
         key = compose_key(str(key), clustering_key)
         value = str(value)
@@ -122,7 +141,17 @@ class SimpleLSMDB:
                 timestamp = int(time.time() * 1000)
             vector_clock = VectorClock({"ts": int(timestamp)})
         self.wal.append("PUT", key, value, vector_clock, clustering_key=None)
-        self.memtable.put(key, (value, vector_clock))
+        current = self.memtable.get(key) or []
+        if tx_id is not None and current:
+            updated = []
+            for val_cur, vc_cur, *rest in current:
+                created_cur = rest[0] if len(rest) > 0 else None
+                deleted_cur = rest[1] if len(rest) > 1 else None
+                if deleted_cur is None:
+                    deleted_cur = tx_id
+                updated.append((val_cur, vc_cur, created_cur, deleted_cur))
+            self.memtable.set_versions(key, updated)
+        self.memtable.put(key, (value, vector_clock, tx_id, None))
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
 
@@ -152,7 +181,7 @@ class SimpleLSMDB:
             return versions[0][0]
 
         print(f"GET: '{key}' possui múltiplas versões.")
-        return [v for v, _ in versions]
+        return [val for val, *_ in versions]
 
     def get_record(self, key, *, clustering_key=None):
         """Retorna lista de ``(valor, vector_clock)`` se presente."""
@@ -168,9 +197,17 @@ class SimpleLSMDB:
                 versions = _merge_version_lists(versions, rec)
 
         versions = [v for v in versions if v[0] != TOMBSTONE]
-        return versions
+        return [(val, vc) for val, vc, *_ in versions]
 
-    def delete(self, key, *, timestamp=None, vector_clock=None, clustering_key=None):
+    def delete(
+        self,
+        key,
+        *,
+        timestamp=None,
+        vector_clock=None,
+        clustering_key=None,
+        tx_id=None,
+    ):
         """Marca uma chave como removida."""
         key = compose_key(str(key), clustering_key)
         print(f"\nDELETE: Marcando chave '{key}' para exclusão.")
@@ -179,7 +216,17 @@ class SimpleLSMDB:
                 timestamp = int(time.time() * 1000)
             vector_clock = VectorClock({"ts": int(timestamp)})
         self.wal.append("DELETE", key, TOMBSTONE, vector_clock, clustering_key=None)
-        self.memtable.put(key, (TOMBSTONE, vector_clock))
+        current = self.memtable.get(key) or []
+        if tx_id is not None and current:
+            updated = []
+            for val_cur, vc_cur, *rest in current:
+                created_cur = rest[0] if len(rest) > 0 else None
+                deleted_cur = rest[1] if len(rest) > 1 else None
+                if deleted_cur is None:
+                    deleted_cur = tx_id
+                updated.append((val_cur, vc_cur, created_cur, deleted_cur))
+            self.memtable.set_versions(key, updated)
+        self.memtable.put(key, (TOMBSTONE, vector_clock, tx_id, None))
         if self.memtable.is_full():
             self._flush_memtable_to_sstable()
 
@@ -215,7 +262,7 @@ class SimpleLSMDB:
                 continue
             if k < start_key or k > end_key:
                 continue
-            for val, vc in versions:
+            for val, vc, *_ in versions:
                 items.setdefault(k, [])
                 items[k] = _merge_version_lists(items[k], [(val, vc)])
 
@@ -242,9 +289,9 @@ class SimpleLSMDB:
             versions = [v for v in items[k] if v[0] != TOMBSTONE]
             if not versions:
                 continue
-            best_val, best_vc = versions[0]
+            best_val, best_vc, *_ = versions[0]
             best_ts = best_vc.clock.get("ts", 0)
-            for val, vc in versions[1:]:
+            for val, vc, *_ in versions[1:]:
                 cmp = vc.compare(best_vc)
                 ts = vc.clock.get("ts", 0)
                 if cmp == ">" or (cmp is None and ts > best_ts):
@@ -257,7 +304,7 @@ class SimpleLSMDB:
         if segment_id == "memtable":
             res = []
             for k, versions in self.memtable.get_sorted_items():
-                for val, vc in versions:
+                for val, vc, *_ in versions:
                     res.append((k, val, vc))
             return res
         for ts, path, _ in self.sstable_manager.sstable_segments:

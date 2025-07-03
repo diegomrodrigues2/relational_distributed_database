@@ -123,7 +123,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             elif mode in ("vector", "crdt"):
                 versions = self._node.db.get_record(request.key)
                 dominated = False
-                for _, vc in versions:
+                for _, vc, *_ in versions:
                     cmp = new_vc.compare(vc)
                     if cmp == "<":
                         dominated = True
@@ -146,7 +146,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             else:  # lww
                 versions = self._node.db.get_record(request.key)
                 latest_ts = -1
-                for _, vc in versions:
+                for _, vc, *_ in versions:
                     ts_val = vc.clock.get("ts", 0)
                     if ts_val > latest_ts:
                         latest_ts = ts_val
@@ -290,7 +290,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if mode in ("vector", "crdt"):
                 versions = self._node.db.get_record(request.key)
                 dominated = False
-                for _, vc in versions:
+                for _, vc, *_ in versions:
                     cmp = new_vc.compare(vc)
                     if cmp == "<":
                         dominated = True
@@ -308,7 +308,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             else:  # lww
                 versions = self._node.db.get_record(request.key)
                 latest_ts = -1
-                for _, vc in versions:
+                for _, vc, *_ in versions:
                     ts_val = vc.clock.get("ts", 0)
                     if ts_val > latest_ts:
                         latest_ts = ts_val
@@ -436,7 +436,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             return replication_pb2.ValueResponse(values=[])
 
         values = []
-        for val, vc in records:
+        for val, vc, *_ in records:
             ts = vc.clock.get("ts", 0) if vc is not None else 0
             values.append(
                 replication_pb2.VersionedValue(
@@ -619,7 +619,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 local_tree = build_merkle_tree(items)
                 diff_keys = diff_trees(local_tree, remote_trees.get(seg))
                 for key in diff_keys:
-                    for val, vc in self._node.db.get_record(key):
+                    for val, vc, *_ in self._node.db.get_record(key):
                         ts_val = vc.clock.get("ts", 0) if vc is not None else 0
                         ops.append(
                             replication_pb2.Operation(
@@ -1099,7 +1099,7 @@ class NodeServer:
         """Return current MemTable items."""
         entries = []
         for key, versions in self.db.memtable.get_sorted_items():
-            for val, vc in versions:
+            for val, vc, *_ in versions:
                 if val == "__TOMBSTONE__":
                     continue
                 entries.append(

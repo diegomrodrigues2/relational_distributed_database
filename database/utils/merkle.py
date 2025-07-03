@@ -33,7 +33,8 @@ def compute_segment_hashes(db) -> Dict[str, str]:
     if hasattr(db, "memtable"):
         items = []
         for k, versions in db.memtable.get_sorted_items():
-            for val, _vc in versions:
+            for item in versions:
+                val = item[0]
                 if val != "__TOMBSTONE__":
                     items.append((k, val))
         hashes["memtable"] = merkle_root(items)
