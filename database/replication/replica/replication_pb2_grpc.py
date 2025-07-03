@@ -50,6 +50,11 @@ class ReplicaStub(object):
                 request_serializer=replication__pb2.KeyRequest.SerializeToString,
                 response_deserializer=replication__pb2.ValueResponse.FromString,
                 _registered_method=True)
+        self.GetForUpdate = channel.unary_unary(
+                '/replication.Replica/GetForUpdate',
+                request_serializer=replication__pb2.KeyRequest.SerializeToString,
+                response_deserializer=replication__pb2.ValueResponse.FromString,
+                _registered_method=True)
         self.Increment = channel.unary_unary(
                 '/replication.Replica/Increment',
                 request_serializer=replication__pb2.IncrementRequest.SerializeToString,
@@ -145,6 +150,13 @@ class ReplicaServicer(object):
 
     def Get(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetForUpdate(self, request, context):
+        """Get value acquiring a lock similar to SELECT FOR UPDATE
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -256,6 +268,11 @@ def add_ReplicaServicer_to_server(servicer, server):
             ),
             'Get': grpc.unary_unary_rpc_method_handler(
                     servicer.Get,
+                    request_deserializer=replication__pb2.KeyRequest.FromString,
+                    response_serializer=replication__pb2.ValueResponse.SerializeToString,
+            ),
+            'GetForUpdate': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetForUpdate,
                     request_deserializer=replication__pb2.KeyRequest.FromString,
                     response_serializer=replication__pb2.ValueResponse.SerializeToString,
             ),
@@ -415,6 +432,33 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/Get',
+            replication__pb2.KeyRequest.SerializeToString,
+            replication__pb2.ValueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetForUpdate(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/GetForUpdate',
             replication__pb2.KeyRequest.SerializeToString,
             replication__pb2.ValueResponse.FromString,
             options,
