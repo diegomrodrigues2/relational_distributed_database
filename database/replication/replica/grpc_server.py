@@ -67,17 +67,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         if request.tx_id:
             with self._node._tx_lock:
-                with self._node._write_lock:
-                    holder = self._node.write_locks.get(request.key)
-                    if holder not in (None, request.tx_id):
-                        if context:
-                            context.abort(grpc.StatusCode.ABORTED, "Locked")
-                        raise RuntimeError("Locked")
-                    self._node.write_locks[request.key] = request.tx_id
                 self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
-                self._node.active_transactions.setdefault(request.tx_id, []).append(
-                    ("put", request)
+                txdata = self._node.active_transactions.setdefault(
+                    request.tx_id, {"ops": [], "reads": {}}
                 )
+                txdata["ops"].append(("put", request))
             return replication_pb2.Empty()
 
         origem = seq = None
@@ -253,17 +247,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         if request.tx_id:
             with self._node._tx_lock:
-                with self._node._write_lock:
-                    holder = self._node.write_locks.get(request.key)
-                    if holder not in (None, request.tx_id):
-                        if context:
-                            context.abort(grpc.StatusCode.ABORTED, "Locked")
-                        raise RuntimeError("Locked")
-                    self._node.write_locks[request.key] = request.tx_id
                 self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
-                self._node.active_transactions.setdefault(request.tx_id, []).append(
-                    ("delete", request)
+                txdata = self._node.active_transactions.setdefault(
+                    request.tx_id, {"ops": [], "reads": {}}
                 )
+                txdata["ops"].append(("delete", request))
             return replication_pb2.Empty()
 
         origem = seq = None
@@ -414,10 +402,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         # we must ignore those buffered values and return the committed version.
         skip_cache = False
         with self._node._tx_lock:
-            for tx_id, ops in self._node.active_transactions.items():
+            for tx_id, txdata in self._node.active_transactions.items():
                 if tx_id == (request.tx_id or ""):
                     continue
-                for op, req in ops:
+                for op, req in txdata.get("ops", []):
                     if req.key == request.key:
                         skip_cache = True
                         break
@@ -441,7 +429,40 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 if records:
                     self._node._cache_set(request.key, records)
         if not records:
+            if request.tx_id:
+                with self._node._tx_lock:
+                    txdata = self._node.active_transactions.setdefault(
+                        request.tx_id, {"ops": [], "reads": {}}
+                    )
+                    txdata["reads"][request.key] = None
             return replication_pb2.ValueResponse(values=[])
+
+        # Choose the visible version we return and record its originating tx_id
+        mode = self._node.consistency_mode
+        best_rec = records[0]
+        best_vc = best_rec[1]
+        best_tx = best_rec[2] if len(best_rec) > 2 else None
+        best_ts = best_vc.clock.get("ts", 0)
+        for val, vc, *rest in records[1:]:
+            ts = vc.clock.get("ts", 0)
+            if mode in ("vector", "crdt"):
+                cmp = vc.compare(best_vc)
+                if cmp == ">" or (cmp is None and ts > best_ts):
+                    best_vc = vc
+                    best_tx = rest[0] if len(rest) > 0 else None
+                    best_ts = ts
+            else:
+                if ts > best_ts:
+                    best_vc = vc
+                    best_tx = rest[0] if len(rest) > 0 else None
+                    best_ts = ts
+
+        if request.tx_id:
+            with self._node._tx_lock:
+                txdata = self._node.active_transactions.setdefault(
+                    request.tx_id, {"ops": [], "reads": {}}
+                )
+                txdata["reads"][request.key] = best_tx
 
         values = []
         for val, vc, *_ in records:
@@ -500,12 +521,32 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         tx_id = uuid.uuid4().hex
         with self._node._tx_lock:
             snapshot = list(self._node.active_transactions.keys())
-            self._node.active_transactions[tx_id] = []
+            self._node.active_transactions[tx_id] = {"ops": [], "reads": {}}
         return replication_pb2.TransactionId(id=tx_id, in_progress=snapshot)
 
     def CommitTransaction(self, request, context):
         with self._node._tx_lock:
-            ops = self._node.active_transactions.pop(request.tx_id, [])
+            txdata = self._node.active_transactions.pop(
+                request.tx_id, {"ops": [], "reads": {}}
+            )
+        ops = txdata.get("ops", [])
+        reads = txdata.get("reads", {})
+
+        # Detect write conflicts based on versions read
+        for op, req in ops:
+            if req.key in reads:
+                read_txid = reads[req.key]
+                latest = self._node._latest_txid(req.key)
+                if latest != read_txid:
+                    with self._node._tx_lock:
+                        locked = self._node.locks_by_tx.pop(request.tx_id, set())
+                        for k in locked:
+                            if self._node.locks.get(k) == request.tx_id:
+                                self._node.locks.pop(k, None)
+                            with self._node._write_lock:
+                                if self._node.write_locks.get(k) == request.tx_id:
+                                    self._node.write_locks.pop(k, None)
+                    raise RuntimeError("Conflict")
         for op, req in ops:
             if op == "put":
                 new_vc = (
@@ -829,7 +870,9 @@ class NodeServer:
         self.local_seq = 0
         self.last_seen: dict[str, int] = {}
         self.replication_log: dict[str, tuple] = {}
-        self.active_transactions: dict[str, list[tuple]] = {}
+        # Track operations and read versions for active transactions
+        # ``{tx_id: {"ops": [(op, request), ...], "reads": {key: read_txid}}}``
+        self.active_transactions: dict[str, dict] = {}
         # Simple lock manager mapping key -> tx_id
         self.locks: dict[str, str] = {}
         self.locks_by_tx: dict[str, set[str]] = {}
@@ -977,6 +1020,33 @@ class NodeServer:
         if self.cache is None:
             return
         self.cache.pop(key, None)
+
+    def _latest_txid(self, key: str):
+        """Return the created_txid of the most recent visible version."""
+        records = self.db.get_record(key)
+        if not records:
+            return None
+        mode = self.consistency_mode
+        if mode in ("vector", "crdt"):
+            val, best_vc, *rest = records[0]
+            best_tx = rest[0] if len(rest) > 0 else None
+            best_ts = best_vc.clock.get("ts", 0)
+            for _val, vc, *r in records[1:]:
+                cmp = vc.compare(best_vc)
+                ts = vc.clock.get("ts", 0)
+                if cmp == ">" or (cmp is None and ts > best_ts):
+                    best_vc = vc
+                    best_tx = r[0] if len(r) > 0 else None
+                    best_ts = ts
+        else:
+            best_tx = None
+            best_ts = -1
+            for _val, vc, *r in records:
+                ts = vc.clock.get("ts", 0)
+                if ts > best_ts or (ts == best_ts and best_tx is None):
+                    best_tx = r[0] if len(r) > 0 else None
+                    best_ts = ts
+        return best_tx
 
     # persistence helpers ------------------------------------------------
     def _last_seen_file(self) -> str:

@@ -452,7 +452,46 @@ class TransactionTest(unittest.TestCase):
             t1.join()
             t2.join()
 
-            self.assertEqual(node.db.get("cnt"), "2")
+        self.assertEqual(node.db.get("cnt"), "2")
+
+        node.db.close()
+
+    def test_snapshot_isolation_detects_lost_update(self):
+        """Snapshot isolation should abort conflicting updates automatically."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            node.db.put("cnt", "0", timestamp=1)
+
+            tx1 = service.BeginTransaction(replication_pb2.Empty(), None).id
+            tx2 = service.BeginTransaction(replication_pb2.Empty(), None).id
+
+            r1 = service.Get(replication_pb2.KeyRequest(key="cnt", tx_id=tx1), None)
+            r2 = service.Get(replication_pb2.KeyRequest(key="cnt", tx_id=tx2), None)
+            v1 = int(r1.values[0].value) if r1.values else 0
+            v2 = int(r2.values[0].value) if r2.values else 0
+
+            ts1 = node.clock.tick()
+            service.Put(
+                replication_pb2.KeyValue(key="cnt", value=str(v1 + 1), timestamp=ts1, tx_id=tx1),
+                None,
+            )
+            ts2 = node.clock.tick()
+            service.Put(
+                replication_pb2.KeyValue(key="cnt", value=str(v2 + 1), timestamp=ts2, tx_id=tx2),
+                None,
+            )
+
+            service.CommitTransaction(replication_pb2.TransactionControl(tx_id=tx1), None)
+            with self.assertRaises(RuntimeError):
+                service.CommitTransaction(replication_pb2.TransactionControl(tx_id=tx2), None)
+
+            final_val = node.db.get("cnt")
+            if isinstance(final_val, list):
+                self.assertIn("1", final_val)
+            else:
+                self.assertEqual(final_val, "1")
 
             node.db.close()
 
