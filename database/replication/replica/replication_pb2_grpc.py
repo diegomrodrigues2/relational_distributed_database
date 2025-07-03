@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from replica import replication_pb2 as replica_dot_replication__pb2
+import replication_pb2 as replication__pb2
 
 GRPC_GENERATED_VERSION = '1.73.1'
 GRPC_VERSION = grpc.__version__
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in replica/replication_pb2_grpc.py depends on'
+        + f' but the generated code in replication_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -37,88 +37,93 @@ class ReplicaStub(object):
         """
         self.Put = channel.unary_unary(
                 '/replication.Replica/Put',
-                request_serializer=replica_dot_replication__pb2.KeyValue.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.KeyValue.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.Delete = channel.unary_unary(
                 '/replication.Replica/Delete',
-                request_serializer=replica_dot_replication__pb2.KeyRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.KeyRequest.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.Get = channel.unary_unary(
                 '/replication.Replica/Get',
-                request_serializer=replica_dot_replication__pb2.KeyRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.ValueResponse.FromString,
+                request_serializer=replication__pb2.KeyRequest.SerializeToString,
+                response_deserializer=replication__pb2.ValueResponse.FromString,
+                _registered_method=True)
+        self.Increment = channel.unary_unary(
+                '/replication.Replica/Increment',
+                request_serializer=replication__pb2.IncrementRequest.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.BeginTransaction = channel.unary_unary(
                 '/replication.Replica/BeginTransaction',
-                request_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.TransactionId.FromString,
+                request_serializer=replication__pb2.Empty.SerializeToString,
+                response_deserializer=replication__pb2.TransactionId.FromString,
                 _registered_method=True)
         self.CommitTransaction = channel.unary_unary(
                 '/replication.Replica/CommitTransaction',
-                request_serializer=replica_dot_replication__pb2.TransactionControl.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.TransactionControl.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.AbortTransaction = channel.unary_unary(
                 '/replication.Replica/AbortTransaction',
-                request_serializer=replica_dot_replication__pb2.TransactionControl.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.TransactionControl.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.ScanRange = channel.unary_unary(
                 '/replication.Replica/ScanRange',
-                request_serializer=replica_dot_replication__pb2.RangeRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.RangeResponse.FromString,
+                request_serializer=replication__pb2.RangeRequest.SerializeToString,
+                response_deserializer=replication__pb2.RangeResponse.FromString,
                 _registered_method=True)
         self.FetchUpdates = channel.unary_unary(
                 '/replication.Replica/FetchUpdates',
-                request_serializer=replica_dot_replication__pb2.FetchRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.FetchResponse.FromString,
+                request_serializer=replication__pb2.FetchRequest.SerializeToString,
+                response_deserializer=replication__pb2.FetchResponse.FromString,
                 _registered_method=True)
         self.UpdatePartitionMap = channel.unary_unary(
                 '/replication.Replica/UpdatePartitionMap',
-                request_serializer=replica_dot_replication__pb2.PartitionMap.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.PartitionMap.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.UpdateHashRing = channel.unary_unary(
                 '/replication.Replica/UpdateHashRing',
-                request_serializer=replica_dot_replication__pb2.HashRing.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.HashRing.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.ListByIndex = channel.unary_unary(
                 '/replication.Replica/ListByIndex',
-                request_serializer=replica_dot_replication__pb2.IndexQuery.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.KeyList.FromString,
+                request_serializer=replication__pb2.IndexQuery.SerializeToString,
+                response_deserializer=replication__pb2.KeyList.FromString,
                 _registered_method=True)
         self.GetNodeInfo = channel.unary_unary(
                 '/replication.Replica/GetNodeInfo',
-                request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.NodeInfoResponse.FromString,
+                request_serializer=replication__pb2.NodeInfoRequest.SerializeToString,
+                response_deserializer=replication__pb2.NodeInfoResponse.FromString,
                 _registered_method=True)
         self.GetReplicationStatus = channel.unary_unary(
                 '/replication.Replica/GetReplicationStatus',
-                request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.ReplicationStatusResponse.FromString,
+                request_serializer=replication__pb2.NodeInfoRequest.SerializeToString,
+                response_deserializer=replication__pb2.ReplicationStatusResponse.FromString,
                 _registered_method=True)
         self.GetWalEntries = channel.unary_unary(
                 '/replication.Replica/GetWalEntries',
-                request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.WalEntriesResponse.FromString,
+                request_serializer=replication__pb2.NodeInfoRequest.SerializeToString,
+                response_deserializer=replication__pb2.WalEntriesResponse.FromString,
                 _registered_method=True)
         self.GetMemtableEntries = channel.unary_unary(
                 '/replication.Replica/GetMemtableEntries',
-                request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.StorageEntriesResponse.FromString,
+                request_serializer=replication__pb2.NodeInfoRequest.SerializeToString,
+                response_deserializer=replication__pb2.StorageEntriesResponse.FromString,
                 _registered_method=True)
         self.GetSSTables = channel.unary_unary(
                 '/replication.Replica/GetSSTables',
-                request_serializer=replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.SSTableInfoResponse.FromString,
+                request_serializer=replication__pb2.NodeInfoRequest.SerializeToString,
+                response_deserializer=replication__pb2.SSTableInfoResponse.FromString,
                 _registered_method=True)
         self.GetSSTableContent = channel.unary_unary(
                 '/replication.Replica/GetSSTableContent',
-                request_serializer=replica_dot_replication__pb2.SSTableContentRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.StorageEntriesResponse.FromString,
+                request_serializer=replication__pb2.SSTableContentRequest.SerializeToString,
+                response_deserializer=replication__pb2.StorageEntriesResponse.FromString,
                 _registered_method=True)
 
 
@@ -144,6 +149,12 @@ class ReplicaServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Increment(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def BeginTransaction(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -151,13 +162,15 @@ class ReplicaServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def CommitTransaction(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Apply all buffered operations of a transaction
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def AbortTransaction(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Discard any pending operations of a transaction
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -233,88 +246,93 @@ def add_ReplicaServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Put': grpc.unary_unary_rpc_method_handler(
                     servicer.Put,
-                    request_deserializer=replica_dot_replication__pb2.KeyValue.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.KeyValue.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'Delete': grpc.unary_unary_rpc_method_handler(
                     servicer.Delete,
-                    request_deserializer=replica_dot_replication__pb2.KeyRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.KeyRequest.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'Get': grpc.unary_unary_rpc_method_handler(
                     servicer.Get,
-                    request_deserializer=replica_dot_replication__pb2.KeyRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.ValueResponse.SerializeToString,
+                    request_deserializer=replication__pb2.KeyRequest.FromString,
+                    response_serializer=replication__pb2.ValueResponse.SerializeToString,
+            ),
+            'Increment': grpc.unary_unary_rpc_method_handler(
+                    servicer.Increment,
+                    request_deserializer=replication__pb2.IncrementRequest.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'BeginTransaction': grpc.unary_unary_rpc_method_handler(
                     servicer.BeginTransaction,
-                    request_deserializer=replica_dot_replication__pb2.Empty.FromString,
-                    response_serializer=replica_dot_replication__pb2.TransactionId.SerializeToString,
+                    request_deserializer=replication__pb2.Empty.FromString,
+                    response_serializer=replication__pb2.TransactionId.SerializeToString,
             ),
             'CommitTransaction': grpc.unary_unary_rpc_method_handler(
                     servicer.CommitTransaction,
-                    request_deserializer=replica_dot_replication__pb2.TransactionControl.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.TransactionControl.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'AbortTransaction': grpc.unary_unary_rpc_method_handler(
                     servicer.AbortTransaction,
-                    request_deserializer=replica_dot_replication__pb2.TransactionControl.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.TransactionControl.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'ScanRange': grpc.unary_unary_rpc_method_handler(
                     servicer.ScanRange,
-                    request_deserializer=replica_dot_replication__pb2.RangeRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.RangeResponse.SerializeToString,
+                    request_deserializer=replication__pb2.RangeRequest.FromString,
+                    response_serializer=replication__pb2.RangeResponse.SerializeToString,
             ),
             'FetchUpdates': grpc.unary_unary_rpc_method_handler(
                     servicer.FetchUpdates,
-                    request_deserializer=replica_dot_replication__pb2.FetchRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.FetchResponse.SerializeToString,
+                    request_deserializer=replication__pb2.FetchRequest.FromString,
+                    response_serializer=replication__pb2.FetchResponse.SerializeToString,
             ),
             'UpdatePartitionMap': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdatePartitionMap,
-                    request_deserializer=replica_dot_replication__pb2.PartitionMap.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.PartitionMap.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'UpdateHashRing': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateHashRing,
-                    request_deserializer=replica_dot_replication__pb2.HashRing.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.HashRing.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'ListByIndex': grpc.unary_unary_rpc_method_handler(
                     servicer.ListByIndex,
-                    request_deserializer=replica_dot_replication__pb2.IndexQuery.FromString,
-                    response_serializer=replica_dot_replication__pb2.KeyList.SerializeToString,
+                    request_deserializer=replication__pb2.IndexQuery.FromString,
+                    response_serializer=replication__pb2.KeyList.SerializeToString,
             ),
             'GetNodeInfo': grpc.unary_unary_rpc_method_handler(
                     servicer.GetNodeInfo,
-                    request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.NodeInfoResponse.SerializeToString,
+                    request_deserializer=replication__pb2.NodeInfoRequest.FromString,
+                    response_serializer=replication__pb2.NodeInfoResponse.SerializeToString,
             ),
             'GetReplicationStatus': grpc.unary_unary_rpc_method_handler(
                     servicer.GetReplicationStatus,
-                    request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.ReplicationStatusResponse.SerializeToString,
+                    request_deserializer=replication__pb2.NodeInfoRequest.FromString,
+                    response_serializer=replication__pb2.ReplicationStatusResponse.SerializeToString,
             ),
             'GetWalEntries': grpc.unary_unary_rpc_method_handler(
                     servicer.GetWalEntries,
-                    request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.WalEntriesResponse.SerializeToString,
+                    request_deserializer=replication__pb2.NodeInfoRequest.FromString,
+                    response_serializer=replication__pb2.WalEntriesResponse.SerializeToString,
             ),
             'GetMemtableEntries': grpc.unary_unary_rpc_method_handler(
                     servicer.GetMemtableEntries,
-                    request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.StorageEntriesResponse.SerializeToString,
+                    request_deserializer=replication__pb2.NodeInfoRequest.FromString,
+                    response_serializer=replication__pb2.StorageEntriesResponse.SerializeToString,
             ),
             'GetSSTables': grpc.unary_unary_rpc_method_handler(
                     servicer.GetSSTables,
-                    request_deserializer=replica_dot_replication__pb2.NodeInfoRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.SSTableInfoResponse.SerializeToString,
+                    request_deserializer=replication__pb2.NodeInfoRequest.FromString,
+                    response_serializer=replication__pb2.SSTableInfoResponse.SerializeToString,
             ),
             'GetSSTableContent': grpc.unary_unary_rpc_method_handler(
                     servicer.GetSSTableContent,
-                    request_deserializer=replica_dot_replication__pb2.SSTableContentRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.StorageEntriesResponse.SerializeToString,
+                    request_deserializer=replication__pb2.SSTableContentRequest.FromString,
+                    response_serializer=replication__pb2.StorageEntriesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -343,8 +361,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/Put',
-            replica_dot_replication__pb2.KeyValue.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.KeyValue.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -370,8 +388,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/Delete',
-            replica_dot_replication__pb2.KeyRequest.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.KeyRequest.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -397,8 +415,35 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/Get',
-            replica_dot_replication__pb2.KeyRequest.SerializeToString,
-            replica_dot_replication__pb2.ValueResponse.FromString,
+            replication__pb2.KeyRequest.SerializeToString,
+            replication__pb2.ValueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Increment(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/Increment',
+            replication__pb2.IncrementRequest.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -424,8 +469,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/BeginTransaction',
-            replica_dot_replication__pb2.Empty.SerializeToString,
-            replica_dot_replication__pb2.TransactionId.FromString,
+            replication__pb2.Empty.SerializeToString,
+            replication__pb2.TransactionId.FromString,
             options,
             channel_credentials,
             insecure,
@@ -451,8 +496,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/CommitTransaction',
-            replica_dot_replication__pb2.TransactionControl.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.TransactionControl.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -478,8 +523,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/AbortTransaction',
-            replica_dot_replication__pb2.TransactionControl.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.TransactionControl.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -505,8 +550,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/ScanRange',
-            replica_dot_replication__pb2.RangeRequest.SerializeToString,
-            replica_dot_replication__pb2.RangeResponse.FromString,
+            replication__pb2.RangeRequest.SerializeToString,
+            replication__pb2.RangeResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -532,8 +577,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/FetchUpdates',
-            replica_dot_replication__pb2.FetchRequest.SerializeToString,
-            replica_dot_replication__pb2.FetchResponse.FromString,
+            replication__pb2.FetchRequest.SerializeToString,
+            replication__pb2.FetchResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -559,8 +604,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/UpdatePartitionMap',
-            replica_dot_replication__pb2.PartitionMap.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.PartitionMap.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -586,8 +631,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/UpdateHashRing',
-            replica_dot_replication__pb2.HashRing.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.HashRing.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -613,8 +658,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/ListByIndex',
-            replica_dot_replication__pb2.IndexQuery.SerializeToString,
-            replica_dot_replication__pb2.KeyList.FromString,
+            replication__pb2.IndexQuery.SerializeToString,
+            replication__pb2.KeyList.FromString,
             options,
             channel_credentials,
             insecure,
@@ -640,8 +685,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/GetNodeInfo',
-            replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-            replica_dot_replication__pb2.NodeInfoResponse.FromString,
+            replication__pb2.NodeInfoRequest.SerializeToString,
+            replication__pb2.NodeInfoResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -667,8 +712,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/GetReplicationStatus',
-            replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-            replica_dot_replication__pb2.ReplicationStatusResponse.FromString,
+            replication__pb2.NodeInfoRequest.SerializeToString,
+            replication__pb2.ReplicationStatusResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -694,8 +739,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/GetWalEntries',
-            replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-            replica_dot_replication__pb2.WalEntriesResponse.FromString,
+            replication__pb2.NodeInfoRequest.SerializeToString,
+            replication__pb2.WalEntriesResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -721,8 +766,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/GetMemtableEntries',
-            replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-            replica_dot_replication__pb2.StorageEntriesResponse.FromString,
+            replication__pb2.NodeInfoRequest.SerializeToString,
+            replication__pb2.StorageEntriesResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -748,8 +793,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/GetSSTables',
-            replica_dot_replication__pb2.NodeInfoRequest.SerializeToString,
-            replica_dot_replication__pb2.SSTableInfoResponse.FromString,
+            replication__pb2.NodeInfoRequest.SerializeToString,
+            replication__pb2.SSTableInfoResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -775,8 +820,8 @@ class Replica(object):
             request,
             target,
             '/replication.Replica/GetSSTableContent',
-            replica_dot_replication__pb2.SSTableContentRequest.SerializeToString,
-            replica_dot_replication__pb2.StorageEntriesResponse.FromString,
+            replication__pb2.SSTableContentRequest.SerializeToString,
+            replication__pb2.StorageEntriesResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -800,8 +845,8 @@ class HeartbeatServiceStub(object):
         """
         self.Ping = channel.unary_unary(
                 '/replication.HeartbeatService/Ping',
-                request_serializer=replica_dot_replication__pb2.Heartbeat.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.Heartbeat.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
 
 
@@ -820,8 +865,8 @@ def add_HeartbeatServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Ping': grpc.unary_unary_rpc_method_handler(
                     servicer.Ping,
-                    request_deserializer=replica_dot_replication__pb2.Heartbeat.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.Heartbeat.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -850,8 +895,8 @@ class HeartbeatService(object):
             request,
             target,
             '/replication.HeartbeatService/Ping',
-            replica_dot_replication__pb2.Heartbeat.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.Heartbeat.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,

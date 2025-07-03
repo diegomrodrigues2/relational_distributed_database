@@ -432,6 +432,19 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         return replication_pb2.ValueResponse(values=values)
 
+    def Increment(self, request, context):
+        """Atomically increment a numeric value."""
+        with self._node._mem_lock:
+            cur = self._node.db.get(request.key)
+            try:
+                cur_val = int(cur) if cur is not None else 0
+            except Exception:
+                cur_val = 0
+            new_val = cur_val + request.amount
+            ts = self._node.clock.tick()
+            self._node.db.put(request.key, str(new_val), timestamp=ts)
+        return replication_pb2.Empty()
+
     def BeginTransaction(self, request, context):
         tx_id = uuid.uuid4().hex
         with self._node._tx_lock:
@@ -731,6 +744,7 @@ class NodeServer:
         self.replication_log: dict[str, tuple] = {}
         self.active_transactions: dict[str, list[tuple]] = {}
         self._tx_lock = threading.Lock()
+        self._mem_lock = threading.Lock()
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = None
         self._replay_stop = threading.Event()

@@ -1,7 +1,7 @@
 syntax = "proto3";
 package router;
 
-import "replica/replication.proto";
+import "replication.proto";
 
 service Router {
   rpc Put(replication.KeyValue) returns (replication.Empty);
