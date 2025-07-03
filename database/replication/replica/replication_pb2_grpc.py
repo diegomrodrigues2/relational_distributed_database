@@ -50,6 +50,21 @@ class ReplicaStub(object):
                 request_serializer=replica_dot_replication__pb2.KeyRequest.SerializeToString,
                 response_deserializer=replica_dot_replication__pb2.ValueResponse.FromString,
                 _registered_method=True)
+        self.BeginTransaction = channel.unary_unary(
+                '/replication.Replica/BeginTransaction',
+                request_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                response_deserializer=replica_dot_replication__pb2.TransactionId.FromString,
+                _registered_method=True)
+        self.CommitTransaction = channel.unary_unary(
+                '/replication.Replica/CommitTransaction',
+                request_serializer=replica_dot_replication__pb2.TransactionControl.SerializeToString,
+                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                _registered_method=True)
+        self.AbortTransaction = channel.unary_unary(
+                '/replication.Replica/AbortTransaction',
+                request_serializer=replica_dot_replication__pb2.TransactionControl.SerializeToString,
+                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                _registered_method=True)
         self.ScanRange = channel.unary_unary(
                 '/replication.Replica/ScanRange',
                 request_serializer=replica_dot_replication__pb2.RangeRequest.SerializeToString,
@@ -124,6 +139,24 @@ class ReplicaServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def Get(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BeginTransaction(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CommitTransaction(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AbortTransaction(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -212,6 +245,21 @@ def add_ReplicaServicer_to_server(servicer, server):
                     servicer.Get,
                     request_deserializer=replica_dot_replication__pb2.KeyRequest.FromString,
                     response_serializer=replica_dot_replication__pb2.ValueResponse.SerializeToString,
+            ),
+            'BeginTransaction': grpc.unary_unary_rpc_method_handler(
+                    servicer.BeginTransaction,
+                    request_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                    response_serializer=replica_dot_replication__pb2.TransactionId.SerializeToString,
+            ),
+            'CommitTransaction': grpc.unary_unary_rpc_method_handler(
+                    servicer.CommitTransaction,
+                    request_deserializer=replica_dot_replication__pb2.TransactionControl.FromString,
+                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+            ),
+            'AbortTransaction': grpc.unary_unary_rpc_method_handler(
+                    servicer.AbortTransaction,
+                    request_deserializer=replica_dot_replication__pb2.TransactionControl.FromString,
+                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
             ),
             'ScanRange': grpc.unary_unary_rpc_method_handler(
                     servicer.ScanRange,
@@ -351,6 +399,87 @@ class Replica(object):
             '/replication.Replica/Get',
             replica_dot_replication__pb2.KeyRequest.SerializeToString,
             replica_dot_replication__pb2.ValueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BeginTransaction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/BeginTransaction',
+            replica_dot_replication__pb2.Empty.SerializeToString,
+            replica_dot_replication__pb2.TransactionId.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CommitTransaction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/CommitTransaction',
+            replica_dot_replication__pb2.TransactionControl.SerializeToString,
+            replica_dot_replication__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AbortTransaction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/AbortTransaction',
+            replica_dot_replication__pb2.TransactionControl.SerializeToString,
+            replica_dot_replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
