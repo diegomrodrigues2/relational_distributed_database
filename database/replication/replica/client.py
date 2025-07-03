@@ -40,6 +40,7 @@ class GRPCReplicaClient:
         op_id="",
         vector=None,
         hinted_for="",
+        tx_id: str = "",
     ):
         self._ensure_channel()
         if timestamp is None:
@@ -58,10 +59,20 @@ class GRPCReplicaClient:
             op_id=op_id,
             vector=vv,
             hinted_for=hinted_for,
+            tx_id=tx_id,
         )
         self.stub.Put(request)
 
-    def delete(self, key, timestamp=None, node_id="", op_id="", vector=None, hinted_for=""):
+    def delete(
+        self,
+        key,
+        timestamp=None,
+        node_id="",
+        op_id="",
+        vector=None,
+        hinted_for="",
+        tx_id: str = "",
+    ):
         if timestamp is None:
             timestamp = int(time.time() * 1000)
         if vector is None:
@@ -77,6 +88,7 @@ class GRPCReplicaClient:
             op_id=op_id,
             vector=vv,
             hinted_for=hinted_for,
+            tx_id=tx_id,
         )
         self._ensure_channel()
         self.stub.Delete(request)
@@ -117,6 +129,21 @@ class GRPCReplicaClient:
         req = replication_pb2.IndexQuery(field=field, value=str(value))
         resp = self.stub.ListByIndex(req)
         return list(resp.keys)
+
+    def begin_transaction(self) -> str:
+        self._ensure_channel()
+        resp = self.stub.BeginTransaction(replication_pb2.Empty())
+        return resp.id
+
+    def commit_transaction(self, tx_id: str) -> None:
+        self._ensure_channel()
+        req = replication_pb2.TransactionControl(tx_id=tx_id)
+        self.stub.CommitTransaction(req)
+
+    def abort_transaction(self, tx_id: str) -> None:
+        self._ensure_channel()
+        req = replication_pb2.TransactionControl(tx_id=tx_id)
+        self.stub.AbortTransaction(req)
 
     def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None, trees=None):
         self._ensure_channel()
@@ -267,6 +294,7 @@ class GRPCRouterClient:
         op_id="",
         vector=None,
         hinted_for="",
+        tx_id: str = "",
     ):
         self._ensure_channel()
         if timestamp is None:
@@ -285,10 +313,20 @@ class GRPCRouterClient:
             op_id=op_id,
             vector=vv,
             hinted_for=hinted_for,
+            tx_id=tx_id,
         )
         self.stub.Put(request)
 
-    def delete(self, key, timestamp=None, node_id="", op_id="", vector=None, hinted_for=""):
+    def delete(
+        self,
+        key,
+        timestamp=None,
+        node_id="",
+        op_id="",
+        vector=None,
+        hinted_for="",
+        tx_id: str = "",
+    ):
         if timestamp is None:
             timestamp = int(time.time() * 1000)
         if vector is None:
@@ -304,6 +342,7 @@ class GRPCRouterClient:
             op_id=op_id,
             vector=vv,
             hinted_for=hinted_for,
+            tx_id=tx_id,
         )
         self._ensure_channel()
         self.stub.Delete(request)
