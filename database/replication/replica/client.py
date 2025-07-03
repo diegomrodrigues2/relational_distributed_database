@@ -93,9 +93,11 @@ class GRPCReplicaClient:
         self._ensure_channel()
         self.stub.Delete(request)
 
-    def get(self, key):
+    def get(self, key, *, tx_id: str = ""):
         self._ensure_channel()
-        request = replication_pb2.KeyRequest(key=key, timestamp=0, node_id="")
+        request = replication_pb2.KeyRequest(
+            key=key, timestamp=0, node_id="", tx_id=tx_id
+        )
         response = self.stub.Get(request)
         results = []
         for item in response.values:
@@ -347,9 +349,11 @@ class GRPCRouterClient:
         self._ensure_channel()
         self.stub.Delete(request)
 
-    def get(self, key):
+    def get(self, key, *, tx_id: str = ""):
         self._ensure_channel()
-        request = replication_pb2.KeyRequest(key=key, timestamp=0, node_id="")
+        request = replication_pb2.KeyRequest(
+            key=key, timestamp=0, node_id="", tx_id=tx_id
+        )
         response = self.stub.Get(request)
         results = []
         for item in response.values:
