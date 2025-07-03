@@ -425,11 +425,19 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     break
 
         if skip_cache:
-            records = self._node.db.get_record(request.key)
+            records = self._node.db.get_record(
+                request.key,
+                tx_id=request.tx_id or None,
+                in_progress=list(request.in_progress),
+            )
         else:
             records = self._node._cache_get(request.key)
             if records is None:
-                records = self._node.db.get_record(request.key)
+                records = self._node.db.get_record(
+                    request.key,
+                    tx_id=request.tx_id or None,
+                    in_progress=list(request.in_progress),
+                )
                 if records:
                     self._node._cache_set(request.key, records)
         if not records:
@@ -485,36 +493,57 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def BeginTransaction(self, request, context):
         tx_id = uuid.uuid4().hex
         with self._node._tx_lock:
+            snapshot = list(self._node.active_transactions.keys())
             self._node.active_transactions[tx_id] = []
-        return replication_pb2.TransactionId(id=tx_id)
+        return replication_pb2.TransactionId(id=tx_id, in_progress=snapshot)
 
     def CommitTransaction(self, request, context):
         with self._node._tx_lock:
             ops = self._node.active_transactions.pop(request.tx_id, [])
         for op, req in ops:
             if op == "put":
-                new_req = replication_pb2.KeyValue(
-                    key=req.key,
-                    value=req.value,
-                    timestamp=req.timestamp,
-                    node_id=req.node_id,
-                    op_id=req.op_id,
-                    vector=req.vector,
-                    hinted_for=req.hinted_for,
-                    tx_id="",
+                new_vc = (
+                    VectorClock(dict(req.vector.items))
+                    if req.vector.items
+                    else VectorClock({"ts": int(req.timestamp)})
                 )
-                self.Put(new_req, context)
+                self._node.db.put(
+                    req.key,
+                    req.value,
+                    vector_clock=new_vc,
+                    tx_id=request.tx_id,
+                )
+                self._node._cache_delete(req.key)
+                self._node.replicate(
+                    "PUT",
+                    req.key,
+                    req.value,
+                    req.timestamp,
+                    op_id=req.op_id,
+                    vector=new_vc.clock,
+                    skip_id=(req.node_id if req.node_id != self._node.node_id else None),
+                )
             else:
-                new_req = replication_pb2.KeyRequest(
-                    key=req.key,
-                    timestamp=req.timestamp,
-                    node_id=req.node_id,
-                    op_id=req.op_id,
-                    vector=req.vector,
-                    hinted_for=req.hinted_for,
-                    tx_id="",
+                new_vc = (
+                    VectorClock(dict(req.vector.items))
+                    if req.vector.items
+                    else VectorClock({"ts": int(req.timestamp)})
                 )
-                self.Delete(new_req, context)
+                self._node.db.delete(
+                    req.key,
+                    vector_clock=new_vc,
+                    tx_id=request.tx_id,
+                )
+                self._node._cache_delete(req.key)
+                self._node.replicate(
+                    "DELETE",
+                    req.key,
+                    None,
+                    req.timestamp,
+                    op_id=req.op_id,
+                    vector=new_vc.clock,
+                    skip_id=(req.node_id if req.node_id != self._node.node_id else None),
+                )
         with self._node._tx_lock:
             locked = self._node.locks_by_tx.pop(request.tx_id, set())
             for k in locked:

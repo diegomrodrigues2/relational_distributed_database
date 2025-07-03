@@ -183,8 +183,15 @@ class SimpleLSMDB:
         print(f"GET: '{key}' possui múltiplas versões.")
         return [val for val, *_ in versions]
 
-    def get_record(self, key, *, clustering_key=None):
-        """Retorna lista de ``(valor, vector_clock)`` se presente."""
+    def get_record(
+        self,
+        key,
+        *,
+        clustering_key=None,
+        tx_id=None,
+        in_progress: list[str] | None = None,
+    ):
+        """Retorna lista de ``(valor, vector_clock, created_txid, deleted_txid)`` se presente."""
         key = compose_key(str(key), clustering_key)
         versions = []
         record = self.memtable.get(key)
@@ -197,7 +204,21 @@ class SimpleLSMDB:
                 versions = _merge_version_lists(versions, rec)
 
         versions = [v for v in versions if v[0] != TOMBSTONE]
-        return [(val, vc) for val, vc, *_ in versions]
+
+        if tx_id is not None:
+            in_prog = set(in_progress or [])
+            filtered = []
+            for item in versions:
+                val, vc = item[0], item[1]
+                created = item[2] if len(item) > 2 else None
+                deleted = item[3] if len(item) > 3 else None
+                if created is not None and created in in_prog:
+                    continue
+                if deleted is not None and deleted not in in_prog:
+                    continue
+                filtered.append((val, vc, created, deleted))
+            versions = filtered
+        return versions
 
     def delete(
         self,
