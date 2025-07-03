@@ -98,6 +98,44 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_dirty_read_prevention(self):
+        """Ensure reads ignore uncommitted changes from other transactions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            # existing committed value
+            node.db.put("k", "v0", timestamp=1)
+
+            tx1 = service.BeginTransaction(replication_pb2.Empty(), None).id
+            service.Delete(
+                replication_pb2.KeyRequest(key="k", timestamp=2, tx_id=tx1), None
+            )
+
+            # another transaction should still see committed value
+            resp = service.Get(
+                replication_pb2.KeyRequest(key="k", tx_id=""), None
+            )
+            self.assertEqual(len(resp.values), 1)
+            self.assertEqual(resp.values[0].value, "v0")
+
+            tx2 = service.BeginTransaction(replication_pb2.Empty(), None).id
+            resp2 = service.Get(
+                replication_pb2.KeyRequest(key="k", tx_id=tx2), None
+            )
+            self.assertEqual(len(resp2.values), 1)
+            self.assertEqual(resp2.values[0].value, "v0")
+
+            service.CommitTransaction(
+                replication_pb2.TransactionControl(tx_id=tx1), None
+            )
+            resp3 = service.Get(
+                replication_pb2.KeyRequest(key="k", tx_id=""), None
+            )
+            self.assertEqual(len(resp3.values), 0)
+
+            node.db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

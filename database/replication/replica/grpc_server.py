@@ -392,11 +392,30 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if client:
                 return client.stub.Get(request)
 
-        records = self._node._cache_get(request.key)
-        if records is None:
+        # ------------------------------------------------------------------
+        # Check for pending operations from other transactions touching this key.
+        # If another transaction has modified the key but not committed yet,
+        # we must ignore those buffered values and return the committed version.
+        skip_cache = False
+        with self._node._tx_lock:
+            for tx_id, ops in self._node.active_transactions.items():
+                if tx_id == (request.tx_id or ""):
+                    continue
+                for op, req in ops:
+                    if req.key == request.key:
+                        skip_cache = True
+                        break
+                if skip_cache:
+                    break
+
+        if skip_cache:
             records = self._node.db.get_record(request.key)
-            if records:
-                self._node._cache_set(request.key, records)
+        else:
+            records = self._node._cache_get(request.key)
+            if records is None:
+                records = self._node.db.get_record(request.key)
+                if records:
+                    self._node._cache_set(request.key, records)
         if not records:
             return replication_pb2.ValueResponse(values=[])
 
