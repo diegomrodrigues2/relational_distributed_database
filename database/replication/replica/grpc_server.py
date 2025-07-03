@@ -66,9 +66,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node.clock.update(request.timestamp)
 
         if request.tx_id:
-            self._node.active_transactions.setdefault(request.tx_id, []).append(
-                ("put", request)
-            )
+            with self._node._tx_lock:
+                self._node.active_transactions.setdefault(request.tx_id, []).append(
+                    ("put", request)
+                )
             return replication_pb2.Empty()
 
         origem = seq = None
@@ -243,9 +244,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node.clock.update(request.timestamp)
 
         if request.tx_id:
-            self._node.active_transactions.setdefault(request.tx_id, []).append(
-                ("delete", request)
-            )
+            with self._node._tx_lock:
+                self._node.active_transactions.setdefault(request.tx_id, []).append(
+                    ("delete", request)
+                )
             return replication_pb2.Empty()
 
         origem = seq = None
@@ -413,11 +415,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
     def BeginTransaction(self, request, context):
         tx_id = uuid.uuid4().hex
-        self._node.active_transactions[tx_id] = []
+        with self._node._tx_lock:
+            self._node.active_transactions[tx_id] = []
         return replication_pb2.TransactionId(id=tx_id)
 
     def CommitTransaction(self, request, context):
-        ops = self._node.active_transactions.pop(request.tx_id, [])
+        with self._node._tx_lock:
+            ops = self._node.active_transactions.pop(request.tx_id, [])
         for op, req in ops:
             if op == "put":
                 new_req = replication_pb2.KeyValue(
@@ -445,7 +449,8 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         return replication_pb2.Empty()
 
     def AbortTransaction(self, request, context):
-        self._node.active_transactions.pop(request.tx_id, None)
+        with self._node._tx_lock:
+            self._node.active_transactions.pop(request.tx_id, None)
         return replication_pb2.Empty()
 
     def ScanRange(self, request, context):
@@ -706,6 +711,7 @@ class NodeServer:
         self.last_seen: dict[str, int] = {}
         self.replication_log: dict[str, tuple] = {}
         self.active_transactions: dict[str, list[tuple]] = {}
+        self._tx_lock = threading.Lock()
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = None
         self._replay_stop = threading.Event()
