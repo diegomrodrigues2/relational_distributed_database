@@ -7,6 +7,7 @@ import os
 from bisect import bisect_right
 from concurrent import futures
 from collections import OrderedDict
+import uuid
 
 import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
@@ -63,6 +64,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if owner_id != self._node.node_id and request.node_id == "":
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
         self._node.clock.update(request.timestamp)
+
+        if request.tx_id:
+            self._node.active_transactions.setdefault(request.tx_id, []).append(
+                ("put", request)
+            )
+            return replication_pb2.Empty()
 
         origem = seq = None
         apply_update = True
@@ -235,6 +242,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
         self._node.clock.update(request.timestamp)
 
+        if request.tx_id:
+            self._node.active_transactions.setdefault(request.tx_id, []).append(
+                ("delete", request)
+            )
+            return replication_pb2.Empty()
+
         origem = seq = None
         apply_update = True
         if request.op_id:
@@ -397,6 +410,43 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             )
 
         return replication_pb2.ValueResponse(values=values)
+
+    def BeginTransaction(self, request, context):
+        tx_id = uuid.uuid4().hex
+        self._node.active_transactions[tx_id] = []
+        return replication_pb2.TransactionId(id=tx_id)
+
+    def CommitTransaction(self, request, context):
+        ops = self._node.active_transactions.pop(request.tx_id, [])
+        for op, req in ops:
+            if op == "put":
+                new_req = replication_pb2.KeyValue(
+                    key=req.key,
+                    value=req.value,
+                    timestamp=req.timestamp,
+                    node_id=req.node_id,
+                    op_id=req.op_id,
+                    vector=req.vector,
+                    hinted_for=req.hinted_for,
+                    tx_id="",
+                )
+                self.Put(new_req, context)
+            else:
+                new_req = replication_pb2.KeyRequest(
+                    key=req.key,
+                    timestamp=req.timestamp,
+                    node_id=req.node_id,
+                    op_id=req.op_id,
+                    vector=req.vector,
+                    hinted_for=req.hinted_for,
+                    tx_id="",
+                )
+                self.Delete(new_req, context)
+        return replication_pb2.Empty()
+
+    def AbortTransaction(self, request, context):
+        self._node.active_transactions.pop(request.tx_id, None)
+        return replication_pb2.Empty()
 
     def ScanRange(self, request, context):
         owner_id = self._owner_for_key(request.partition_key)
@@ -655,6 +705,7 @@ class NodeServer:
         self.local_seq = 0
         self.last_seen: dict[str, int] = {}
         self.replication_log: dict[str, tuple] = {}
+        self.active_transactions: dict[str, list[tuple]] = {}
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = None
         self._replay_stop = threading.Event()
