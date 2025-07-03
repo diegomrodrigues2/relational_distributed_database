@@ -447,9 +447,10 @@ python -m unittest tests/test_routing.py tests/test_smart_driver.py -v
 ### Transactions
 
 Start a transaction using `BeginTransaction` and include the returned `tx_id`
-in every `Put` or `Delete` call. Writes are buffered until you either
-`CommitTransaction` to apply them or `AbortTransaction` to discard the queued
-operations.
+in every `Put` or `Delete` call. Writes remain buffered on the server until you
+issue the `CommitTransaction` RPC to apply them or `AbortTransaction` to
+discard the queued operations. Both RPCs are defined in
+`database/replication/replica/replication.proto`.
 
 ```python
 from replication import NodeCluster
