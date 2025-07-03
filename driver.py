@@ -31,6 +31,7 @@ class Driver:
             load_balance_reads = getattr(cluster, "load_balance_reads", False)
         self.load_balance_reads = bool(load_balance_reads)
         self._sessions = {}
+        self._tx_nodes: dict[str, str] = {}
         self.partition_map = cluster.get_partition_map()
         self.registry_host = registry_host
         self.registry_port = registry_port
@@ -99,6 +100,8 @@ class Driver:
         partition_key: str,
         clustering_key: str,
         value: str | None = None,
+        *,
+        tx_id: str | None = None,
     ):
         """Escreve via líder e atualiza o tempo da sessão.
 
@@ -110,21 +113,31 @@ class Driver:
         if value is None:
             value = clustering_key
             clustering_key = None
-        pid = self.cluster.get_partition_id(partition_key, clustering_key)
-        node_id = self.partition_map.get(pid)
-        if node_id is None:
-            self.partition_map = self.cluster.get_partition_map()
+        if tx_id:
+            node_id = self._tx_nodes.get(tx_id)
+            if node_id is None:
+                raise ValueError("unknown transaction")
+        else:
+            pid = self.cluster.get_partition_id(partition_key, clustering_key)
             node_id = self.partition_map.get(pid)
+            if node_id is None:
+                self.partition_map = self.cluster.get_partition_map()
+                node_id = self.partition_map.get(pid)
         node = self.cluster.nodes_by_id[node_id]
         key = compose_key(partition_key, clustering_key)
         try:
-            node.client.put(key, value, node_id="")
+            node.client.put(key, value, node_id="", tx_id=tx_id or "")
         except grpc.RpcError as exc:
-            if exc.code() == grpc.StatusCode.FAILED_PRECONDITION and "NotOwner" in exc.details():
+            if (
+                not tx_id
+                and exc.code() == grpc.StatusCode.FAILED_PRECONDITION
+                and "NotOwner" in exc.details()
+            ):
                 self.partition_map = self.cluster.get_partition_map()
+                pid = self.cluster.get_partition_id(partition_key, clustering_key)
                 node_id = self.partition_map.get(pid)
                 node = self.cluster.nodes_by_id[node_id]
-                node.client.put(key, value, node_id="")
+                node.client.put(key, value, node_id="", tx_id="")
             else:
                 raise
 
@@ -197,3 +210,27 @@ class Driver:
             for keys in ex.map(_call, self.cluster.nodes_by_id.values()):
                 results.update(keys)
         return sorted(results)
+
+    # transaction methods -------------------------------------------------
+    def begin_transaction(self) -> str:
+        """Start a transaction on a random node and return its id."""
+        node = random.choice(self.cluster.nodes)
+        tx_id = node.client.begin_transaction()
+        self._tx_nodes[tx_id] = node.node_id
+        return tx_id
+
+    def commit(self, tx_id: str) -> None:
+        """Commit a transaction via the node that started it."""
+        node_id = self._tx_nodes.pop(tx_id, None)
+        if node_id is None:
+            return
+        node = self.cluster.nodes_by_id[node_id]
+        node.client.commit_transaction(tx_id)
+
+    def abort(self, tx_id: str) -> None:
+        """Abort a transaction discarding its buffered operations."""
+        node_id = self._tx_nodes.pop(tx_id, None)
+        if node_id is None:
+            return
+        node = self.cluster.nodes_by_id[node_id]
+        node.client.abort_transaction(tx_id)

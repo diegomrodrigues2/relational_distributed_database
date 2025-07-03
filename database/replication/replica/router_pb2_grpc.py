@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-from replica import replication_pb2 as replica_dot_replication__pb2
+import replication_pb2 as replication__pb2
 
-GRPC_GENERATED_VERSION = '1.73.0'
+GRPC_GENERATED_VERSION = '1.73.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in replica/router_pb2_grpc.py depends on'
+        + f' but the generated code in router_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -36,28 +36,28 @@ class RouterStub(object):
         """
         self.Put = channel.unary_unary(
                 '/router.Router/Put',
-                request_serializer=replica_dot_replication__pb2.KeyValue.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.KeyValue.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.Delete = channel.unary_unary(
                 '/router.Router/Delete',
-                request_serializer=replica_dot_replication__pb2.KeyRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.KeyRequest.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.Get = channel.unary_unary(
                 '/router.Router/Get',
-                request_serializer=replica_dot_replication__pb2.KeyRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.ValueResponse.FromString,
+                request_serializer=replication__pb2.KeyRequest.SerializeToString,
+                response_deserializer=replication__pb2.ValueResponse.FromString,
                 _registered_method=True)
         self.ScanRange = channel.unary_unary(
                 '/router.Router/ScanRange',
-                request_serializer=replica_dot_replication__pb2.RangeRequest.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.RangeResponse.FromString,
+                request_serializer=replication__pb2.RangeRequest.SerializeToString,
+                response_deserializer=replication__pb2.RangeResponse.FromString,
                 _registered_method=True)
         self.UpdatePartitionMap = channel.unary_unary(
                 '/router.Router/UpdatePartitionMap',
-                request_serializer=replica_dot_replication__pb2.PartitionMap.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=replication__pb2.PartitionMap.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
 
 
@@ -99,28 +99,28 @@ def add_RouterServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Put': grpc.unary_unary_rpc_method_handler(
                     servicer.Put,
-                    request_deserializer=replica_dot_replication__pb2.KeyValue.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.KeyValue.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'Delete': grpc.unary_unary_rpc_method_handler(
                     servicer.Delete,
-                    request_deserializer=replica_dot_replication__pb2.KeyRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.KeyRequest.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'Get': grpc.unary_unary_rpc_method_handler(
                     servicer.Get,
-                    request_deserializer=replica_dot_replication__pb2.KeyRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.ValueResponse.SerializeToString,
+                    request_deserializer=replication__pb2.KeyRequest.FromString,
+                    response_serializer=replication__pb2.ValueResponse.SerializeToString,
             ),
             'ScanRange': grpc.unary_unary_rpc_method_handler(
                     servicer.ScanRange,
-                    request_deserializer=replica_dot_replication__pb2.RangeRequest.FromString,
-                    response_serializer=replica_dot_replication__pb2.RangeResponse.SerializeToString,
+                    request_deserializer=replication__pb2.RangeRequest.FromString,
+                    response_serializer=replication__pb2.RangeResponse.SerializeToString,
             ),
             'UpdatePartitionMap': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdatePartitionMap,
-                    request_deserializer=replica_dot_replication__pb2.PartitionMap.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=replication__pb2.PartitionMap.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -148,8 +148,8 @@ class Router(object):
             request,
             target,
             '/router.Router/Put',
-            replica_dot_replication__pb2.KeyValue.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.KeyValue.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -175,8 +175,8 @@ class Router(object):
             request,
             target,
             '/router.Router/Delete',
-            replica_dot_replication__pb2.KeyRequest.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.KeyRequest.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -202,8 +202,8 @@ class Router(object):
             request,
             target,
             '/router.Router/Get',
-            replica_dot_replication__pb2.KeyRequest.SerializeToString,
-            replica_dot_replication__pb2.ValueResponse.FromString,
+            replication__pb2.KeyRequest.SerializeToString,
+            replication__pb2.ValueResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -229,8 +229,8 @@ class Router(object):
             request,
             target,
             '/router.Router/ScanRange',
-            replica_dot_replication__pb2.RangeRequest.SerializeToString,
-            replica_dot_replication__pb2.RangeResponse.FromString,
+            replication__pb2.RangeRequest.SerializeToString,
+            replication__pb2.RangeResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -256,8 +256,8 @@ class Router(object):
             request,
             target,
             '/router.Router/UpdatePartitionMap',
-            replica_dot_replication__pb2.PartitionMap.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            replication__pb2.PartitionMap.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,

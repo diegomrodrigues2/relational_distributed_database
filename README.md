@@ -444,6 +444,31 @@ Run only the routing and driver tests:
 python -m unittest tests/test_routing.py tests/test_smart_driver.py -v
 ```
 
+### Transactions
+
+Start a transaction using `BeginTransaction` and include the returned `tx_id`
+in every `Put` or `Delete` call. Writes remain buffered on the server until you
+issue the `CommitTransaction` RPC to apply them or `AbortTransaction` to
+discard the queued operations. Both RPCs are defined in
+`database/replication/replica/replication.proto`.
+
+```python
+from replication import NodeCluster
+from replica.client import GRPCReplicaClient
+
+cluster = NodeCluster('/tmp/tx_demo', num_nodes=1)
+client = cluster.nodes[0].client
+
+tx = client.begin_transaction()
+client.put('key1', 'v1', tx_id=tx)
+client.delete('old', tx_id=tx)
+client.commit_transaction(tx)
+
+tx2 = client.begin_transaction()
+client.put('temp', '123', tx_id=tx2)
+client.abort_transaction(tx2)
+```
+
 ## Dedicated Routing Tier
 
 A standalone gRPC router can relay all client requests to the correct node. Start it by passing `start_router=True` when creating the cluster and connect using `GRPCRouterClient`.

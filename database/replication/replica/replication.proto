@@ -12,6 +12,7 @@ message KeyRequest {
   string op_id = 4;
   VersionVector vector = 5;
   string hinted_for = 6;
+  string tx_id = 8;
 }
 
 // Estrutura para enviar chave e valor de uma escrita
@@ -23,6 +24,13 @@ message KeyValue {
   string op_id = 5;
   VersionVector vector = 6;
   string hinted_for = 7;
+  string tx_id = 8;
+}
+
+// Request for an atomic increment operation
+message IncrementRequest {
+  string key = 1;
+  int64 amount = 2;
 }
 
 // Resposta que devolve um valor, vazio caso nao encontrado
@@ -64,6 +72,16 @@ message Empty {}
 // Mensagem simples para o mecanismo de heartbeat
 message Heartbeat {
   string node_id = 1;
+}
+
+// Transaction identifier
+message TransactionId {
+  string id = 1;
+}
+
+// Control message referencing a transaction
+message TransactionControl {
+  string tx_id = 1;
 }
 
 // Vetor de versões enviado ao requisitar atualizações
@@ -218,6 +236,14 @@ service Replica {
   rpc Put(KeyValue) returns (Empty);
   rpc Delete(KeyRequest) returns (Empty);
   rpc Get(KeyRequest) returns (ValueResponse);
+  // Get value acquiring a lock similar to SELECT FOR UPDATE
+  rpc GetForUpdate(KeyRequest) returns (ValueResponse);
+  rpc Increment(IncrementRequest) returns (Empty);
+  rpc BeginTransaction(Empty) returns (TransactionId);
+  // Apply all buffered operations of a transaction
+  rpc CommitTransaction(TransactionControl) returns (Empty);
+  // Discard any pending operations of a transaction
+  rpc AbortTransaction(TransactionControl) returns (Empty);
   rpc ScanRange(RangeRequest) returns (RangeResponse);
   rpc FetchUpdates(FetchRequest) returns (FetchResponse);
   rpc UpdatePartitionMap(PartitionMap) returns (Empty);

@@ -7,6 +7,7 @@ import os
 from bisect import bisect_right
 from concurrent import futures
 from collections import OrderedDict
+import uuid
 
 import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
@@ -63,6 +64,21 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if owner_id != self._node.node_id and request.node_id == "":
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
         self._node.clock.update(request.timestamp)
+
+        if request.tx_id:
+            with self._node._tx_lock:
+                with self._node._write_lock:
+                    holder = self._node.write_locks.get(request.key)
+                    if holder not in (None, request.tx_id):
+                        if context:
+                            context.abort(grpc.StatusCode.ABORTED, "Locked")
+                        raise RuntimeError("Locked")
+                    self._node.write_locks[request.key] = request.tx_id
+                self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
+                self._node.active_transactions.setdefault(request.tx_id, []).append(
+                    ("put", request)
+                )
+            return replication_pb2.Empty()
 
         origem = seq = None
         apply_update = True
@@ -235,6 +251,21 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, "NotOwner")
         self._node.clock.update(request.timestamp)
 
+        if request.tx_id:
+            with self._node._tx_lock:
+                with self._node._write_lock:
+                    holder = self._node.write_locks.get(request.key)
+                    if holder not in (None, request.tx_id):
+                        if context:
+                            context.abort(grpc.StatusCode.ABORTED, "Locked")
+                        raise RuntimeError("Locked")
+                    self._node.write_locks[request.key] = request.tx_id
+                self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
+                self._node.active_transactions.setdefault(request.tx_id, []).append(
+                    ("delete", request)
+                )
+            return replication_pb2.Empty()
+
         origem = seq = None
         apply_update = True
         if request.op_id:
@@ -377,11 +408,30 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if client:
                 return client.stub.Get(request)
 
-        records = self._node._cache_get(request.key)
-        if records is None:
+        # ------------------------------------------------------------------
+        # Check for pending operations from other transactions touching this key.
+        # If another transaction has modified the key but not committed yet,
+        # we must ignore those buffered values and return the committed version.
+        skip_cache = False
+        with self._node._tx_lock:
+            for tx_id, ops in self._node.active_transactions.items():
+                if tx_id == (request.tx_id or ""):
+                    continue
+                for op, req in ops:
+                    if req.key == request.key:
+                        skip_cache = True
+                        break
+                if skip_cache:
+                    break
+
+        if skip_cache:
             records = self._node.db.get_record(request.key)
-            if records:
-                self._node._cache_set(request.key, records)
+        else:
+            records = self._node._cache_get(request.key)
+            if records is None:
+                records = self._node.db.get_record(request.key)
+                if records:
+                    self._node._cache_set(request.key, records)
         if not records:
             return replication_pb2.ValueResponse(values=[])
 
@@ -397,6 +447,95 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             )
 
         return replication_pb2.ValueResponse(values=values)
+
+    def GetForUpdate(self, request, context):
+        """Acquire a lock on the key and return its current value."""
+        owner_id = self._owner_for_key(request.key)
+        if getattr(self._node, "enable_forwarding", False) and owner_id != self._node.node_id:
+            client = self._node.clients_by_id.get(owner_id)
+            if client:
+                return client.stub.GetForUpdate(request)
+        if not request.tx_id:
+            if context:
+                context.abort(grpc.StatusCode.INVALID_ARGUMENT, "MissingTxId")
+            raise RuntimeError("MissingTxId")
+        with self._node._tx_lock:
+            holder = self._node.locks.get(request.key)
+            if holder not in (None, request.tx_id):
+                if context:
+                    context.abort(grpc.StatusCode.ABORTED, "Locked")
+                raise RuntimeError("Locked")
+            self._node.locks[request.key] = request.tx_id
+            self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
+        return self.Get(request, context)
+
+    def Increment(self, request, context):
+        """Atomically increment a numeric value."""
+        with self._node._mem_lock:
+            cur = self._node.db.get(request.key)
+            try:
+                cur_val = int(cur) if cur is not None else 0
+            except Exception:
+                cur_val = 0
+            new_val = cur_val + request.amount
+            ts = self._node.clock.tick()
+            self._node.db.put(request.key, str(new_val), timestamp=ts)
+        return replication_pb2.Empty()
+
+    def BeginTransaction(self, request, context):
+        tx_id = uuid.uuid4().hex
+        with self._node._tx_lock:
+            self._node.active_transactions[tx_id] = []
+        return replication_pb2.TransactionId(id=tx_id)
+
+    def CommitTransaction(self, request, context):
+        with self._node._tx_lock:
+            ops = self._node.active_transactions.pop(request.tx_id, [])
+        for op, req in ops:
+            if op == "put":
+                new_req = replication_pb2.KeyValue(
+                    key=req.key,
+                    value=req.value,
+                    timestamp=req.timestamp,
+                    node_id=req.node_id,
+                    op_id=req.op_id,
+                    vector=req.vector,
+                    hinted_for=req.hinted_for,
+                    tx_id="",
+                )
+                self.Put(new_req, context)
+            else:
+                new_req = replication_pb2.KeyRequest(
+                    key=req.key,
+                    timestamp=req.timestamp,
+                    node_id=req.node_id,
+                    op_id=req.op_id,
+                    vector=req.vector,
+                    hinted_for=req.hinted_for,
+                    tx_id="",
+                )
+                self.Delete(new_req, context)
+        with self._node._tx_lock:
+            locked = self._node.locks_by_tx.pop(request.tx_id, set())
+            for k in locked:
+                if self._node.locks.get(k) == request.tx_id:
+                    self._node.locks.pop(k, None)
+                with self._node._write_lock:
+                    if self._node.write_locks.get(k) == request.tx_id:
+                        self._node.write_locks.pop(k, None)
+        return replication_pb2.Empty()
+
+    def AbortTransaction(self, request, context):
+        with self._node._tx_lock:
+            self._node.active_transactions.pop(request.tx_id, None)
+            locked = self._node.locks_by_tx.pop(request.tx_id, set())
+            for k in locked:
+                if self._node.locks.get(k) == request.tx_id:
+                    self._node.locks.pop(k, None)
+                with self._node._write_lock:
+                    if self._node.write_locks.get(k) == request.tx_id:
+                        self._node.write_locks.pop(k, None)
+        return replication_pb2.Empty()
 
     def ScanRange(self, request, context):
         owner_id = self._owner_for_key(request.partition_key)
@@ -655,6 +794,15 @@ class NodeServer:
         self.local_seq = 0
         self.last_seen: dict[str, int] = {}
         self.replication_log: dict[str, tuple] = {}
+        self.active_transactions: dict[str, list[tuple]] = {}
+        # Simple lock manager mapping key -> tx_id
+        self.locks: dict[str, str] = {}
+        self.locks_by_tx: dict[str, set[str]] = {}
+        # Write locks used for transactional writes
+        self.write_locks: dict[str, str] = {}
+        self._write_lock = threading.Lock()
+        self._tx_lock = threading.Lock()
+        self._mem_lock = threading.Lock()
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = None
         self._replay_stop = threading.Event()

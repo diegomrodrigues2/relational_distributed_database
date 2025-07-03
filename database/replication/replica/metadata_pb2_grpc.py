@@ -3,8 +3,8 @@
 import grpc
 import warnings
 
-from replica import metadata_pb2 as replica_dot_metadata__pb2
-from replica import replication_pb2 as replica_dot_replication__pb2
+import metadata_pb2 as metadata__pb2
+import replication_pb2 as replication__pb2
 
 GRPC_GENERATED_VERSION = '1.73.1'
 GRPC_VERSION = grpc.__version__
@@ -19,7 +19,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in replica/metadata_pb2_grpc.py depends on'
+        + f' but the generated code in metadata_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -37,28 +37,28 @@ class MetadataServiceStub(object):
         """
         self.RegisterNode = channel.unary_unary(
                 '/metadata.MetadataService/RegisterNode',
-                request_serializer=replica_dot_metadata__pb2.RegisterRequest.SerializeToString,
-                response_deserializer=replica_dot_metadata__pb2.ClusterState.FromString,
+                request_serializer=metadata__pb2.RegisterRequest.SerializeToString,
+                response_deserializer=metadata__pb2.ClusterState.FromString,
                 _registered_method=True)
         self.Heartbeat = channel.unary_unary(
                 '/metadata.MetadataService/Heartbeat',
-                request_serializer=replica_dot_metadata__pb2.HeartbeatRequest.SerializeToString,
-                response_deserializer=replica_dot_metadata__pb2.ClusterState.FromString,
+                request_serializer=metadata__pb2.HeartbeatRequest.SerializeToString,
+                response_deserializer=metadata__pb2.ClusterState.FromString,
                 _registered_method=True)
         self.GetClusterState = channel.unary_unary(
                 '/metadata.MetadataService/GetClusterState',
-                request_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
-                response_deserializer=replica_dot_metadata__pb2.ClusterState.FromString,
+                request_serializer=replication__pb2.Empty.SerializeToString,
+                response_deserializer=metadata__pb2.ClusterState.FromString,
                 _registered_method=True)
         self.UpdateClusterState = channel.unary_unary(
                 '/metadata.MetadataService/UpdateClusterState',
-                request_serializer=replica_dot_metadata__pb2.ClusterState.SerializeToString,
-                response_deserializer=replica_dot_replication__pb2.Empty.FromString,
+                request_serializer=metadata__pb2.ClusterState.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
         self.WatchClusterState = channel.unary_stream(
                 '/metadata.MetadataService/WatchClusterState',
-                request_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
-                response_deserializer=replica_dot_metadata__pb2.ClusterState.FromString,
+                request_serializer=replication__pb2.Empty.SerializeToString,
+                response_deserializer=metadata__pb2.ClusterState.FromString,
                 _registered_method=True)
 
 
@@ -100,28 +100,28 @@ def add_MetadataServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'RegisterNode': grpc.unary_unary_rpc_method_handler(
                     servicer.RegisterNode,
-                    request_deserializer=replica_dot_metadata__pb2.RegisterRequest.FromString,
-                    response_serializer=replica_dot_metadata__pb2.ClusterState.SerializeToString,
+                    request_deserializer=metadata__pb2.RegisterRequest.FromString,
+                    response_serializer=metadata__pb2.ClusterState.SerializeToString,
             ),
             'Heartbeat': grpc.unary_unary_rpc_method_handler(
                     servicer.Heartbeat,
-                    request_deserializer=replica_dot_metadata__pb2.HeartbeatRequest.FromString,
-                    response_serializer=replica_dot_metadata__pb2.ClusterState.SerializeToString,
+                    request_deserializer=metadata__pb2.HeartbeatRequest.FromString,
+                    response_serializer=metadata__pb2.ClusterState.SerializeToString,
             ),
             'GetClusterState': grpc.unary_unary_rpc_method_handler(
                     servicer.GetClusterState,
-                    request_deserializer=replica_dot_replication__pb2.Empty.FromString,
-                    response_serializer=replica_dot_metadata__pb2.ClusterState.SerializeToString,
+                    request_deserializer=replication__pb2.Empty.FromString,
+                    response_serializer=metadata__pb2.ClusterState.SerializeToString,
             ),
             'UpdateClusterState': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateClusterState,
-                    request_deserializer=replica_dot_metadata__pb2.ClusterState.FromString,
-                    response_serializer=replica_dot_replication__pb2.Empty.SerializeToString,
+                    request_deserializer=metadata__pb2.ClusterState.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'WatchClusterState': grpc.unary_stream_rpc_method_handler(
                     servicer.WatchClusterState,
-                    request_deserializer=replica_dot_replication__pb2.Empty.FromString,
-                    response_serializer=replica_dot_metadata__pb2.ClusterState.SerializeToString,
+                    request_deserializer=replication__pb2.Empty.FromString,
+                    response_serializer=metadata__pb2.ClusterState.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -149,8 +149,8 @@ class MetadataService(object):
             request,
             target,
             '/metadata.MetadataService/RegisterNode',
-            replica_dot_metadata__pb2.RegisterRequest.SerializeToString,
-            replica_dot_metadata__pb2.ClusterState.FromString,
+            metadata__pb2.RegisterRequest.SerializeToString,
+            metadata__pb2.ClusterState.FromString,
             options,
             channel_credentials,
             insecure,
@@ -176,8 +176,8 @@ class MetadataService(object):
             request,
             target,
             '/metadata.MetadataService/Heartbeat',
-            replica_dot_metadata__pb2.HeartbeatRequest.SerializeToString,
-            replica_dot_metadata__pb2.ClusterState.FromString,
+            metadata__pb2.HeartbeatRequest.SerializeToString,
+            metadata__pb2.ClusterState.FromString,
             options,
             channel_credentials,
             insecure,
@@ -203,8 +203,8 @@ class MetadataService(object):
             request,
             target,
             '/metadata.MetadataService/GetClusterState',
-            replica_dot_replication__pb2.Empty.SerializeToString,
-            replica_dot_metadata__pb2.ClusterState.FromString,
+            replication__pb2.Empty.SerializeToString,
+            metadata__pb2.ClusterState.FromString,
             options,
             channel_credentials,
             insecure,
@@ -230,8 +230,8 @@ class MetadataService(object):
             request,
             target,
             '/metadata.MetadataService/UpdateClusterState',
-            replica_dot_metadata__pb2.ClusterState.SerializeToString,
-            replica_dot_replication__pb2.Empty.FromString,
+            metadata__pb2.ClusterState.SerializeToString,
+            replication__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -257,8 +257,8 @@ class MetadataService(object):
             request,
             target,
             '/metadata.MetadataService/WatchClusterState',
-            replica_dot_replication__pb2.Empty.SerializeToString,
-            replica_dot_metadata__pb2.ClusterState.FromString,
+            replication__pb2.Empty.SerializeToString,
+            metadata__pb2.ClusterState.FromString,
             options,
             channel_credentials,
             insecure,
