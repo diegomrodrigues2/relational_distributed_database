@@ -67,6 +67,14 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         if request.tx_id:
             with self._node._tx_lock:
+                with self._node._write_lock:
+                    holder = self._node.write_locks.get(request.key)
+                    if holder not in (None, request.tx_id):
+                        if context:
+                            context.abort(grpc.StatusCode.ABORTED, "Locked")
+                        raise RuntimeError("Locked")
+                    self._node.write_locks[request.key] = request.tx_id
+                self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
                 self._node.active_transactions.setdefault(request.tx_id, []).append(
                     ("put", request)
                 )
@@ -245,6 +253,14 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         if request.tx_id:
             with self._node._tx_lock:
+                with self._node._write_lock:
+                    holder = self._node.write_locks.get(request.key)
+                    if holder not in (None, request.tx_id):
+                        if context:
+                            context.abort(grpc.StatusCode.ABORTED, "Locked")
+                        raise RuntimeError("Locked")
+                    self._node.write_locks[request.key] = request.tx_id
+                self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
                 self._node.active_transactions.setdefault(request.tx_id, []).append(
                     ("delete", request)
                 )
@@ -504,6 +520,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             for k in locked:
                 if self._node.locks.get(k) == request.tx_id:
                     self._node.locks.pop(k, None)
+                with self._node._write_lock:
+                    if self._node.write_locks.get(k) == request.tx_id:
+                        self._node.write_locks.pop(k, None)
         return replication_pb2.Empty()
 
     def AbortTransaction(self, request, context):
@@ -513,6 +532,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             for k in locked:
                 if self._node.locks.get(k) == request.tx_id:
                     self._node.locks.pop(k, None)
+                with self._node._write_lock:
+                    if self._node.write_locks.get(k) == request.tx_id:
+                        self._node.write_locks.pop(k, None)
         return replication_pb2.Empty()
 
     def ScanRange(self, request, context):
@@ -776,6 +798,9 @@ class NodeServer:
         # Simple lock manager mapping key -> tx_id
         self.locks: dict[str, str] = {}
         self.locks_by_tx: dict[str, set[str]] = {}
+        # Write locks used for transactional writes
+        self.write_locks: dict[str, str] = {}
+        self._write_lock = threading.Lock()
         self._tx_lock = threading.Lock()
         self._mem_lock = threading.Lock()
         self._cleanup_stop = threading.Event()
