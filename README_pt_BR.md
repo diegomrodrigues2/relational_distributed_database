@@ -802,8 +802,9 @@ python -m unittest tests/test_routing.py tests/test_smart_driver.py -v
 
 Inicie uma transação usando `BeginTransaction` e inclua o `tx_id` retornado em
 cada chamada de `Put` ou `Delete`. As operações ficam em memória até que você
-execute `CommitTransaction` para aplicá-las ou `AbortTransaction` para
-descartá-las.
+envie a chamada gRPC `CommitTransaction` para aplicá-las ou `AbortTransaction`
+para descartá-las. Esses métodos estão definidos em
+`database/replication/replica/replication.proto`.
 
 ```python
 cluster = NodeCluster('/tmp/tx_demo', num_nodes=1)
