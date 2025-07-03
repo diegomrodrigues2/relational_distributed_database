@@ -798,6 +798,27 @@ Execute apenas os testes de roteamento e do driver:
 python -m unittest tests/test_routing.py tests/test_smart_driver.py -v
 ```
 
+### Transações
+
+Inicie uma transação usando `BeginTransaction` e inclua o `tx_id` retornado em
+cada chamada de `Put` ou `Delete`. As operações ficam em memória até que você
+execute `CommitTransaction` para aplicá-las ou `AbortTransaction` para
+descartá-las.
+
+```python
+cluster = NodeCluster('/tmp/tx_demo', num_nodes=1)
+cliente = cluster.nodes[0].client
+
+tx = cliente.begin_transaction()
+cliente.put('key1', 'v1', tx_id=tx)
+cliente.delete('old', tx_id=tx)
+cliente.commit_transaction(tx)
+
+tx2 = cliente.begin_transaction()
+cliente.put('temp', '123', tx_id=tx2)
+cliente.abort_transaction(tx2)
+```
+
 ## Dedicated Routing Tier
 
 A standalone gRPC router can relay all client requests to the correct node.
