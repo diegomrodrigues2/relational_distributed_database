@@ -135,6 +135,35 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_no_dirty_reads(self):
+        """A transaction should not read uncommitted writes from others."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            # initial committed value
+            node.db.put("key", "old", timestamp=1)
+
+            tx1 = service.BeginTransaction(replication_pb2.Empty(), None).id
+            service.Put(
+                replication_pb2.KeyValue(key="key", value="new_value", timestamp=2, tx_id=tx1),
+                None,
+            )
+
+            tx2 = service.BeginTransaction(replication_pb2.Empty(), None).id
+            resp = service.Get(replication_pb2.KeyRequest(key="key", tx_id=tx2), None)
+            self.assertEqual(len(resp.values), 1)
+            self.assertEqual(resp.values[0].value, "old")
+
+            service.CommitTransaction(
+                replication_pb2.TransactionControl(tx_id=tx1), None
+            )
+            resp2 = service.Get(replication_pb2.KeyRequest(key="key", tx_id=tx2), None)
+            self.assertEqual(len(resp2.values), 1)
+            self.assertEqual(resp2.values[0].value, "new_value")
+
+            node.db.close()
+
     def test_get_for_update_locking(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             node = NodeServer(db_path=tmpdir)
