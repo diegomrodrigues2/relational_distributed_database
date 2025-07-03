@@ -12,6 +12,7 @@ message KeyRequest {
   string op_id = 4;
   VersionVector vector = 5;
   string hinted_for = 6;
+  repeated string in_progress = 7;
   string tx_id = 8;
 }
 
@@ -77,6 +78,7 @@ message Heartbeat {
 // Transaction identifier
 message TransactionId {
   string id = 1;
+  repeated string in_progress = 2;
 }
 
 // Control message referencing a transaction

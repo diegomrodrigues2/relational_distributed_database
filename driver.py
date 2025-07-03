@@ -31,7 +31,7 @@ class Driver:
             load_balance_reads = getattr(cluster, "load_balance_reads", False)
         self.load_balance_reads = bool(load_balance_reads)
         self._sessions = {}
-        self._tx_nodes: dict[str, tuple[str, str]] = {}
+        self._tx_nodes: dict[str, tuple[str, str, list[str]]] = {}
         self.partition_map = cluster.get_partition_map()
         self.registry_host = registry_host
         self.registry_port = registry_port
@@ -117,7 +117,7 @@ class Driver:
             mapping = self._tx_nodes.get(tx_id)
             if mapping is None:
                 raise ValueError("unknown transaction")
-            node_id, node_tx = mapping
+            node_id, node_tx, _snapshot = mapping
         else:
             pid = self.cluster.get_partition_id(partition_key, clustering_key)
             node_id = self.partition_map.get(pid)
@@ -217,9 +217,9 @@ class Driver:
     def begin_transaction(self) -> str:
         """Start a transaction on a random node and return its id."""
         node = random.choice(self.cluster.nodes)
-        node_tx = node.client.begin_transaction()
+        node_tx, snapshot = node.client.begin_transaction()
         tx_id = self.cluster.next_txid()
-        self._tx_nodes[tx_id] = (node.node_id, node_tx)
+        self._tx_nodes[tx_id] = (node.node_id, node_tx, snapshot)
         return tx_id
 
     def commit(self, tx_id: str) -> None:
@@ -227,7 +227,7 @@ class Driver:
         mapping = self._tx_nodes.pop(tx_id, None)
         if mapping is None:
             return
-        node_id, node_tx = mapping
+        node_id, node_tx, _snapshot = mapping
         node = self.cluster.nodes_by_id[node_id]
         node.client.commit_transaction(node_tx)
 
@@ -236,6 +236,6 @@ class Driver:
         mapping = self._tx_nodes.pop(tx_id, None)
         if mapping is None:
             return
-        node_id, node_tx = mapping
+        node_id, node_tx, _snapshot = mapping
         node = self.cluster.nodes_by_id[node_id]
         node.client.abort_transaction(node_tx)

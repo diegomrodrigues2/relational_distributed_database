@@ -55,7 +55,7 @@ class SimpleLSMDBTest(unittest.TestCase):
             db.put('k1', 'v1')
             records = db.get_record('k1')
             self.assertEqual(len(records), 1)
-            value, vc = records[0]
+            value, vc, *_ = records[0]
             self.assertEqual(value, 'v1')
             self.assertIsInstance(vc, VectorClock)
             db.close()

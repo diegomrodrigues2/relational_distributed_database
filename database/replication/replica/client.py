@@ -99,10 +99,16 @@ class GRPCReplicaClient:
         req = replication_pb2.IncrementRequest(key=key, amount=int(amount))
         self.stub.Increment(req)
 
-    def get(self, key, *, tx_id: str = ""):
+    def get(
+        self, key, *, tx_id: str = "", in_progress: list[str] | None = None
+    ):
         self._ensure_channel()
         request = replication_pb2.KeyRequest(
-            key=key, timestamp=0, node_id="", tx_id=tx_id
+            key=key,
+            timestamp=0,
+            node_id="",
+            tx_id=tx_id,
+            in_progress=in_progress or [],
         )
         response = self.stub.Get(request)
         results = []
@@ -112,10 +118,16 @@ class GRPCReplicaClient:
             results.append((val, item.timestamp, vec))
         return results
 
-    def get_for_update(self, key, tx_id: str):
+    def get_for_update(
+        self, key, tx_id: str, *, in_progress: list[str] | None = None
+    ):
         self._ensure_channel()
         request = replication_pb2.KeyRequest(
-            key=key, timestamp=0, node_id="", tx_id=tx_id
+            key=key,
+            timestamp=0,
+            node_id="",
+            tx_id=tx_id,
+            in_progress=in_progress or [],
         )
         response = self.stub.GetForUpdate(request)
         results = []
@@ -125,18 +137,6 @@ class GRPCReplicaClient:
             results.append((val, item.timestamp, vec))
         return results
 
-    def get_for_update(self, key, tx_id: str):
-        self._ensure_channel()
-        request = replication_pb2.KeyRequest(
-            key=key, timestamp=0, node_id="", tx_id=tx_id
-        )
-        response = self.stub.GetForUpdate(request)
-        results = []
-        for item in response.values:
-            val = item.value if item.value else None
-            vec = dict(item.vector.items)
-            results.append((val, item.timestamp, vec))
-        return results
 
     def scan_range(self, partition_key, start_ck, end_ck):
         self._ensure_channel()
@@ -164,10 +164,10 @@ class GRPCReplicaClient:
         resp = self.stub.ListByIndex(req)
         return list(resp.keys)
 
-    def begin_transaction(self) -> str:
+    def begin_transaction(self) -> tuple[str, list[str]]:
         self._ensure_channel()
         resp = self.stub.BeginTransaction(replication_pb2.Empty())
-        return resp.id
+        return resp.id, list(resp.in_progress)
 
     def commit_transaction(self, tx_id: str) -> None:
         self._ensure_channel()
@@ -381,10 +381,16 @@ class GRPCRouterClient:
         self._ensure_channel()
         self.stub.Delete(request)
 
-    def get(self, key, *, tx_id: str = ""):
+    def get(
+        self, key, *, tx_id: str = "", in_progress: list[str] | None = None
+    ):
         self._ensure_channel()
         request = replication_pb2.KeyRequest(
-            key=key, timestamp=0, node_id="", tx_id=tx_id
+            key=key,
+            timestamp=0,
+            node_id="",
+            tx_id=tx_id,
+            in_progress=in_progress or [],
         )
         response = self.stub.Get(request)
         results = []
