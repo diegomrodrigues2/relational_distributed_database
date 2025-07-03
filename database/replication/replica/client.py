@@ -93,6 +93,12 @@ class GRPCReplicaClient:
         self._ensure_channel()
         self.stub.Delete(request)
 
+    def increment(self, key, amount):
+        """Perform atomic increment on the given key."""
+        self._ensure_channel()
+        req = replication_pb2.IncrementRequest(key=key, amount=int(amount))
+        self.stub.Increment(req)
+
     def get(self, key, *, tx_id: str = ""):
         self._ensure_channel()
         request = replication_pb2.KeyRequest(

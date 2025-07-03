@@ -27,6 +27,12 @@ message KeyValue {
   string tx_id = 8;
 }
 
+// Request for an atomic increment operation
+message IncrementRequest {
+  string key = 1;
+  int64 amount = 2;
+}
+
 // Resposta que devolve um valor, vazio caso nao encontrado
 // Representa um valor versionado
 message VersionedValue {
@@ -230,6 +236,7 @@ service Replica {
   rpc Put(KeyValue) returns (Empty);
   rpc Delete(KeyRequest) returns (Empty);
   rpc Get(KeyRequest) returns (ValueResponse);
+  rpc Increment(IncrementRequest) returns (Empty);
   rpc BeginTransaction(Empty) returns (TransactionId);
   // Apply all buffered operations of a transaction
   rpc CommitTransaction(TransactionControl) returns (Empty);
