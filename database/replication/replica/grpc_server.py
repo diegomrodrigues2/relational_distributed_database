@@ -479,7 +479,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
     def Increment(self, request, context):
         """Atomically increment a numeric value."""
-        with self._node._mem_lock:
+        lock = self._node._increment_locks.setdefault(
+            request.key, threading.Lock()
+        )
+        lock.acquire()
+        try:
             cur = self._node.db.get(request.key)
             try:
                 cur_val = int(cur) if cur is not None else 0
@@ -488,6 +492,8 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             new_val = cur_val + request.amount
             ts = self._node.clock.tick()
             self._node.db.put(request.key, str(new_val), timestamp=ts)
+        finally:
+            lock.release()
         return replication_pb2.Empty()
 
     def BeginTransaction(self, request, context):
@@ -832,6 +838,8 @@ class NodeServer:
         self._write_lock = threading.Lock()
         self._tx_lock = threading.Lock()
         self._mem_lock = threading.Lock()
+        # Locks used to protect atomic increment operations per key
+        self._increment_locks: dict[str, threading.Lock] = {}
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = None
         self._replay_stop = threading.Event()

@@ -341,6 +341,30 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_atomic_increment_concurrent_clients(self):
+        """Concurrent increments should not result in lost updates."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            def worker():
+                for _ in range(100):
+                    service.Increment(
+                        replication_pb2.IncrementRequest(key="cnt", amount=1),
+                        None,
+                    )
+
+            t1 = threading.Thread(target=worker)
+            t2 = threading.Thread(target=worker)
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+            self.assertEqual(node.db.get("cnt"), str(200))
+
+            node.db.close()
+
 
 if __name__ == "__main__":
     unittest.main()
