@@ -365,6 +365,97 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_lost_update_without_get_for_update(self):
+        """Concurrent read-modify-write without locks loses an update."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            node.db.put("cnt", "0", timestamp=1)
+
+            barrier = threading.Barrier(2)
+
+            def worker():
+                barrier.wait()
+                resp = service.Get(
+                    replication_pb2.KeyRequest(key="cnt", tx_id=""), None
+                )
+                val = int(resp.values[0].value) if resp.values else 0
+                barrier.wait()
+                ts = node.clock.tick()
+                service.Put(
+                    replication_pb2.KeyValue(
+                        key="cnt", value=str(val + 1), timestamp=ts
+                    ),
+                    None,
+                )
+
+            t1 = threading.Thread(target=worker)
+            t2 = threading.Thread(target=worker)
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+            self.assertEqual(node.db.get("cnt"), "1")
+
+            node.db.close()
+
+    def test_get_for_update_prevents_lost_update(self):
+        """Explicit locking with GetForUpdate prevents lost updates."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            node.db.put("cnt", "0", timestamp=1)
+
+            start = threading.Barrier(2)
+
+            def worker():
+                start.wait()
+                tx_id = service.BeginTransaction(replication_pb2.Empty(), None).id
+                while True:
+                    try:
+                        resp = service.GetForUpdate(
+                            replication_pb2.KeyRequest(key="cnt", tx_id=tx_id),
+                            None,
+                        )
+                        break
+                    except RuntimeError:
+                        service.AbortTransaction(
+                            replication_pb2.TransactionControl(tx_id=tx_id), None
+                        )
+                        time.sleep(0.01)
+                        tx_id = service.BeginTransaction(
+                            replication_pb2.Empty(), None
+                        ).id
+
+                val = int(resp.values[0].value) if resp.values else 0
+                ts = node.clock.tick()
+                service.Put(
+                    replication_pb2.KeyValue(
+                        key="cnt",
+                        value=str(val + 1),
+                        timestamp=ts,
+                        tx_id=tx_id,
+                    ),
+                    None,
+                )
+                service.CommitTransaction(
+                    replication_pb2.TransactionControl(tx_id=tx_id), None
+                )
+
+            t1 = threading.Thread(target=worker)
+            t2 = threading.Thread(target=worker)
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+            self.assertEqual(node.db.get("cnt"), "2")
+
+            node.db.close()
+
 
 if __name__ == "__main__":
     unittest.main()
