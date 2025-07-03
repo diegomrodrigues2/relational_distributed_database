@@ -432,6 +432,27 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         return replication_pb2.ValueResponse(values=values)
 
+    def GetForUpdate(self, request, context):
+        """Acquire a lock on the key and return its current value."""
+        owner_id = self._owner_for_key(request.key)
+        if getattr(self._node, "enable_forwarding", False) and owner_id != self._node.node_id:
+            client = self._node.clients_by_id.get(owner_id)
+            if client:
+                return client.stub.GetForUpdate(request)
+        if not request.tx_id:
+            if context:
+                context.abort(grpc.StatusCode.INVALID_ARGUMENT, "MissingTxId")
+            raise RuntimeError("MissingTxId")
+        with self._node._tx_lock:
+            holder = self._node.locks.get(request.key)
+            if holder not in (None, request.tx_id):
+                if context:
+                    context.abort(grpc.StatusCode.ABORTED, "Locked")
+                raise RuntimeError("Locked")
+            self._node.locks[request.key] = request.tx_id
+            self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
+        return self.Get(request, context)
+
     def Increment(self, request, context):
         """Atomically increment a numeric value."""
         with self._node._mem_lock:
@@ -478,11 +499,20 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     tx_id="",
                 )
                 self.Delete(new_req, context)
+        with self._node._tx_lock:
+            locked = self._node.locks_by_tx.pop(request.tx_id, set())
+            for k in locked:
+                if self._node.locks.get(k) == request.tx_id:
+                    self._node.locks.pop(k, None)
         return replication_pb2.Empty()
 
     def AbortTransaction(self, request, context):
         with self._node._tx_lock:
             self._node.active_transactions.pop(request.tx_id, None)
+            locked = self._node.locks_by_tx.pop(request.tx_id, set())
+            for k in locked:
+                if self._node.locks.get(k) == request.tx_id:
+                    self._node.locks.pop(k, None)
         return replication_pb2.Empty()
 
     def ScanRange(self, request, context):
@@ -743,6 +773,9 @@ class NodeServer:
         self.last_seen: dict[str, int] = {}
         self.replication_log: dict[str, tuple] = {}
         self.active_transactions: dict[str, list[tuple]] = {}
+        # Simple lock manager mapping key -> tx_id
+        self.locks: dict[str, str] = {}
+        self.locks_by_tx: dict[str, set[str]] = {}
         self._tx_lock = threading.Lock()
         self._mem_lock = threading.Lock()
         self._cleanup_stop = threading.Event()

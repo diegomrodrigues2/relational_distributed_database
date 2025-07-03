@@ -236,6 +236,8 @@ service Replica {
   rpc Put(KeyValue) returns (Empty);
   rpc Delete(KeyRequest) returns (Empty);
   rpc Get(KeyRequest) returns (ValueResponse);
+  // Get value acquiring a lock similar to SELECT FOR UPDATE
+  rpc GetForUpdate(KeyRequest) returns (ValueResponse);
   rpc Increment(IncrementRequest) returns (Empty);
   rpc BeginTransaction(Empty) returns (TransactionId);
   // Apply all buffered operations of a transaction

@@ -136,6 +136,38 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_get_for_update_locking(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            node.db.put("k", "v0", timestamp=1)
+
+            tx1 = service.BeginTransaction(replication_pb2.Empty(), None).id
+            tx2 = service.BeginTransaction(replication_pb2.Empty(), None).id
+
+            service.GetForUpdate(
+                replication_pb2.KeyRequest(key="k", tx_id=tx1), None
+            )
+
+            with self.assertRaises(RuntimeError):
+                service.GetForUpdate(
+                    replication_pb2.KeyRequest(key="k", tx_id=tx2), None
+                )
+
+            service.CommitTransaction(
+                replication_pb2.TransactionControl(tx_id=tx1), None
+            )
+
+            service.GetForUpdate(
+                replication_pb2.KeyRequest(key="k", tx_id=tx2), None
+            )
+            service.AbortTransaction(
+                replication_pb2.TransactionControl(tx_id=tx2), None
+            )
+
+            node.db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

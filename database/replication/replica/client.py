@@ -112,6 +112,32 @@ class GRPCReplicaClient:
             results.append((val, item.timestamp, vec))
         return results
 
+    def get_for_update(self, key, tx_id: str):
+        self._ensure_channel()
+        request = replication_pb2.KeyRequest(
+            key=key, timestamp=0, node_id="", tx_id=tx_id
+        )
+        response = self.stub.GetForUpdate(request)
+        results = []
+        for item in response.values:
+            val = item.value if item.value else None
+            vec = dict(item.vector.items)
+            results.append((val, item.timestamp, vec))
+        return results
+
+    def get_for_update(self, key, tx_id: str):
+        self._ensure_channel()
+        request = replication_pb2.KeyRequest(
+            key=key, timestamp=0, node_id="", tx_id=tx_id
+        )
+        response = self.stub.GetForUpdate(request)
+        results = []
+        for item in response.values:
+            val = item.value if item.value else None
+            vec = dict(item.vector.items)
+            results.append((val, item.timestamp, vec))
+        return results
+
     def scan_range(self, partition_key, start_ck, end_ck):
         self._ensure_channel()
         req = replication_pb2.RangeRequest(
