@@ -1,17 +1,20 @@
-import os
 import json
-import time
 
 from api.main import app
 from database.replication import NodeCluster
 from .service_runner import start_frontend
+from .data_generators import generate_index_items
 
 
 def main() -> None:
     app.router.on_startup.clear()
-    cluster = NodeCluster(base_path="/tmp/index_cluster", num_nodes=3, index_fields=["color"])
-    cluster.put(0, "p1", json.dumps({"color": "red"}))
-    cluster.put(0, "p2", json.dumps({"color": "blue"}))
+    cluster = NodeCluster(
+        base_path="/tmp/index_cluster",
+        num_nodes=3,
+        index_fields=["color"],
+    )
+    for key, value in generate_index_items(20):
+        cluster.put(0, key, value)
     app.state.cluster = cluster
     front_proc = start_frontend()
     print("API running at http://localhost:8000")
