@@ -266,6 +266,79 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_write_skew_with_lock_row(self):
+        """Prevent write skew by materializing conflicts with a lock row."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            node.db.put("doc1", "on", timestamp=1)
+            node.db.put("doc2", "on", timestamp=1)
+            node.db.put("shift_locks:1234", "unlocked", timestamp=1)
+
+            start = threading.Barrier(2)
+
+            def leave(doc_key):
+                start.wait()
+                tx_id = service.BeginTransaction(replication_pb2.Empty(), None).id
+
+                while True:
+                    try:
+                        service.GetForUpdate(
+                            replication_pb2.KeyRequest(
+                                key="shift_locks:1234", tx_id=tx_id
+                            ),
+                            None,
+                        )
+                        break
+                    except RuntimeError:
+                        service.AbortTransaction(
+                            replication_pb2.TransactionControl(tx_id=tx_id), None
+                        )
+                        time.sleep(0.01)
+                        tx_id = service.BeginTransaction(
+                            replication_pb2.Empty(), None
+                        ).id
+
+                resp1 = service.Get(
+                    replication_pb2.KeyRequest(key="doc1", tx_id=tx_id), None
+                )
+                resp2 = service.Get(
+                    replication_pb2.KeyRequest(key="doc2", tx_id=tx_id), None
+                )
+                count = (1 if resp1.values else 0) + (1 if resp2.values else 0)
+                if count > 1:
+                    service.Delete(
+                        replication_pb2.KeyRequest(
+                            key=doc_key, timestamp=2, tx_id=tx_id
+                        ),
+                        None,
+                    )
+                    service.CommitTransaction(
+                        replication_pb2.TransactionControl(tx_id=tx_id), None
+                    )
+                else:
+                    service.AbortTransaction(
+                        replication_pb2.TransactionControl(tx_id=tx_id), None
+                    )
+
+            t1 = threading.Thread(target=leave, args=("doc1",))
+            t2 = threading.Thread(target=leave, args=("doc2",))
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+            remaining = 0
+            if node.db.get("doc1") is not None:
+                remaining += 1
+            if node.db.get("doc2") is not None:
+                remaining += 1
+
+            self.assertEqual(remaining, 1)
+
+            node.db.close()
+
     def test_write_skew_with_get_for_update(self):
         """Ensure write skew is avoided by acquiring row locks."""
         with tempfile.TemporaryDirectory() as tmpdir:
