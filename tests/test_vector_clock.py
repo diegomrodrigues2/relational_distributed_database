@@ -21,7 +21,7 @@ class VectorClockMergeTest(unittest.TestCase):
 
             records = db.get_record('k')
             self.assertEqual(len(records), 2)
-            values = sorted(v for v, _ in records)
+            values = sorted(v for v, *_ in records)
             self.assertEqual(values, ['va', 'vb'])
 
             vc_merge = VectorClock({'A': 1, 'B': 1})

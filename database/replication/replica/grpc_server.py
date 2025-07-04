@@ -547,7 +547,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                                 if self._node.write_locks.get(k) == request.tx_id:
                                     self._node.write_locks.pop(k, None)
                     raise RuntimeError("Conflict")
+        ops_by_key = {}
         for op, req in ops:
+            ops_by_key[req.key] = (op, req)
+
+        for op, req in ops_by_key.values():
             if op == "put":
                 new_vc = (
                     VectorClock(dict(req.vector.items))

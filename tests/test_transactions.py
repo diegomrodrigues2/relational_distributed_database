@@ -92,7 +92,7 @@ class TransactionTest(unittest.TestCase):
                 t.join()
 
             with node._tx_lock:
-                self.assertEqual(len(node.active_transactions[tx_id]), 10)
+                self.assertEqual(len(node.active_transactions[tx_id]["ops"]), 10)
 
             service.CommitTransaction(
                 replication_pb2.TransactionControl(tx_id=tx_id), None
@@ -541,9 +541,9 @@ class TransactionTest(unittest.TestCase):
             t1.join()
             t2.join()
 
-        self.assertEqual(node.db.get("cnt"), "2")
+            self.assertEqual(node.db.get("cnt"), "2")
 
-        node.db.close()
+            node.db.close()
 
     def test_snapshot_isolation_detects_lost_update(self):
         """Snapshot isolation should abort conflicting updates automatically."""
