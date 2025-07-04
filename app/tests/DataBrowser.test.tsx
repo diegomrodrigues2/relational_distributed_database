@@ -11,12 +11,13 @@ vi.mock('../services/databaseService', () => ({
 import DataBrowser from '../components/DataBrowser'
 import * as databaseService from '../services/databaseService'
 
-const page1Records = [
-  { partitionKey: 'p1', clusteringKey: 'c1', value: '{"a":1}' },
-  { partitionKey: 'p2', clusteringKey: 'c2', value: '{"a":2}' },
-]
+const page1Records = Array.from({ length: 20 }, (_, i) => ({
+  partitionKey: `p${i}`,
+  clusteringKey: `c${i}`,
+  value: `{"a":${i}}`,
+}))
 const page2Records = [
-  { partitionKey: 'p3', clusteringKey: 'c3', value: '{"a":3}' },
+  { partitionKey: 'p20', clusteringKey: 'c20', value: '{"a":20}' },
 ]
 
 beforeEach(() => {
@@ -30,7 +31,7 @@ describe('DataBrowser', () => {
   it('loads records on mount and filters search', async () => {
     render(<DataBrowser />)
     await waitFor(() => {
-      expect(databaseService.getUserRecords).toHaveBeenCalledWith(0, 2)
+      expect(databaseService.getUserRecords).toHaveBeenCalledWith(0, 20)
     })
     expect(screen.getByText('p1')).toBeInTheDocument()
     expect(screen.getByText('p2')).toBeInTheDocument()
@@ -54,7 +55,7 @@ describe('DataBrowser', () => {
       expect(databaseService.saveUserRecord).toHaveBeenCalledWith({ partitionKey: 'p3', clusteringKey: 'c3', value: '{"b":3}' })
     })
     expect(databaseService.getUserRecords).toHaveBeenCalledTimes(2)
-    expect((databaseService.getUserRecords as any).mock.calls[1]).toEqual([0, 2])
+    expect((databaseService.getUserRecords as any).mock.calls[1]).toEqual([0, 20])
   })
 
   it('deletes a record via the service', async () => {
@@ -64,10 +65,10 @@ describe('DataBrowser', () => {
 
     fireEvent.click(screen.getAllByText('Delete')[0])
     await waitFor(() => {
-      expect(databaseService.deleteUserRecord).toHaveBeenCalledWith('p1', 'c1')
+      expect(databaseService.deleteUserRecord).toHaveBeenCalledWith('p0', 'c0')
     })
     expect(databaseService.getUserRecords).toHaveBeenCalledTimes(2)
-    expect((databaseService.getUserRecords as any).mock.calls[1]).toEqual([0, 2])
+    expect((databaseService.getUserRecords as any).mock.calls[1]).toEqual([0, 20])
   })
 
   it('navigates pages to load different record slices', async () => {
@@ -80,10 +81,10 @@ describe('DataBrowser', () => {
     fireEvent.click(screen.getByText('Next'))
 
     await waitFor(() => {
-      expect(databaseService.getUserRecords).toHaveBeenLastCalledWith(2, 2)
+      expect(databaseService.getUserRecords).toHaveBeenLastCalledWith(20, 20)
     })
 
-    expect(screen.queryByText('p1')).not.toBeInTheDocument()
-    expect(screen.getByText('p3')).toBeInTheDocument()
+    expect(screen.queryByText('p0')).not.toBeInTheDocument()
+    expect(screen.getByText('p20')).toBeInTheDocument()
   })
 })

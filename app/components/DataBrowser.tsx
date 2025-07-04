@@ -15,7 +15,7 @@ const DataBrowser: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(2);
+  const [pageSize, setPageSize] = useState(20);
   const [hasNext, setHasNext] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -107,6 +107,8 @@ const DataBrowser: React.FC = () => {
           <Pagination
             currentPage={currentPage}
             onPageChange={setCurrentPage}
+            pageSize={pageSize}
+            onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
             disablePrev={currentPage === 1}
             disableNext={!hasNext}
           />
