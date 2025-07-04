@@ -402,8 +402,8 @@ def health() -> dict:
 
 
 @app.get("/data/records")
-def list_records_endpoint() -> dict:
-    """Return all records stored in the cluster."""
+def list_records_endpoint(offset: int = 0, limit: int | None = None) -> dict:
+    """Return records stored in the cluster with optional pagination."""
     cluster = app.state.cluster
     records = [
         {
@@ -411,7 +411,7 @@ def list_records_endpoint() -> dict:
             "clustering_key": ck,
             "value": val,
         }
-        for pk, ck, val in cluster.list_records()
+        for pk, ck, val in cluster.list_records(offset=offset, limit=limit)
     ]
     return {"records": records}
 

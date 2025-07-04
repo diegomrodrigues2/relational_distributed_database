@@ -46,3 +46,21 @@ def test_records_crud_and_scan():
         time.sleep(0.1)
         resp = client.get("/data/records")
         assert not any(r["partition_key"] == "alpha" and r["clustering_key"] == "a" for r in resp.json().get("records", []))
+
+
+def test_records_pagination():
+    with TestClient(app) as client:
+        for i in range(5):
+            resp = client.post(
+                "/data/records",
+                json={"partitionKey": f"pk{i}", "clusteringKey": None, "value": f"v{i}"},
+            )
+            assert resp.status_code == 200
+
+        time.sleep(0.1)
+        resp = client.get("/data/records", params={"offset": 2, "limit": 2})
+        assert resp.status_code == 200
+        data = resp.json().get("records", [])
+        assert len(data) == 2
+        assert data[0]["partition_key"] == "pk2"
+        assert data[1]["partition_key"] == "pk3"
