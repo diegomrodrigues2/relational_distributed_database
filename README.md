@@ -150,7 +150,7 @@ The REST server offers simple endpoints to manage data stored in the cluster.
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| `GET` | `/data/records` | List all records in the cluster |
+| `GET` | `/data/records` | List all records in the cluster (optional `offset` and `limit` query params) |
 | `POST` | `/data/records` | Insert a new record using a JSON body |
 | `PUT` | `/data/records/{partition_key}/{clustering_key}` | Update an existing record (send `value` as query param) |
 | `DELETE` | `/data/records/{partition_key}/{clustering_key}` | Remove a record |
@@ -173,6 +173,16 @@ curl -X DELETE http://localhost:8000/data/records/alpha/a
 curl "http://localhost:8000/data/query_index?field=color&value=red"
 # {"keys": ["p1"]}
 ```
+
+### Storage inspection API
+
+These endpoints expose internal storage data from individual nodes.
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/nodes/{id}/wal` | List WAL entries (optional `offset` and `limit` query params) |
+| `GET` | `/nodes/{id}/memtable` | List MemTable contents (optional `offset` and `limit` query params) |
+| `GET` | `/nodes/{id}/sstables` | Show SSTable metadata |
 
 ### Cluster actions API
 
