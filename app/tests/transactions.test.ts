@@ -6,6 +6,9 @@ describe('getTransactions', () => {
     const sample = { transactions: [ { node: 'n1', tx_ids: ['a', 'b'] } ] }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => sample }))
     const res = await getTransactions()
-    expect(res).toEqual([{ nodeId: 'n1', txIds: ['a', 'b'] }])
+    expect(res).toEqual([
+      { node: 'n1', txId: 'a' },
+      { node: 'n1', txId: 'b' },
+    ])
   })
 })
