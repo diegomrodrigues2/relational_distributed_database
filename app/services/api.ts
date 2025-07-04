@@ -154,9 +154,17 @@ export const startNode = async (nodeId: string): Promise<Node> => {
   return node;
 };
 
-export const getWalEntries = async (nodeId: string): Promise<WALEntry[]> => {
+export const getWalEntries = async (
+  nodeId: string,
+  offset = 0,
+  limit = 50,
+): Promise<WALEntry[]> => {
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(limit),
+  });
   const data = await fetchJson<{ entries: any[] }>(
-    `/nodes/${encodeURIComponent(nodeId)}/wal`,
+    `/nodes/${encodeURIComponent(nodeId)}/wal?${params.toString()}`,
   );
   return (data.entries || []).map(e => ({
     type: e.type,
@@ -168,9 +176,15 @@ export const getWalEntries = async (nodeId: string): Promise<WALEntry[]> => {
 
 export const getMemtableEntries = async (
   nodeId: string,
+  offset = 0,
+  limit = 50,
 ): Promise<StorageEntry[]> => {
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(limit),
+  });
   const data = await fetchJson<{ entries: any[] }>(
-    `/nodes/${encodeURIComponent(nodeId)}/memtable`,
+    `/nodes/${encodeURIComponent(nodeId)}/memtable?${params.toString()}`,
   );
   return (data.entries || []).map(e => ({
     key: e.key,
