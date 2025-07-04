@@ -6,6 +6,7 @@ import {
   ClusterConfig,
   HotspotInfo,
   ReplicationStatus,
+  TransactionInfo,
   WALEntry,
   StorageEntry,
   SSTableInfo,
@@ -114,6 +115,16 @@ export const getReplicationStatus = async (): Promise<ReplicationStatus[]> => {
     })
   );
   return statuses;
+};
+
+export const getTransactions = async (): Promise<TransactionInfo[]> => {
+  const data = await fetchJson<{ transactions: { node: string; tx_ids: any[] }[] }>(
+    '/cluster/transactions',
+  );
+  return (data.transactions || []).map(t => ({
+    nodeId: t.node,
+    txIds: t.tx_ids || [],
+  }));
 };
 
 export const addNode = async (): Promise<string> => {

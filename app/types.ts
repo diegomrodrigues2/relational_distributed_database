@@ -99,3 +99,8 @@ export interface SSTableInfo {
     itemCount: number;
     keyRange: [string, string];
 }
+
+export interface TransactionInfo {
+    nodeId: string;
+    txIds: string[];
+}
