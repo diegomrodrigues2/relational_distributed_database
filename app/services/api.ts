@@ -9,6 +9,7 @@ import {
   WALEntry,
   StorageEntry,
   SSTableInfo,
+  TransactionInfo,
 } from '../types';
 import { fetchJson } from './request';
 
@@ -258,4 +259,27 @@ export const rebalance = async (): Promise<void> => {
   await fetchJson<{ status: string }>('/cluster/actions/rebalance', {
     method: 'POST',
   });
+};
+
+export const getTransactions = async (): Promise<TransactionInfo[]> => {
+  const data = await fetchJson<{ transactions: { node: string; tx_ids: string[] }[] }>(
+    '/cluster/transactions',
+  );
+  const results: TransactionInfo[] = [];
+  for (const entry of data.transactions || []) {
+    for (const id of entry.tx_ids || []) {
+      results.push({ node: entry.node, txId: id });
+    }
+  }
+  return results;
+};
+
+export const abortTransaction = async (
+  nodeId: string,
+  txId: string,
+): Promise<void> => {
+  await fetchJson<{ status: string }>(
+    `/cluster/transactions/${encodeURIComponent(nodeId)}/${encodeURIComponent(txId)}/abort`,
+    { method: 'POST' },
+  );
 };
