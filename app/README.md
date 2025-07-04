@@ -43,3 +43,7 @@ Preview the built app locally with:
 ```bash
 npm run preview
 ```
+
+## Pagination controls
+
+The storage inspector lists WAL and MemTable entries in pages of 50 items. Use the Next and Prev buttons to navigate through results. These controls adjust the `offset` and `limit` query parameters sent to the backend.
