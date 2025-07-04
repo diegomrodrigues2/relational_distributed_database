@@ -30,6 +30,7 @@ from ..utils.vector_clock import VectorClock
 from ..lsm.lsm_db import _merge_version_lists, SimpleLSMDB
 from ..lsm.sstable import TOMBSTONE
 
+from ..utils.event_logger import EventLogger
 
 DEFAULT_NUM_PARTITIONS = 128
 
@@ -93,6 +94,10 @@ class NodeCluster:
         if os.path.exists(base_path):
             shutil.rmtree(base_path)
         os.makedirs(base_path)
+
+        # Initialize event logger for cluster operations
+        self.event_logger = EventLogger(os.path.join(base_path, "event_log.txt"))
+        self.event_logger.log("NodeCluster created")
 
         base_port = 9000
         self.base_port = base_port
