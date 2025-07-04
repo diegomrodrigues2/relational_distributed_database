@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 
 # Ensure project root is on the import path just like the tests do
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -8,6 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from api.main import app
 from database.replication import NodeCluster
 from examples.service_runner import start_frontend
+from examples.data_generators import generate_hash_items
 
 
 def main() -> None:
@@ -18,8 +18,8 @@ def main() -> None:
         partition_strategy="hash",
         consistency_mode="lww",
     )
-    cluster.put(0, "k1", "v1")
-    cluster.put(0, "k2", "v2")
+    for key, value in generate_hash_items(20):
+        cluster.put(0, key, value)
     app.state.cluster = cluster
     front_proc = start_frontend()
     print("API running at http://localhost:8000")

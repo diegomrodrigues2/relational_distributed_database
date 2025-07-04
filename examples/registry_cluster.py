@@ -1,9 +1,7 @@
-import os
-import time
-
 from api.main import app
 from database.replication import NodeCluster
 from .service_runner import start_frontend
+from .data_generators import generate_hash_items
 
 
 def main() -> None:
@@ -16,7 +14,8 @@ def main() -> None:
         start_router=True,
         use_registry=True,
     )
-    cluster.router_client.put("reg1", "v1")
+    for key, value in generate_hash_items(10):
+        cluster.router_client.put(key, value)
     app.state.cluster = cluster
     front_proc = start_frontend()
     print("API running at http://localhost:8000")
