@@ -319,8 +319,8 @@ def node_replication_status(node_id: str) -> dict:
 
 
 @app.get("/nodes/{node_id}/wal")
-def node_wal(node_id: str) -> dict:
-    """Return Write Ahead Log entries stored on ``node_id``."""
+def node_wal(node_id: str, offset: int = 0, limit: int | None = None) -> dict:
+    """Return Write Ahead Log entries stored on ``node_id`` with optional pagination."""
     cluster = app.state.cluster
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
@@ -336,14 +336,17 @@ def node_wal(node_id: str) -> dict:
             }
             for e in entries
         ]
-        return {"entries": results}
+        if offset < 0:
+            offset = 0
+        end = offset + limit if limit is not None else None
+        return {"entries": results[offset:end]}
     except Exception:
         raise HTTPException(status_code=503, detail="unreachable")
 
 
 @app.get("/nodes/{node_id}/memtable")
-def node_memtable(node_id: str) -> dict:
-    """Return current MemTable contents for ``node_id``."""
+def node_memtable(node_id: str, offset: int = 0, limit: int | None = None) -> dict:
+    """Return current MemTable contents for ``node_id`` with optional pagination."""
     cluster = app.state.cluster
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
@@ -358,7 +361,10 @@ def node_memtable(node_id: str) -> dict:
             }
             for e in entries
         ]
-        return {"entries": results}
+        if offset < 0:
+            offset = 0
+        end = offset + limit if limit is not None else None
+        return {"entries": results[offset:end]}
     except Exception:
         raise HTTPException(status_code=503, detail="unreachable")
 
