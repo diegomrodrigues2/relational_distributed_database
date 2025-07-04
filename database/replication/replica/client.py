@@ -179,6 +179,11 @@ class GRPCReplicaClient:
         req = replication_pb2.TransactionControl(tx_id=tx_id)
         self.stub.AbortTransaction(req)
 
+    def list_transactions(self) -> list[str]:
+        self._ensure_channel()
+        resp = self.stub.ListTransactions(replication_pb2.Empty())
+        return list(resp.tx_ids)
+
     def fetch_updates(self, last_seen: dict, ops=None, segment_hashes=None, trees=None):
         self._ensure_channel()
         """Fetch updates from peer optionally sending our pending ops, hashes and trees."""

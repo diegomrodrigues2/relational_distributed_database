@@ -613,6 +613,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         self._node.write_locks.pop(k, None)
         return replication_pb2.Empty()
 
+    def ListTransactions(self, request, context):
+        """Return IDs of currently active transactions."""
+        with self._node._tx_lock:
+            tx_ids = list(self._node.active_transactions.keys())
+        return replication_pb2.TransactionList(tx_ids=tx_ids)
+
     def ScanRange(self, request, context):
         owner_id = self._owner_for_key(request.partition_key)
         if getattr(self._node, "enable_forwarding", False) and owner_id != self._node.node_id:

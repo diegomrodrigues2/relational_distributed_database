@@ -164,6 +164,22 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_list_transactions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            tx1 = service.BeginTransaction(replication_pb2.Empty(), None).id
+            tx2 = service.BeginTransaction(replication_pb2.Empty(), None).id
+
+            resp = service.ListTransactions(replication_pb2.Empty(), None)
+            ids = set(resp.tx_ids)
+            self.assertIn(tx1, ids)
+            self.assertIn(tx2, ids)
+            self.assertEqual(len(ids), 2)
+
+            node.db.close()
+
     def test_get_for_update_locking(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             node = NodeServer(db_path=tmpdir)

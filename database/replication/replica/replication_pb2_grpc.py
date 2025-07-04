@@ -75,6 +75,11 @@ class ReplicaStub(object):
                 request_serializer=replication__pb2.TransactionControl.SerializeToString,
                 response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
+        self.ListTransactions = channel.unary_unary(
+                '/replication.Replica/ListTransactions',
+                request_serializer=replication__pb2.Empty.SerializeToString,
+                response_deserializer=replication__pb2.TransactionList.FromString,
+                _registered_method=True)
         self.ScanRange = channel.unary_unary(
                 '/replication.Replica/ScanRange',
                 request_serializer=replication__pb2.RangeRequest.SerializeToString,
@@ -187,6 +192,12 @@ class ReplicaServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListTransactions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ScanRange(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -295,6 +306,11 @@ def add_ReplicaServicer_to_server(servicer, server):
                     servicer.AbortTransaction,
                     request_deserializer=replication__pb2.TransactionControl.FromString,
                     response_serializer=replication__pb2.Empty.SerializeToString,
+            ),
+            'ListTransactions': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListTransactions,
+                    request_deserializer=replication__pb2.Empty.FromString,
+                    response_serializer=replication__pb2.TransactionList.SerializeToString,
             ),
             'ScanRange': grpc.unary_unary_rpc_method_handler(
                     servicer.ScanRange,
@@ -569,6 +585,33 @@ class Replica(object):
             '/replication.Replica/AbortTransaction',
             replication__pb2.TransactionControl.SerializeToString,
             replication__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListTransactions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/ListTransactions',
+            replication__pb2.Empty.SerializeToString,
+            replication__pb2.TransactionList.FromString,
             options,
             channel_credentials,
             insecure,
