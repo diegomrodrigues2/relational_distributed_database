@@ -30,16 +30,27 @@ const LoadingSpinner: React.FC = () => (
     </div>
 );
 
-const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
+export const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
     const [entries, setEntries] = useState<WALEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(50);
 
-    useEffect(() => {
-        getWalEntries(nodeId).then(data => {
+    const loadData = useCallback(() => {
+        setIsLoading(true);
+        getWalEntries(nodeId, (currentPage - 1) * pageSize, pageSize).then(data => {
             setEntries(data);
             setIsLoading(false);
         });
+    }, [nodeId, currentPage, pageSize]);
+
+    useEffect(() => {
+        setCurrentPage(1);
     }, [nodeId]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     if (isLoading) return <LoadingSpinner />;
 
@@ -66,20 +77,48 @@ const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
                 </tbody>
             </table>
             {entries.length === 0 && <p className="p-4 text-center text-green-400">WAL is empty.</p>}
+            <div className="flex items-center justify-center space-x-2 mt-2">
+                <button
+                    className="px-2 py-1 bg-green-900/40 rounded disabled:opacity-50"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                    Prev
+                </button>
+                <span className="text-sm">Page {currentPage}</span>
+                <button
+                    className="px-2 py-1 bg-green-900/40 rounded disabled:opacity-50"
+                    disabled={entries.length < pageSize}
+                    onClick={() => setCurrentPage(p => p + 1)}
+                >
+                    Next
+                </button>
+            </div>
         </div>
     );
 };
 
-const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
+export const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
     const [entries, setEntries] = useState<StorageEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(50);
 
-    useEffect(() => {
-        getMemtableEntries(nodeId).then(data => {
+    const loadData = useCallback(() => {
+        setIsLoading(true);
+        getMemtableEntries(nodeId, (currentPage - 1) * pageSize, pageSize).then(data => {
             setEntries(data);
             setIsLoading(false);
         });
+    }, [nodeId, currentPage, pageSize]);
+
+    useEffect(() => {
+        setCurrentPage(1);
     }, [nodeId]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     if (isLoading) return <LoadingSpinner />;
 
@@ -102,6 +141,23 @@ const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
                 </tbody>
             </table>
             {entries.length === 0 && <p className="p-4 text-center text-green-400">MemTable is empty.</p>}
+            <div className="flex items-center justify-center space-x-2 mt-2">
+                <button
+                    className="px-2 py-1 bg-green-900/40 rounded disabled:opacity-50"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                    Prev
+                </button>
+                <span className="text-sm">Page {currentPage}</span>
+                <button
+                    className="px-2 py-1 bg-green-900/40 rounded disabled:opacity-50"
+                    disabled={entries.length < pageSize}
+                    onClick={() => setCurrentPage(p => p + 1)}
+                >
+                    Next
+                </button>
+            </div>
         </div>
     );
 };
