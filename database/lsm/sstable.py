@@ -110,6 +110,8 @@ class SSTableManager:
         sstable_filename = f"sstable_{timestamp}.txt"
         sstable_path = os.path.join(self.sstable_dir, sstable_filename)
 
+        os.makedirs(self.sstable_dir, exist_ok=True)
+
         with open(sstable_path, "w", encoding="utf-8") as f:
             for key, value, vector in sorted_items:
                 entry = {"key": key, "value": value, "vector": vector.clock}
