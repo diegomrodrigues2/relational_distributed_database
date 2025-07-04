@@ -6,12 +6,23 @@ export const getClusterConfig = (): Promise<ClusterConfig> => api.getClusterConf
 export const getHotspots = (): Promise<HotspotInfo> => api.getHotspots();
 export const getReplicationStatus = (): Promise<ReplicationStatus[]> => api.getReplicationStatus();
 
-export const getWalEntries = (nodeId: string): Promise<WALEntry[]> => api.getWalEntries(nodeId);
-export const getMemtableEntries = (nodeId: string): Promise<StorageEntry[]> => api.getMemtableEntries(nodeId);
+export const getWalEntries = (
+  nodeId: string,
+  offset = 0,
+  limit = 50,
+): Promise<WALEntry[]> => api.getWalEntries(nodeId, offset, limit);
+export const getMemtableEntries = (
+  nodeId: string,
+  offset = 0,
+  limit = 50,
+): Promise<StorageEntry[]> => api.getMemtableEntries(nodeId, offset, limit);
 export const getSstables = (nodeId: string): Promise<SSTableInfo[]> => api.getSstables(nodeId);
 export const getSstableEntries = (nodeId: string, sstableId: string): Promise<StorageEntry[]> => api.getSstableEntries(nodeId, sstableId);
 
-export const getUserRecords = (): Promise<UserRecord[]> => db.getUserRecords();
+export const getUserRecords = (
+  offset = 0,
+  limit = 50,
+): Promise<UserRecord[]> => db.getUserRecords(offset, limit);
 export const saveUserRecord = (record: UserRecord): Promise<UserRecord> => db.saveUserRecord(record);
 export const deleteUserRecord = (partitionKey: string, clusteringKey: string): Promise<void> => db.deleteUserRecord(partitionKey, clusteringKey);
 

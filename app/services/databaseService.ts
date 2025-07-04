@@ -1,8 +1,15 @@
 import { UserRecord } from '../types';
 import { fetchJson } from './request';
 
-export const getUserRecords = async (): Promise<UserRecord[]> => {
-  const data = await fetchJson<{ records: { partition_key: string; clustering_key: string | null; value: string }[] }>('/data/records');
+export const getUserRecords = async (
+  offset = 0,
+  limit = 50,
+): Promise<UserRecord[]> => {
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(limit),
+  });
+  const data = await fetchJson<{ records: { partition_key: string; clustering_key: string | null; value: string }[] }>(`/data/records?${params.toString()}`);
   return data.records.map(r => ({
     partitionKey: r.partition_key,
     clusteringKey: r.clustering_key ?? undefined,
