@@ -13,40 +13,27 @@ const DataEditorModal: React.FC<DataEditorModalProps> = ({ isOpen, onClose, onSa
   const [partitionKey, setPartitionKey] = useState('');
   const [clusteringKey, setClusteringKey] = useState('');
   const [value, setValue] = useState('');
-  const [jsonError, setJsonError] = useState('');
 
   useEffect(() => {
     if (record) {
       setPartitionKey(record.partitionKey);
-      setClusteringKey(record.clusteringKey);
+      setClusteringKey(record.clusteringKey || '');
       setValue(record.value);
     } else {
       setPartitionKey('');
       setClusteringKey('');
-      setValue('{}');
+      setValue('');
     }
-    setJsonError('');
   }, [record, isOpen]);
 
   if (!isOpen) return null;
 
   const handleValueChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    setValue(newValue);
-    try {
-      JSON.parse(newValue);
-      setJsonError('');
-    } catch (error) {
-      setJsonError('Invalid JSON format.');
-    }
+    setValue(e.target.value);
   };
 
   const handleSave = () => {
-    if (jsonError) {
-      alert('Cannot save with invalid JSON.');
-      return;
-    }
-    onSave({ partitionKey, clusteringKey, value });
+    onSave({ partitionKey, clusteringKey: clusteringKey || undefined, value });
   };
 
   return (
@@ -81,22 +68,19 @@ const DataEditorModal: React.FC<DataEditorModalProps> = ({ isOpen, onClose, onSa
             </div>
           </div>
           <div>
-            <label htmlFor="value" className="block text-sm font-medium text-green-300 mb-1">Value (JSON)</label>
+            <label htmlFor="value" className="block text-sm font-medium text-green-300 mb-1">Value</label>
             <textarea
               id="value"
               rows={10}
               value={value}
               onChange={handleValueChange}
-              className={`w-full bg-[#10180f] border rounded-md px-3 py-2 text-white font-mono text-sm placeholder-green-500 focus:outline-none focus:ring-2 ${
-                jsonError ? 'border-red-500 focus:ring-red-500' : 'border-green-700/50 focus:ring-green-500'
-              }`}
+              className="w-full bg-[#10180f] border border-green-700/50 rounded-md px-3 py-2 text-white font-mono text-sm placeholder-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
             />
-            {jsonError && <p className="text-red-400 text-xs mt-1">{jsonError}</p>}
           </div>
         </div>
         <div className="p-4 bg-[#141f17] border-t border-green-800/60 flex justify-end space-x-3">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave} disabled={!partitionKey || !clusteringKey || !!jsonError}>
+          <Button variant="primary" onClick={handleSave} disabled={!partitionKey}>
             {record ? 'Save Changes' : 'Create Record'}
           </Button>
         </div>

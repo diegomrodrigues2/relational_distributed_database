@@ -35,7 +35,7 @@ const DataBrowser: React.FC = () => {
     const filteredData = records.filter(item => {
       return (
         item.partitionKey.toLowerCase().includes(lowercasedFilter) ||
-        item.clusteringKey.toLowerCase().includes(lowercasedFilter) ||
+        item.clusteringKey?.toLowerCase().includes(lowercasedFilter) ||
         item.value.toLowerCase().includes(lowercasedFilter)
       );
     });
@@ -64,9 +64,10 @@ const DataBrowser: React.FC = () => {
     await fetchData(); // Refresh data
   };
 
-  const handleDeleteRecord = async (partitionKey: string, clusteringKey: string) => {
-    if (window.confirm(`Are you sure you want to delete record with key ${partitionKey} | ${clusteringKey}?`)) {
-        await databaseService.deleteUserRecord(partitionKey, clusteringKey);
+  const handleDeleteRecord = async (partitionKey: string, clusteringKey?: string) => {
+    const label = clusteringKey ? ` | ${clusteringKey}` : '';
+    if (window.confirm(`Are you sure you want to delete record with key ${partitionKey}${label}?`)) {
+        await databaseService.deleteUserRecord(partitionKey, clusteringKey ?? '');
         await fetchData();
     }
   };

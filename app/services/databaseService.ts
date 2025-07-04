@@ -2,17 +2,25 @@ import { UserRecord } from '../types';
 import { fetchJson } from './request';
 
 export const getUserRecords = async (): Promise<UserRecord[]> => {
-  const data = await fetchJson<{ records: { partition_key: string; clustering_key: string; value: string }[] }>('/data/records');
+  const data = await fetchJson<{ records: { partition_key: string; clustering_key: string | null; value: string }[] }>('/data/records');
   return data.records.map(r => ({
     partitionKey: r.partition_key,
-    clusteringKey: r.clustering_key,
+    clusteringKey: r.clustering_key ?? undefined,
     value: r.value,
   }));
 };
 
 export const saveUserRecord = async (record: UserRecord): Promise<UserRecord> => {
-  const path = `/data/records/${encodeURIComponent(record.partitionKey)}/${encodeURIComponent(record.clusteringKey)}?value=${encodeURIComponent(record.value)}`;
-  await fetchJson<{ status: string }>(path, { method: 'PUT' });
+  if (record.clusteringKey) {
+    const path = `/data/records/${encodeURIComponent(record.partitionKey)}/${encodeURIComponent(record.clusteringKey)}?value=${encodeURIComponent(record.value)}`;
+    await fetchJson<{ status: string }>(path, { method: 'PUT' });
+  } else {
+    await fetchJson<{ status: string }>('/data/records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ partitionKey: record.partitionKey, value: record.value }),
+    });
+  }
   return record;
 };
 

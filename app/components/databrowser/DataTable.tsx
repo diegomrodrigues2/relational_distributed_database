@@ -6,7 +6,7 @@ import Button from '../common/Button';
 interface DataTableProps {
   records: UserRecord[];
   onEdit: (record: UserRecord) => void;
-  onDelete: (partitionKey: string, clusteringKey: string) => void;
+  onDelete: (partitionKey: string, clusteringKey?: string) => void;
 }
 
 const DataTable: React.FC<DataTableProps> = ({ records, onEdit, onDelete }) => {
@@ -17,7 +17,7 @@ const DataTable: React.FC<DataTableProps> = ({ records, onEdit, onDelete }) => {
           <tr>
             <th scope="col" className="px-6 py-3">Partition Key</th>
             <th scope="col" className="px-6 py-3">Clustering Key</th>
-            <th scope="col" className="px-6 py-3">Value (JSON)</th>
+            <th scope="col" className="px-6 py-3">Value</th>
             <th scope="col" className="px-6 py-3 text-right">Actions</th>
           </tr>
         </thead>
