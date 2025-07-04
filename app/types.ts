@@ -101,6 +101,6 @@ export interface SSTableInfo {
 }
 
 export interface TransactionInfo {
-    nodeId: string;
-    txIds: string[];
+    node: string;
+    txId: string;
 }

@@ -205,6 +205,20 @@ def cluster_transactions() -> dict:
     return {"transactions": results}
 
 
+@app.post("/cluster/transactions/{node}/{tx_id}/abort")
+def abort_transaction(node: str, tx_id: str) -> dict:
+    """Abort transaction ``tx_id`` on ``node``."""
+    cluster = app.state.cluster
+    n = cluster.nodes_by_id.get(node)
+    if n is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    try:
+        n.client.abort_transaction(tx_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="unreachable")
+    return {"status": "ok"}
+
+
 @app.post("/cluster/actions/add_node")
 def add_node() -> dict:
     """Add a new node to the cluster and return its id."""

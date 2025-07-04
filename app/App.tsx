@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import DataBrowser from './components/DataBrowser';
+import Transactions from './components/Transactions';
 import Management from './components/Management';
 import ClusterInternals from './components/ClusterInternals';
 
-type View = 'dashboard' | 'browser' | 'management' | 'internals';
+type View = 'dashboard' | 'browser' | 'transactions' | 'management' | 'internals';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
@@ -29,6 +30,8 @@ const App: React.FC = () => {
         return <Dashboard onManageNode={handleManageNode} />;
       case 'browser':
         return <DataBrowser />;
+      case 'transactions':
+        return <Transactions />;
       case 'internals':
         return <ClusterInternals />;
       case 'management':

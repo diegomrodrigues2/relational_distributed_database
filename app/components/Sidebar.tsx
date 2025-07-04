@@ -1,7 +1,7 @@
 import React from 'react';
 import { ICONS } from '../constants';
 
-type View = 'dashboard' | 'browser' | 'management' | 'internals';
+type View = 'dashboard' | 'browser' | 'transactions' | 'management' | 'internals';
 
 interface SidebarProps {
   activeView: View;
@@ -48,6 +48,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) => {
           label="Data Browser"
           isActive={activeView === 'browser'}
           onClick={() => setActiveView('browser')}
+        />
+        <NavItem
+          icon={ICONS.transaction}
+          label="Transactions"
+          isActive={activeView === 'transactions'}
+          onClick={() => setActiveView('transactions')}
         />
         <NavItem
           icon={ICONS.internals}

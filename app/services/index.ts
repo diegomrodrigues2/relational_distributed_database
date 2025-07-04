@@ -12,4 +12,6 @@ export {
   getSstableEntries,
   splitPartition,
   mergePartitions,
+  getTransactions,
+  abortTransaction,
 } from './api';

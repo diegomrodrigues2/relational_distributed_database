@@ -7,6 +7,8 @@ import {
   splitPartition,
   mergePartitions,
   rebalance,
+  getTransactions,
+  abortTransaction,
 } from '../services/api'
 import { vi } from 'vitest'
 
@@ -102,6 +104,26 @@ describe('api service', () => {
     await rebalance()
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:8000/cluster/actions/rebalance',
+      { method: 'POST' },
+    )
+  })
+
+  it('getTransactions flattens response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ transactions: [{ node: 'n1', tx_ids: ['t1', 't2'] }] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await getTransactions()
+    expect(res).toEqual([
+      { node: 'n1', txId: 't1' },
+      { node: 'n1', txId: 't2' },
+    ])
+  })
+
+  it('abortTransaction posts to correct endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'ok' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    await abortTransaction('n1', 't1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/cluster/transactions/n1/t1/abort',
       { method: 'POST' },
     )
   })
