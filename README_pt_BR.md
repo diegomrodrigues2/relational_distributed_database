@@ -908,6 +908,7 @@ curl "http://localhost:8000/data/query_index?field=color&value=red"
 - `examples/` – scripts de demonstração que geram dados automaticamente.
 
 Os exemplos inserem diversos registros aleatórios para demonstrar como cada configuração influencia a distribuição dos dados no cluster.
+Cada script exibe o mapa de partições e a localização de cada registro gerado.
 
 ## Executando os exemplos no Windows
 

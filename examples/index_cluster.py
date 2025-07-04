@@ -13,8 +13,20 @@ def main() -> None:
         num_nodes=3,
         index_fields=["color"],
     )
-    for key, value in generate_index_items(20):
+
+    print("Partition map:")
+    for pid, owner in sorted(cluster.get_partition_map().items()):
+        print(f"  P{pid}: {owner}")
+
+    for key, value in generate_index_items(50):
         cluster.put(0, key, value)
+        color = json.loads(value)["color"]
+        pid = cluster.get_partition_id(key)
+        owner = cluster.get_partition_map().get(pid)
+        idx_owner = cluster.get_index_owner("color", color)
+        print(
+            f"Stored {key} color={color} in partition {pid} on {owner}; index on {idx_owner}"
+        )
     app.state.cluster = cluster
     front_proc = start_frontend()
     print("API running at http://localhost:8000")
