@@ -36,8 +36,8 @@ export interface MetricPoint {
 
 export interface UserRecord {
   partitionKey: string;
-  clusteringKey: string;
-  value: string; // JSON string
+  clusteringKey?: string;
+  value: string; // free form text
 }
 
 export interface ClusterConfig {

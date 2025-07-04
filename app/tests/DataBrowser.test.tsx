@@ -44,7 +44,7 @@ describe('DataBrowser', () => {
 
     fireEvent.change(screen.getByLabelText('Partition Key'), { target: { value: 'p3' } })
     fireEvent.change(screen.getByLabelText('Clustering Key'), { target: { value: 'c3' } })
-    fireEvent.change(screen.getByLabelText('Value (JSON)'), { target: { value: '{"b":3}' } })
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: '{"b":3}' } })
 
     fireEvent.click(screen.getByText('Create Record'))
     await waitFor(() => {
