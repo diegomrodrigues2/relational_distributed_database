@@ -191,6 +191,20 @@ def cluster_config() -> dict:
     }
 
 
+@app.get("/cluster/transactions")
+def cluster_transactions() -> dict:
+    """Return active transactions for each node in the cluster."""
+    cluster = app.state.cluster
+    results = []
+    for n in cluster.nodes:
+        try:
+            tx_ids = n.client.list_transactions()
+        except Exception:
+            tx_ids = []
+        results.append({"node": n.node_id, "tx_ids": tx_ids})
+    return {"transactions": results}
+
+
 @app.post("/cluster/actions/add_node")
 def add_node() -> dict:
     """Add a new node to the cluster and return its id."""
