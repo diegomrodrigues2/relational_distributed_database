@@ -86,6 +86,11 @@ message TransactionControl {
   string tx_id = 1;
 }
 
+// List of currently active transaction IDs
+message TransactionList {
+  repeated string tx_ids = 1;
+}
+
 // Vetor de versões enviado ao requisitar atualizações
 message VersionVector {
   map<string, int64> items = 1;
@@ -246,6 +251,7 @@ service Replica {
   rpc CommitTransaction(TransactionControl) returns (Empty);
   // Discard any pending operations of a transaction
   rpc AbortTransaction(TransactionControl) returns (Empty);
+  rpc ListTransactions(Empty) returns (TransactionList);
   rpc ScanRange(RangeRequest) returns (RangeResponse);
   rpc FetchUpdates(FetchRequest) returns (FetchResponse);
   rpc UpdatePartitionMap(PartitionMap) returns (Empty);
