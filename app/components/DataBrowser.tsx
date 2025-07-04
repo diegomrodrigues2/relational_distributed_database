@@ -4,6 +4,7 @@ import { UserRecord } from '../types';
 import DataTable from './databrowser/DataTable';
 import DataEditorModal from './databrowser/DataEditorModal';
 import Button from './common/Button';
+import Pagination from './databrowser/Pagination';
 
 const DataBrowser: React.FC = () => {
   const [records, setRecords] = useState<UserRecord[]>([]);
@@ -13,18 +14,24 @@ const DataBrowser: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<UserRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(2);
+  const [hasNext, setHasNext] = useState(false);
+
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const recordsData = await databaseService.getUserRecords();
+      const offset = (currentPage - 1) * pageSize;
+      const recordsData = await databaseService.getUserRecords(offset, pageSize);
       setRecords(recordsData);
       setFilteredRecords(recordsData);
+      setHasNext(recordsData.length === pageSize);
     } catch (error) {
-      console.error("Failed to fetch user records:", error);
+      console.error('Failed to fetch user records:', error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentPage, pageSize]);
 
   useEffect(() => {
     fetchData();
@@ -95,7 +102,15 @@ const DataBrowser: React.FC = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500"></div>
         </div>
       ) : (
-        <DataTable records={filteredRecords} onEdit={handleOpenEditModal} onDelete={handleDeleteRecord} />
+        <>
+          <DataTable records={filteredRecords} onEdit={handleOpenEditModal} onDelete={handleDeleteRecord} />
+          <Pagination
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            disablePrev={currentPage === 1}
+            disableNext={!hasNext}
+          />
+        </>
       )}
       
       <DataEditorModal 
