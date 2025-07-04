@@ -1,16 +1,46 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Partition } from '../../types';
 import Card from '../common/Card';
+import Pagination from '../databrowser/Pagination';
 
 interface PartitionListProps {
   partitions: Partition[];
 }
 
 const PartitionList: React.FC<PartitionListProps> = ({ partitions }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const filtered = useMemo(
+    () =>
+      partitions.filter(p =>
+        p.id.toString().toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
+    [partitions, searchTerm],
+  );
+
+  const paginated = useMemo(
+    () => filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [filtered, currentPage, pageSize],
+  );
+
+  const hasNext = currentPage * pageSize < filtered.length;
+
   return (
     <Card className="overflow-x-auto">
-      <div className="p-4 border-b border-green-800/60">
+      <div className="p-4 border-b border-green-800/60 flex justify-between items-center">
         <h3 className="text-lg font-semibold text-green-100">Partitions</h3>
+        <input
+          type="text"
+          placeholder="Filter by ID..."
+          value={searchTerm}
+          onChange={e => {
+            setSearchTerm(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="bg-[#10180f] border border-green-700/50 rounded-md px-2 py-1 text-green-200"
+        />
       </div>
       <table className="w-full text-sm text-left text-green-300">
         <thead className="text-xs text-green-400 uppercase bg-green-900/30">
@@ -24,7 +54,7 @@ const PartitionList: React.FC<PartitionListProps> = ({ partitions }) => {
           </tr>
         </thead>
         <tbody>
-          {partitions.map(partition => (
+          {paginated.map(partition => (
             <tr key={partition.id} className="border-b border-green-800/60 hover:bg-green-900/20">
               <td className="px-6 py-4 font-medium text-green-100 whitespace-nowrap">{partition.id}</td>
               <td className="px-6 py-4 font-mono text-green-400">{`[${partition.keyRange[0]}, ${partition.keyRange[1]})`}</td>
@@ -36,11 +66,19 @@ const PartitionList: React.FC<PartitionListProps> = ({ partitions }) => {
           ))}
         </tbody>
       </table>
-       {partitions.length === 0 && (
+       {filtered.length === 0 && (
         <div className="text-center py-8 text-green-400">
           No partitions found.
         </div>
       )}
+      <Pagination
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
+        disablePrev={currentPage === 1}
+        disableNext={!hasNext}
+      />
     </Card>
   );
 };

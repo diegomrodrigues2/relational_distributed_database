@@ -34,7 +34,8 @@ export const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
     const [entries, setEntries] = useState<WALEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(50);
+    const [pageSize, setPageSize] = useState(20);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const loadData = useCallback(() => {
         setIsLoading(true);
@@ -43,6 +44,15 @@ export const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
             setIsLoading(false);
         });
     }, [nodeId, currentPage, pageSize]);
+
+    const filtered = useMemo(
+        () =>
+            entries.filter(e =>
+                e.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (e.value || '').toLowerCase().includes(searchTerm.toLowerCase())
+            ),
+        [entries, searchTerm]
+    );
 
     useEffect(() => {
         setCurrentPage(1);
@@ -56,6 +66,15 @@ export const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
 
     return (
         <div className="overflow-x-auto">
+            <div className="flex justify-between items-center mb-2">
+                <input
+                    type="text"
+                    placeholder="Filter..."
+                    value={searchTerm}
+                    onChange={e => { setSearchTerm(e.target.value); }}
+                    className="bg-[#10180f] border border-green-700/50 rounded-md px-2 py-1 text-green-200"
+                />
+            </div>
              <table className="w-full text-sm text-left text-green-300">
                 <thead className="text-xs text-green-400 uppercase bg-green-900/30">
                     <tr>
@@ -65,7 +84,7 @@ export const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
                     </tr>
                 </thead>
                 <tbody>
-                    {entries.map((entry, i) => (
+                    {filtered.map((entry, i) => (
                         <tr key={i} className="border-b border-green-800/50">
                             <td className="px-4 py-2">
                                 <span className={`font-semibold ${entry.type === 'PUT' ? 'text-green-400' : 'text-red-400'}`}>{entry.type}</span>
@@ -76,7 +95,7 @@ export const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
                     ))}
                 </tbody>
             </table>
-            {entries.length === 0 && <p className="p-4 text-center text-green-400">WAL is empty.</p>}
+            {filtered.length === 0 && <p className="p-4 text-center text-green-400">WAL is empty.</p>}
             <div className="flex items-center justify-center space-x-2 mt-2">
                 <button
                     className="px-2 py-1 bg-green-900/40 rounded disabled:opacity-50"
@@ -93,6 +112,15 @@ export const WALView: React.FC<{nodeId: string}> = ({ nodeId }) => {
                 >
                     Next
                 </button>
+                <select
+                    value={pageSize}
+                    onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    className="ml-4 bg-[#10180f] border border-green-700/50 rounded-md px-2 py-1 text-green-200"
+                >
+                    {[10,20,50,100,200].map(size => (
+                        <option key={size} value={size}>{size} per page</option>
+                    ))}
+                </select>
             </div>
         </div>
     );
@@ -102,7 +130,8 @@ export const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
     const [entries, setEntries] = useState<StorageEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(50);
+    const [pageSize, setPageSize] = useState(20);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const loadData = useCallback(() => {
         setIsLoading(true);
@@ -111,6 +140,15 @@ export const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
             setIsLoading(false);
         });
     }, [nodeId, currentPage, pageSize]);
+
+    const filtered = useMemo(
+        () =>
+            entries.filter(e =>
+                e.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                e.value.toLowerCase().includes(searchTerm.toLowerCase())
+            ),
+        [entries, searchTerm]
+    );
 
     useEffect(() => {
         setCurrentPage(1);
@@ -124,6 +162,15 @@ export const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
 
     return (
         <div className="overflow-x-auto">
+            <div className="flex justify-between items-center mb-2">
+                <input
+                    type="text"
+                    placeholder="Filter..."
+                    value={searchTerm}
+                    onChange={e => { setSearchTerm(e.target.value); }}
+                    className="bg-[#10180f] border border-green-700/50 rounded-md px-2 py-1 text-green-200"
+                />
+            </div>
              <table className="w-full text-sm text-left text-green-300">
                 <thead className="text-xs text-green-400 uppercase bg-green-900/30">
                     <tr>
@@ -132,7 +179,7 @@ export const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
                     </tr>
                 </thead>
                 <tbody>
-                    {entries.map((entry, i) => (
+                    {filtered.map((entry, i) => (
                         <tr key={i} className="border-b border-green-800/50">
                             <td className="px-4 py-2 font-mono">{entry.key}</td>
                             <td className="px-4 py-2 font-mono max-w-sm truncate">{entry.value}</td>
@@ -140,7 +187,7 @@ export const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
                     ))}
                 </tbody>
             </table>
-            {entries.length === 0 && <p className="p-4 text-center text-green-400">MemTable is empty.</p>}
+            {filtered.length === 0 && <p className="p-4 text-center text-green-400">MemTable is empty.</p>}
             <div className="flex items-center justify-center space-x-2 mt-2">
                 <button
                     className="px-2 py-1 bg-green-900/40 rounded disabled:opacity-50"
@@ -157,6 +204,15 @@ export const MemTableView: React.FC<{nodeId: string}> = ({ nodeId }) => {
                 >
                     Next
                 </button>
+                <select
+                    value={pageSize}
+                    onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    className="ml-4 bg-[#10180f] border border-green-700/50 rounded-md px-2 py-1 text-green-200"
+                >
+                    {[10,20,50,100,200].map(size => (
+                        <option key={size} value={size}>{size} per page</option>
+                    ))}
+                </select>
             </div>
         </div>
     );
