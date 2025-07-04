@@ -469,6 +469,28 @@ client.put('temp', '123', tx_id=tx2)
 client.abort_transaction(tx2)
 ```
 
+#### Advanced features
+
+- **Snapshot isolation** &ndash; each transaction sees a consistent snapshot of
+  committed data and ignores uncommitted writes from others.
+- **Conflict detection** &ndash; `CommitTransaction` aborts with `Conflict` if a
+  row read during the transaction was modified concurrently, preventing lost
+  updates.
+- **Row locking** &ndash; use the `GetForUpdate` RPC to lock a key until commit or
+  abort. This avoids lost updates and write skew:
+
+```python
+tx = client.begin_transaction()
+current = client.get_for_update('cnt', tx_id=tx)[0][0]
+client.put('cnt', str(int(current) + 1), tx_id=tx)
+client.commit_transaction(tx)
+```
+
+- **Write locks** ensure only one transaction modifies a key at a time, avoiding
+  dirty writes.
+- **Atomic increment** &ndash; the `Increment` RPC updates numeric values
+  atomically using a per-key lock.
+
 ## Dedicated Routing Tier
 
 A standalone gRPC router can relay all client requests to the correct node. Start it by passing `start_router=True` when creating the cluster and connect using `GRPCRouterClient`.

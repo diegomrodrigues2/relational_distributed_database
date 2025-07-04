@@ -820,6 +820,29 @@ cliente.put('temp', '123', tx_id=tx2)
 cliente.abort_transaction(tx2)
 ```
 
+#### Funcionalidades avançadas
+
+- **Isolamento por snapshot** &ndash; cada transação enxerga um snapshot
+  consistente dos dados confirmados e ignora alterações não finalizadas de
+  outras transações.
+- **Detecção de conflito** &ndash; `CommitTransaction` gera erro `Conflict` se
+  alguma chave lida for modificada por outra transação, evitando perda de
+  atualização.
+- **Bloqueio de linhas** &ndash; use a RPC `GetForUpdate` para bloquear a chave
+  até o commit ou abort, prevenindo write skew e perdas de atualização:
+
+```python
+tx = cliente.begin_transaction()
+atual = cliente.get_for_update('cnt', tx_id=tx)[0][0]
+cliente.put('cnt', str(int(atual) + 1), tx_id=tx)
+cliente.commit_transaction(tx)
+```
+
+- **Bloqueios de escrita** garantem que apenas uma transação modifique cada
+  chave por vez, evitando escritas sujas.
+- **Incremento atômico** &ndash; a RPC `Increment` atualiza contadores de forma
+  atômica usando um lock dedicado.
+
 ## Dedicated Routing Tier
 
 A standalone gRPC router can relay all client requests to the correct node.
