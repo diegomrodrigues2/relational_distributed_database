@@ -16,10 +16,20 @@ def main() -> None:
         base_path="/tmp/hash_cluster",
         num_nodes=3,
         partition_strategy="hash",
+        replication_factor=2,
+        partitions_per_node=32,
         consistency_mode="lww",
     )
-    for key, value in generate_hash_items(20):
+
+    print("Partition map:")
+    for pid, owner in sorted(cluster.get_partition_map().items()):
+        print(f"  P{pid}: {owner}")
+
+    for key, value in generate_hash_items(50):
         cluster.put(0, key, value)
+        pid = cluster.get_partition_id(key)
+        owner = cluster.get_partition_map().get(pid)
+        print(f"Stored {key} -> {value} in partition {pid} on {owner}")
     app.state.cluster = cluster
     front_proc = start_frontend()
     print("API running at http://localhost:8000")

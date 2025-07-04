@@ -11,8 +11,16 @@ def main() -> None:
         num_nodes=2,
         start_router=True,
     )
-    for key, value in generate_hash_items(10):
+
+    print("Partition map:")
+    for pid, owner in sorted(cluster.get_partition_map().items()):
+        print(f"  P{pid}: {owner}")
+
+    for key, value in generate_hash_items(50):
         cluster.router_client.put(key, value)
+        pid = cluster.get_partition_id(key)
+        owner = cluster.get_partition_map().get(pid)
+        print(f"Router stored {key} -> {value} in partition {pid} on {owner}")
     app.state.cluster = cluster
     front_proc = start_frontend()
     print("API running at http://localhost:8000")

@@ -548,7 +548,7 @@ app/                 # Frontend web application
 
 Several small scripts under `examples/` start the cluster with different options. Each one launches the React UI in the background while the API runs in the foreground. Run them with `python examples/<file>.py` and visit the printed URLs.
 
-The scripts now populate the cluster using simple data generator functions so you can observe how each configuration behaves with a larger workload.
+The scripts now populate the cluster using simple data generator functions so you can observe how each configuration behaves with a larger workload. Each script prints the partition map and the placement of each generated record.
 
 - `hash_cluster.py` – three-node hash-partitioned cluster using LWW.
 - `range_cluster.py` – cluster with two explicit key ranges and sample composite keys.
