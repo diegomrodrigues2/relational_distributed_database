@@ -1047,8 +1047,10 @@ class NodeCluster:
         db.close()
         return {k: [tpl for tpl in v if tpl[0] != TOMBSTONE] for k, v in merged.items()}
 
-    def list_records(self) -> list[tuple[str, str | None, object]]:
-        """Return all records currently stored across the cluster.
+    def list_records(
+        self, offset: int = 0, limit: int | None = None
+    ) -> list[tuple[str, str | None, object]]:
+        """Return records stored across the cluster with optional slicing.
 
         The method iterates over the known keys (``self._known_keys``). When the
         set is empty it loads the keys from disk for each node using
@@ -1073,7 +1075,10 @@ class NodeCluster:
                 continue
             records.append((pk, ck, value))
 
-        return records
+        if offset < 0:
+            offset = 0
+        end = offset + limit if limit is not None else None
+        return records[offset:end]
 
     def _move_hash_partition(self, pid: int, src: ClusterNode, dest: ClusterNode) -> None:
         items = self._load_node_items(src)
