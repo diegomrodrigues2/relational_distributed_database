@@ -905,6 +905,9 @@ curl "http://localhost:8000/data/query_index?field=color&value=red"
 - `lsm_db.py`, `mem_table.py`, `wal.py`, `sstable.py` – implementação da LSM Tree.
 - `replication.py` e `replica/` – lógica de replicação gRPC e serviços.
 - `tests/` – casos de teste.
+- `examples/` – scripts de demonstração que geram dados automaticamente.
+
+Os exemplos inserem diversos registros aleatórios para demonstrar como cada configuração influencia a distribuição dos dados no cluster.
 
 ## Executando os exemplos no Windows
 
