@@ -1349,6 +1349,7 @@ class NodeServer:
                 if not client:
                     continue
                 remaining = []
+                delivered = 0
                 for h_op_id, h_op, h_key, h_val, h_ts in hints:
                     try:
                         if h_op == "PUT":
@@ -1368,8 +1369,20 @@ class NodeServer:
                                 op_id=h_op_id,
                                 hinted_for="",
                             )
+                        delivered += 1
                     except Exception:
                         remaining.append((h_op_id, h_op, h_key, h_val, h_ts))
+                if delivered:
+                    msg = (
+                        f"Hinted handoff para {peer_id}: {delivered} "
+                        f"operacao{'es' if delivered > 1 else ''} entregues"
+                    )
+                    if remaining:
+                        msg += f", {len(remaining)} pendente{'s' if len(remaining) > 1 else ''}"
+                    if self.event_logger:
+                        self.event_logger.log(msg)
+                    else:
+                        print(msg)
                 if remaining:
                     self.hints[peer_id] = [list(r) for r in remaining]
                 else:
