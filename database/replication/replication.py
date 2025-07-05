@@ -251,6 +251,7 @@ class NodeCluster:
                     "global_index_fields": self.global_index_fields,
                     "registry_host": self.registry_addr[0] if self.use_registry else None,
                     "registry_port": self.registry_addr[1] if self.use_registry else None,
+                    "event_logger": self.event_logger,
                 },
                 daemon=True,
             )
@@ -1228,6 +1229,7 @@ class NodeCluster:
                     "global_index_fields": self.global_index_fields,
                     "registry_host": self.registry_addr[0] if self.use_registry else None,
                     "registry_port": self.registry_addr[1] if self.use_registry else None,
+                    "event_logger": self.event_logger,
                 },
                 daemon=True,
             )
@@ -1359,6 +1361,7 @@ class NodeCluster:
                 "global_index_fields": self.global_index_fields,
                 "registry_host": self.registry_addr[0] if self.use_registry else None,
                 "registry_port": self.registry_addr[1] if self.use_registry else None,
+                "event_logger": self.event_logger,
             },
             daemon=True,
         )

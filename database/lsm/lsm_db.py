@@ -8,6 +8,10 @@ from .wal import WriteAheadLog
 from ..utils.merkle import compute_segment_hashes
 from ..utils.vector_clock import VectorClock
 from ..clustering.partitioning import compose_key
+from ..utils.event_logger import EventLogger
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _merge_version_lists(current, new_list):
@@ -49,8 +53,15 @@ def _merge_version_lists(current, new_list):
 class SimpleLSMDB:
     """Banco de dados simples baseado em LSM."""
 
-    def __init__(self, db_path: str = "simple_db_data", max_memtable_size: int = 1000):
+    def __init__(
+        self,
+        db_path: str = "simple_db_data",
+        max_memtable_size: int = 1000,
+        *,
+        event_logger: EventLogger | None = None,
+    ):
         """Inicializa estruturas e carrega dados do WAL."""
+        self.event_logger = event_logger
         self.db_path = db_path
         self.wal_file = os.path.join(self.db_path, "write_ahead_log.txt")
         self.sstable_dir = os.path.join(self.db_path, "sstables")
@@ -59,10 +70,16 @@ class SimpleLSMDB:
 
         self.memtable = MemTable(max_memtable_size)
         self.wal = WriteAheadLog(self.wal_file)
-        self.sstable_manager = SSTableManager(self.sstable_dir)
+        self.sstable_manager = SSTableManager(
+            self.sstable_dir, event_logger=self.event_logger
+        )
         self._compaction_thread = None
         self._recover_from_wal()
-        print(f"\n--- Banco de Dados Iniciado em {self.db_path} ---")
+        msg = f"--- Banco de Dados Iniciado em {self.db_path} ---"
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
         self.segment_hashes = compute_segment_hashes(self)
 
     def _start_compaction_async(self):
@@ -85,24 +102,40 @@ class SimpleLSMDB:
 
     def _recover_from_wal(self):
         """Recupera o MemTable a partir do WAL."""
-        print("Iniciando recuperação do WAL...")
+        msg = "Iniciando recuperação do WAL..."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
         wal_entries = self.wal.read_all()
         for _, entry_type, key, value_tuple in wal_entries:
             # Assumimos que o WAL contém apenas dados não persistidos.
             self.memtable.put(key, value_tuple)
-        print(
+        msg = (
             f"Recuperação do WAL concluída. MemTable agora tem {len(self.memtable)} itens."
         )
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
     def _flush_memtable_to_sstable(self):
         """Descarrega o MemTable para SSTable e limpa o WAL."""
         if not self.memtable:
-            print("  FLUSH: MemTable está vazio, nada para descarregar.")
+            msg = "  FLUSH: MemTable está vazio, nada para descarregar."
+            if self.event_logger:
+                self.event_logger.log(msg)
+            else:
+                logger.info(msg)
             return
 
-        print(
+        msg = (
             "  FLUSH: MemTable cheio ou trigger de flush manual. Descarregando para SSTable..."
         )
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
         # Prepara os dados para o SSTable (ordenados por chave). Pode haver
         # múltiplas versões por chave.
@@ -117,7 +150,11 @@ class SimpleLSMDB:
         # Limpa o MemTable e o WAL (os dados agora estão em disco)
         self.memtable.clear()
         self.wal.clear()
-        print("  FLUSH: MemTable descarregado e WAL limpo.")
+        msg = "  FLUSH: MemTable descarregado e WAL limpo."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
         # Inicia compactação de forma assíncrona
         self._start_compaction_async()
@@ -158,7 +195,11 @@ class SimpleLSMDB:
     def get(self, key, *, clustering_key=None):
         """Retorna o(s) valor(es) associado(s) à chave."""
         key = compose_key(str(key), clustering_key)
-        print(f"\nGET: Buscando chave '{key}'")
+        msg = f"GET: Buscando chave '{key}'"
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
         versions = []
         record = self.memtable.get(key)
@@ -173,14 +214,26 @@ class SimpleLSMDB:
         versions = [v for v in versions if v[0] != TOMBSTONE]
 
         if not versions:
-            print(f"GET: Chave '{key}' não encontrada em nenhum lugar.")
+            msg = f"GET: Chave '{key}' não encontrada em nenhum lugar."
+            if self.event_logger:
+                self.event_logger.log(msg)
+            else:
+                logger.info(msg)
             return None
 
         if len(versions) == 1:
-            print(f"GET: '{key}' encontrado.")
+            msg = f"GET: '{key}' encontrado."
+            if self.event_logger:
+                self.event_logger.log(msg)
+            else:
+                logger.info(msg)
             return versions[0][0]
 
-        print(f"GET: '{key}' possui múltiplas versões.")
+        msg = f"GET: '{key}' possui múltiplas versões."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
         return [val for val, *_ in versions]
 
     def get_record(
@@ -231,7 +284,11 @@ class SimpleLSMDB:
     ):
         """Marca uma chave como removida."""
         key = compose_key(str(key), clustering_key)
-        print(f"\nDELETE: Marcando chave '{key}' para exclusão.")
+        msg = f"DELETE: Marcando chave '{key}' para exclusão."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
         if vector_clock is None:
             if timestamp is None:
                 timestamp = int(time.time() * 1000)
@@ -255,9 +312,13 @@ class SimpleLSMDB:
         """Força a compactação de todos os SSTables."""
         # Garante que qualquer coisa no memtable seja descarregada primeiro
         if len(self.memtable) > 0:
-            print(
-                "\nCompactação Manual: Descarregando MemTable antes de compactar todos os SSTables."
+            msg = (
+                "Compactação Manual: Descarregando MemTable antes de compactar todos os SSTables."
             )
+            if self.event_logger:
+                self.event_logger.log(msg)
+            else:
+                logger.info(msg)
             self._flush_memtable_to_sstable()
             # Aguarda a compactação automática disparada pelo flush
             self.wait_for_compaction()
@@ -350,8 +411,16 @@ class SimpleLSMDB:
     def close(self):
         """Descarrega dados pendentes e fecha o BD."""
         if len(self.memtable) > 0:
-            print("\nFechando DB: Descarregando MemTable restante...")
+            msg = "Fechando DB: Descarregando MemTable restante..."
+            if self.event_logger:
+                self.event_logger.log(msg)
+            else:
+                logger.info(msg)
             self._flush_memtable_to_sstable()
         # Garante que a compactação assíncrona termine antes de fechar
         self.wait_for_compaction()
-        print("--- Banco de Dados Fechado ---")
+        msg = "--- Banco de Dados Fechado ---"
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
