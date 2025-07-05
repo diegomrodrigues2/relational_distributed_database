@@ -401,6 +401,17 @@ def node_sstables(node_id: str) -> dict:
         raise HTTPException(status_code=503, detail="unreachable")
 
 
+@app.get("/nodes/{node_id}/events")
+def node_events(node_id: str, offset: int = 0, limit: int | None = None) -> dict:
+    """Return recent event log entries for ``node_id``."""
+    cluster = app.state.cluster
+    logger = cluster.node_loggers.get(node_id)
+    if logger is None:
+        raise HTTPException(status_code=404, detail="node not found")
+    events = logger.get_events(offset=offset, limit=limit)
+    return {"events": events}
+
+
 @app.get("/health")
 def health() -> dict:
     """Return basic cluster information."""
