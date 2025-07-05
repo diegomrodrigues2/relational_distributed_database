@@ -14,7 +14,7 @@ from database.replication.replica import replication_pb2
 class TransactionTest(unittest.TestCase):
     def test_commit_and_abort(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            node = NodeServer(db_path=tmpdir)
+            node = NodeServer(db_path=tmpdir, tx_lock_strategy="basic")
             service = ReplicaService(node)
 
             # start transaction and buffer operations
@@ -56,7 +56,7 @@ class TransactionTest(unittest.TestCase):
 
     def test_concurrent_transaction_ops(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            node = NodeServer(db_path=tmpdir)
+            node = NodeServer(db_path=tmpdir, tx_lock_strategy="basic")
             service = ReplicaService(node)
 
             tx_id = service.BeginTransaction(replication_pb2.Empty(), None).id
@@ -106,7 +106,7 @@ class TransactionTest(unittest.TestCase):
     def test_dirty_read_prevention(self):
         """Ensure reads ignore uncommitted changes from other transactions."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            node = NodeServer(db_path=tmpdir)
+            node = NodeServer(db_path=tmpdir, tx_lock_strategy="basic")
             service = ReplicaService(node)
 
             # existing committed value
@@ -658,6 +658,41 @@ class TransactionTest(unittest.TestCase):
             service.AbortTransaction(replication_pb2.TransactionControl(tx_id=tx2), None)
 
             self.assertEqual(node.db.get("cnt"), "0")
+
+            node.db.close()
+
+    def test_ssi_detects_read_write_conflict(self):
+        """SSI should abort when a read value was modified by a later commit."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, tx_lock_strategy="basic")
+            service = ReplicaService(node)
+
+            ts0 = node.clock.tick()
+            node.db.put("x", "1", timestamp=ts0)
+            node.db.put("y", "0", timestamp=ts0)
+
+            tx1 = service.BeginTransaction(replication_pb2.Empty(), None).id
+            tx2 = service.BeginTransaction(replication_pb2.Empty(), None).id
+
+            service.Get(replication_pb2.KeyRequest(key="x", tx_id=tx1), None)
+            ts = node.clock.tick()
+            service.Put(
+                replication_pb2.KeyValue(key="x", value="2", timestamp=ts, tx_id=tx2),
+                None,
+            )
+            service.CommitTransaction(replication_pb2.TransactionControl(tx_id=tx2), None)
+
+            ts2 = node.clock.tick()
+            service.Put(
+                replication_pb2.KeyValue(key="y", value="1", timestamp=ts2, tx_id=tx1),
+                None,
+            )
+
+            with self.assertRaises(RuntimeError):
+                service.CommitTransaction(replication_pb2.TransactionControl(tx_id=tx1), None)
+
+            self.assertEqual(node.db.get("x"), "2")
+            self.assertEqual(node.db.get("y"), "0")
 
             node.db.close()
 

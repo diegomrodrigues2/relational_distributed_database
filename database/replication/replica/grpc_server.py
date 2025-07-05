@@ -439,6 +439,8 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     break
 
         if skip_cache:
+            if request.tx_id:
+                raise RuntimeError("Conflict")
             records = self._node.db.get_record(
                 request.key,
                 tx_id=request.tx_id or None,
@@ -589,6 +591,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 "read_versions": {},
                 "reads": set(),
                 "writes": set(),
+                "start_time": time.time(),
             }
         msg = f"Transação {tx_id} iniciada."
         if self._node.event_logger:
@@ -605,6 +608,8 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             )
         ops = txdata.get("ops", [])
         reads = txdata.get("read_versions", {})
+        read_keys = txdata.get("reads", set())
+        start_time = txdata.get("start_time", 0)
 
         # Detect write conflicts based on versions read
         for op, req in ops:
@@ -624,6 +629,26 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                                 if self._node.write_locks.get(k) == request.tx_id:
                                     self._node.write_locks.pop(k, None)
                     raise RuntimeError("Conflict")
+
+        # Detect read-write conflicts with transactions committed after start
+        if read_keys:
+            with self._node._tx_lock:
+                committed = list(self._node.committed_transactions)
+            for other in committed:
+                if other.get("commit_time", 0) > start_time:
+                    if read_keys & other.get("writes", set()):
+                        with self._node._tx_lock:
+                            locked = self._node.locks_by_tx.pop(request.tx_id, set())
+                            for k in locked:
+                                lock = self._node.locks.get(k)
+                                if lock and request.tx_id in lock.get("owners", set()):
+                                    lock["owners"].discard(request.tx_id)
+                                    if not lock["owners"]:
+                                        self._node.locks.pop(k, None)
+                                with self._node._write_lock:
+                                    if self._node.write_locks.get(k) == request.tx_id:
+                                        self._node.write_locks.pop(k, None)
+                        raise RuntimeError("Conflict")
         ops_by_key = {}
         for op, req in ops:
             ops_by_key[req.key] = (op, req)
@@ -672,6 +697,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     vector=new_vc.clock,
                     skip_id=(req.node_id if req.node_id != self._node.node_id else None),
                 )
+        commit_info = {
+            "tx_id": request.tx_id,
+            "commit_time": time.time(),
+            "writes": set(txdata.get("writes", set())),
+        }
+        with self._node._tx_lock:
+            self._node.committed_transactions.append(commit_info)
         self._node._release_locks(request.tx_id)
         msg = f"Transação {request.tx_id} commit realizada com sucesso."
         if self._node.event_logger:
@@ -966,6 +998,9 @@ class NodeServer:
         #            "read_versions": {key: read_txid},
         #            "reads": set(), "writes": set()}}``
         self.active_transactions: dict[str, dict] = {}
+        # Track committed transactions for SSI conflict detection
+        # ``[{"tx_id": str, "commit_time": float, "writes": set[str]}]``
+        self.committed_transactions: list[dict] = []
         # Simple lock manager mapping key -> {'type': lock_type, 'owners': {tx_ids}}
         self.locks: dict[str, dict] = {}
         self.locks_by_tx: dict[str, set[str]] = {}
