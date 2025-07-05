@@ -867,6 +867,7 @@ class NodeServer:
         registry_port: int | None = None,
         event_logger: EventLogger | None = None,
         tx_lock_strategy: str = "2pl",
+        lock_timeout: float = 1.0,
     ):
         self.db_path = db_path
         self.event_logger = event_logger
@@ -887,6 +888,7 @@ class NodeServer:
         self.crdt_config = crdt_config or {}
         self.enable_forwarding = bool(enable_forwarding)
         self.tx_lock_strategy = tx_lock_strategy
+        self.lock_timeout = float(lock_timeout)
         self.cache_size = int(cache_size)
         self.cache = OrderedDict() if self.cache_size > 0 else None
         self.index_fields = list(index_fields or [])
@@ -1080,39 +1082,51 @@ class NodeServer:
         """Acquire a shared (read) lock for ``tx_id`` on ``key``."""
         if self.tx_lock_strategy != "2pl":
             return
-        with self._tx_lock:
-            lock = self.locks.get(key)
-            if lock is None:
-                self.locks[key] = {"type": "shared", "owners": {tx_id}}
-            else:
+        deadline = time.time() + self.lock_timeout
+        while True:
+            with self._tx_lock:
+                lock = self.locks.get(key)
+                if lock is None:
+                    self.locks[key] = {"type": "shared", "owners": {tx_id}}
+                    self.locks_by_tx.setdefault(tx_id, set()).add(key)
+                    return
                 if lock["type"] == "exclusive" and tx_id not in lock.get("owners", set()):
-                    if context:
-                        context.abort(grpc.StatusCode.ABORTED, "Locked")
-                    raise RuntimeError("Locked")
-                lock["owners"].add(tx_id)
-            self.locks_by_tx.setdefault(tx_id, set()).add(key)
+                    pass  # wait
+                else:
+                    lock["owners"].add(tx_id)
+                    self.locks_by_tx.setdefault(tx_id, set()).add(key)
+                    return
+            if time.time() >= deadline:
+                if context:
+                    context.abort(grpc.StatusCode.ABORTED, "Deadlock")
+                raise RuntimeError("Deadlock")
+            time.sleep(0.01)
 
     def _acquire_exclusive_lock(self, key: str, tx_id: str, context=None):
         """Acquire an exclusive (write) lock for ``tx_id`` on ``key``."""
-        with self._tx_lock:
-            lock = self.locks.get(key)
-            if lock is None:
-                self.locks[key] = {"type": "exclusive", "owners": {tx_id}}
-            elif lock["type"] == "exclusive":
-                if tx_id not in lock.get("owners", set()):
-                    if context:
-                        context.abort(grpc.StatusCode.ABORTED, "Locked")
-                    raise RuntimeError("Locked")
-            else:  # shared lock
-                owners = lock.get("owners", set())
-                if owners == {tx_id}:
-                    lock["type"] = "exclusive"
-                else:
-                    if context:
-                        context.abort(grpc.StatusCode.ABORTED, "Locked")
-                    raise RuntimeError("Locked")
-                lock["owners"].add(tx_id)
-            self.locks_by_tx.setdefault(tx_id, set()).add(key)
+        deadline = time.time() + self.lock_timeout
+        while True:
+            with self._tx_lock:
+                lock = self.locks.get(key)
+                if lock is None:
+                    self.locks[key] = {"type": "exclusive", "owners": {tx_id}}
+                    self.locks_by_tx.setdefault(tx_id, set()).add(key)
+                    return
+                elif lock["type"] == "exclusive":
+                    if tx_id in lock.get("owners", set()):
+                        self.locks_by_tx.setdefault(tx_id, set()).add(key)
+                        return
+                else:  # shared lock
+                    owners = lock.get("owners", set())
+                    if owners == {tx_id}:
+                        lock["type"] = "exclusive"
+                        self.locks_by_tx.setdefault(tx_id, set()).add(key)
+                        return
+            if time.time() >= deadline:
+                if context:
+                    context.abort(grpc.StatusCode.ABORTED, "Deadlock")
+                raise RuntimeError("Deadlock")
+            time.sleep(0.01)
 
     def _release_locks(self, tx_id: str) -> None:
         """Release all locks held by ``tx_id``."""
