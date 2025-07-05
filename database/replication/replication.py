@@ -42,6 +42,7 @@ class ClusterNode:
     port: int
     process: multiprocessing.Process
     client: GRPCReplicaClient
+    event_logger: EventLogger | None = None
 
     def put(self, key, value):
         ts = int(time.time() * 1000)
@@ -98,6 +99,7 @@ class NodeCluster:
         # Initialize event logger for cluster operations
         self.event_logger = EventLogger(os.path.join(base_path, "event_log.txt"))
         self.event_logger.log("NodeCluster created")
+        self.node_loggers: dict[str, EventLogger] = {}
 
         base_port = 9000
         self.base_port = base_port
@@ -228,6 +230,8 @@ class NodeCluster:
                 peers_i = []
                 rf = 1
 
+            node_logger = EventLogger(os.path.join(db_path, "event_log.txt"))
+            self.node_loggers[node_id] = node_logger
             p = multiprocessing.Process(
                 target=run_server,
                 args=(
@@ -251,14 +255,14 @@ class NodeCluster:
                     "global_index_fields": self.global_index_fields,
                     "registry_host": self.registry_addr[0] if self.use_registry else None,
                     "registry_port": self.registry_addr[1] if self.use_registry else None,
-                    "event_logger": self.event_logger,
+                    "event_logger": node_logger,
                 },
                 daemon=True,
             )
             p.start()
             time.sleep(0.2)
             client = GRPCReplicaClient("localhost", port)
-            node = ClusterNode(node_id, "localhost", port, p, client)
+            node = ClusterNode(node_id, "localhost", port, p, client, node_logger)
             self.nodes.append(node)
             self.nodes_by_id[node_id] = node
 
@@ -1208,6 +1212,8 @@ class NodeCluster:
             old_ring = list(self.partitioner.ring._ring)
             self.partitioner.ring.add_node(node_id, weight=self.partitions_per_node)
             self.partition_map = self.partitioner.get_partition_map()
+        node_logger = EventLogger(os.path.join(db_path, "event_log.txt"))
+        self.node_loggers[node_id] = node_logger
         p = multiprocessing.Process(
             target=run_server,
             args=(
@@ -1222,21 +1228,21 @@ class NodeCluster:
                 self.write_quorum,
                 self.read_quorum,
             ),
-                kwargs={
-                    "consistency_mode": self.consistency_mode,
-                    "enable_forwarding": self.enable_forwarding,
-                    "index_fields": self.index_fields,
-                    "global_index_fields": self.global_index_fields,
-                    "registry_host": self.registry_addr[0] if self.use_registry else None,
-                    "registry_port": self.registry_addr[1] if self.use_registry else None,
-                    "event_logger": self.event_logger,
-                },
-                daemon=True,
-            )
+            kwargs={
+                "consistency_mode": self.consistency_mode,
+                "enable_forwarding": self.enable_forwarding,
+                "index_fields": self.index_fields,
+                "global_index_fields": self.global_index_fields,
+                "registry_host": self.registry_addr[0] if self.use_registry else None,
+                "registry_port": self.registry_addr[1] if self.use_registry else None,
+                "event_logger": node_logger,
+            },
+            daemon=True,
+        )
         p.start()
         time.sleep(0.2)
         client = GRPCReplicaClient("localhost", port)
-        node = ClusterNode(node_id, "localhost", port, p, client)
+        node = ClusterNode(node_id, "localhost", port, p, client, node_logger)
         self.nodes.append(node)
         self.nodes_by_id[node_id] = node
         self.event_logger.log(f"Node {node_id} adicionado ao cluster.")
@@ -1317,6 +1323,9 @@ class NodeCluster:
                 self.partitions = self.partitioner.partitions
 
         self.nodes_by_id.pop(node_id)
+        logger = self.node_loggers.pop(node_id, None)
+        if logger:
+            logger.close()
         self.event_logger.log(f"Node {node_id} removido do cluster.")
         self.update_partition_map()
         node.stop()
@@ -1338,6 +1347,11 @@ class NodeCluster:
 
         db_path = os.path.join(self.base_path, node.node_id)
         peers = [(n.host, n.port, n.node_id) for n in self.nodes]
+        logger = self.node_loggers.get(node_id)
+        if logger is None:
+            logger = EventLogger(os.path.join(db_path, "event_log.txt"))
+            self.node_loggers[node_id] = logger
+
         p = multiprocessing.Process(
             target=run_server,
             args=(
@@ -1361,7 +1375,7 @@ class NodeCluster:
                 "global_index_fields": self.global_index_fields,
                 "registry_host": self.registry_addr[0] if self.use_registry else None,
                 "registry_port": self.registry_addr[1] if self.use_registry else None,
-                "event_logger": self.event_logger,
+                "event_logger": logger,
             },
             daemon=True,
         )
@@ -1390,4 +1404,7 @@ class NodeCluster:
             self.registry_process.join()
             if self._registry_channel:
                 self._registry_channel.close()
+        for logger in self.node_loggers.values():
+            logger.close()
+        self.event_logger.close()
 

@@ -17,6 +17,11 @@ class EventLogger:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         self._fp = open(log_path, "a", encoding="utf-8")
 
+    def close(self) -> None:
+        """Close the underlying log file."""
+        with self._lock:
+            self._fp.close()
+
     def log(self, message: str) -> None:
         """Append ``message`` to the log file with timestamp."""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
