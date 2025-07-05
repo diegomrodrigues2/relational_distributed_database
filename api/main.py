@@ -282,7 +282,7 @@ def merge_partitions(pid1: int, pid2: int) -> dict:
 def rebalance() -> dict:
     """Re-send the current partition map to all nodes."""
     cluster = app.state.cluster
-    cluster.update_partition_map()
+    cluster.update_partition_map(manual=True)
     return {"status": "ok"}
 
 

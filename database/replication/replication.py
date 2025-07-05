@@ -326,6 +326,10 @@ class NodeCluster:
     def mark_hot_key(self, key: str, buckets: int, migrate: bool = False) -> None:
         """Start salting ``key`` and optionally migrate existing data."""
         self.enable_salt(key, buckets)
+        self.event_logger.log(
+            f"Chave {key} marcada como hot com {buckets} buckets."
+            f" Migracao {'ativada' if migrate else 'desativada'}."
+        )
         if migrate:
             value = self.get(0, key, ignore_salt=True)
             if value is None:
@@ -385,8 +389,12 @@ class NodeCluster:
         """
         candidates = self.get_hot_partitions(threshold)
         for pid in candidates:
-            if self.partition_item_counts.get(pid, 0) >= min_keys:
+            key_count = self.partition_item_counts.get(pid, 0)
+            if key_count >= min_keys:
                 self.split_partition(pid)
+                self.event_logger.log(
+                    f"Particao {pid} estava sobrecarregada – {key_count} chaves – e foi dividida automaticamente."
+                )
                 self.reset_metrics()
 
     def check_cold_partitions(self, threshold: float = 0.5, max_keys: int = 1) -> None:
@@ -402,6 +410,9 @@ class NodeCluster:
                 right_count = self.partition_item_counts.get(pid + 1, 0)
                 if left_count <= max_keys and right_count <= max_keys:
                     self.merge_partitions(pid, pid + 1)
+                    self.event_logger.log(
+                        f"Particoes {pid} e {pid + 1} estavam frias e foram unidas automaticamente."
+                    )
                     self.reset_metrics()
                     cold = set(self.get_cold_partitions(threshold))
                     continue
@@ -488,8 +499,14 @@ class NodeCluster:
         """Return mapping from partition id to owning node id."""
         return dict(self.partition_map)
 
-    def update_partition_map(self) -> dict[int, str]:
-        """Send current partition map to all nodes via RPC and return it."""
+    def update_partition_map(self, manual: bool = False) -> dict[int, str]:
+        """Send current partition map to all nodes via RPC and return it.
+
+        If ``manual`` is ``True`` the update originated from an explicit
+        rebalance request via the API.
+        """
+        if manual:
+            self.event_logger.log("Rebalanceamento manual disparado via API.")
         for node in self.nodes:
             try:
                 node.client.update_partition_map(self.partition_map)
