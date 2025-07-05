@@ -77,9 +77,16 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 self._node._acquire_exclusive_lock(request.key, request.tx_id, context)
             with self._node._tx_lock:
                 txdata = self._node.active_transactions.setdefault(
-                    request.tx_id, {"ops": [], "reads": {}}
+                    request.tx_id,
+                    {
+                        "ops": [],
+                        "read_versions": {},
+                        "reads": set(),
+                        "writes": set(),
+                    },
                 )
                 txdata["ops"].append(("put", request))
+                txdata["writes"].add(request.key)
             return replication_pb2.Empty()
 
         origem = seq = None
@@ -258,9 +265,16 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 self._node._acquire_exclusive_lock(request.key, request.tx_id, context)
             with self._node._tx_lock:
                 txdata = self._node.active_transactions.setdefault(
-                    request.tx_id, {"ops": [], "reads": {}}
+                    request.tx_id,
+                    {
+                        "ops": [],
+                        "read_versions": {},
+                        "reads": set(),
+                        "writes": set(),
+                    },
                 )
                 txdata["ops"].append(("delete", request))
+                txdata["writes"].add(request.key)
             return replication_pb2.Empty()
 
         origem = seq = None
@@ -444,9 +458,16 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if request.tx_id:
                 with self._node._tx_lock:
                     txdata = self._node.active_transactions.setdefault(
-                        request.tx_id, {"ops": [], "reads": {}}
+                        request.tx_id,
+                        {
+                            "ops": [],
+                            "read_versions": {},
+                            "reads": set(),
+                            "writes": set(),
+                        },
                     )
-                    txdata["reads"][request.key] = None
+                    txdata["read_versions"][request.key] = None
+                    txdata["reads"].add(request.key)
             return replication_pb2.ValueResponse(values=[])
 
         # Choose the visible version we return and record its originating tx_id
@@ -472,9 +493,16 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         if request.tx_id:
             with self._node._tx_lock:
                 txdata = self._node.active_transactions.setdefault(
-                    request.tx_id, {"ops": [], "reads": {}}
+                    request.tx_id,
+                    {
+                        "ops": [],
+                        "read_versions": {},
+                        "reads": set(),
+                        "writes": set(),
+                    },
                 )
-                txdata["reads"][request.key] = best_tx
+                txdata["read_versions"][request.key] = best_tx
+                txdata["reads"].add(request.key)
 
         values = []
         for val, vc, *_ in records:
@@ -556,7 +584,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         tx_id = uuid.uuid4().hex
         with self._node._tx_lock:
             snapshot = list(self._node.active_transactions.keys())
-            self._node.active_transactions[tx_id] = {"ops": [], "reads": {}}
+            self._node.active_transactions[tx_id] = {
+                "ops": [],
+                "read_versions": {},
+                "reads": set(),
+                "writes": set(),
+            }
         msg = f"Transação {tx_id} iniciada."
         if self._node.event_logger:
             self._node.event_logger.log(msg)
@@ -567,10 +600,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def CommitTransaction(self, request, context):
         with self._node._tx_lock:
             txdata = self._node.active_transactions.pop(
-                request.tx_id, {"ops": [], "reads": {}}
+                request.tx_id,
+                {"ops": [], "read_versions": {}, "reads": set(), "writes": set()},
             )
         ops = txdata.get("ops", [])
-        reads = txdata.get("reads", {})
+        reads = txdata.get("read_versions", {})
 
         # Detect write conflicts based on versions read
         for op, req in ops:
@@ -926,8 +960,11 @@ class NodeServer:
         self.local_seq = 0
         self.last_seen: dict[str, int] = {}
         self.replication_log: dict[str, tuple] = {}
-        # Track operations and read versions for active transactions
-        # ``{tx_id: {"ops": [(op, request), ...], "reads": {key: read_txid}}}``
+        # Track operations, read versions and read/write sets for active
+        # transactions
+        # ``{tx_id: {"ops": [(op, request), ...],
+        #            "read_versions": {key: read_txid},
+        #            "reads": set(), "writes": set()}}``
         self.active_transactions: dict[str, dict] = {}
         # Simple lock manager mapping key -> {'type': lock_type, 'owners': {tx_ids}}
         self.locks: dict[str, dict] = {}
