@@ -428,6 +428,54 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_write_skew_prevented_by_2pl(self):
+        """Write skew should be prevented when using 2PL locking."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir, tx_lock_strategy="2pl", lock_timeout=0.2)
+            service = ReplicaService(node)
+
+            node.db.put("doc1", "on", timestamp=1)
+            node.db.put("doc2", "on", timestamp=1)
+
+            start = threading.Barrier(2)
+
+            def leave(doc_key):
+                tx_id = service.BeginTransaction(replication_pb2.Empty(), None).id
+
+                service.Get(replication_pb2.KeyRequest(key="doc1", tx_id=tx_id), None)
+                service.Get(replication_pb2.KeyRequest(key="doc2", tx_id=tx_id), None)
+                start.wait()
+
+                try:
+                    service.Delete(
+                        replication_pb2.KeyRequest(key=doc_key, timestamp=2, tx_id=tx_id),
+                        None,
+                    )
+                    service.CommitTransaction(
+                        replication_pb2.TransactionControl(tx_id=tx_id), None
+                    )
+                except RuntimeError:
+                    service.AbortTransaction(
+                        replication_pb2.TransactionControl(tx_id=tx_id), None
+                    )
+
+            t1 = threading.Thread(target=leave, args=("doc1",))
+            t2 = threading.Thread(target=leave, args=("doc2",))
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+            remaining = 0
+            if node.db.get("doc1") is not None:
+                remaining += 1
+            if node.db.get("doc2") is not None:
+                remaining += 1
+
+            self.assertEqual(remaining, 1)
+
+            node.db.close()
+
     def test_atomic_increment_concurrent_clients(self):
         """Concurrent increments should not result in lost updates."""
         with tempfile.TemporaryDirectory() as tmpdir:
