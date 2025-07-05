@@ -230,7 +230,8 @@ class NodeCluster:
                 peers_i = []
                 rf = 1
 
-            node_logger = EventLogger(os.path.join(db_path, "event_log.txt"))
+            log_path = os.path.join(db_path, "event_log.txt")
+            node_logger = EventLogger(log_path)
             self.node_loggers[node_id] = node_logger
             p = multiprocessing.Process(
                 target=run_server,
@@ -255,7 +256,7 @@ class NodeCluster:
                     "global_index_fields": self.global_index_fields,
                     "registry_host": self.registry_addr[0] if self.use_registry else None,
                     "registry_port": self.registry_addr[1] if self.use_registry else None,
-                    "event_logger": node_logger,
+                    "event_logger": log_path,
                 },
                 daemon=True,
             )
@@ -1212,7 +1213,8 @@ class NodeCluster:
             old_ring = list(self.partitioner.ring._ring)
             self.partitioner.ring.add_node(node_id, weight=self.partitions_per_node)
             self.partition_map = self.partitioner.get_partition_map()
-        node_logger = EventLogger(os.path.join(db_path, "event_log.txt"))
+        log_path = os.path.join(db_path, "event_log.txt")
+        node_logger = EventLogger(log_path)
         self.node_loggers[node_id] = node_logger
         p = multiprocessing.Process(
             target=run_server,
@@ -1235,7 +1237,7 @@ class NodeCluster:
                 "global_index_fields": self.global_index_fields,
                 "registry_host": self.registry_addr[0] if self.use_registry else None,
                 "registry_port": self.registry_addr[1] if self.use_registry else None,
-                "event_logger": node_logger,
+                "event_logger": log_path,
             },
             daemon=True,
         )
@@ -1347,9 +1349,10 @@ class NodeCluster:
 
         db_path = os.path.join(self.base_path, node.node_id)
         peers = [(n.host, n.port, n.node_id) for n in self.nodes]
+        log_path = os.path.join(db_path, "event_log.txt")
         logger = self.node_loggers.get(node_id)
         if logger is None:
-            logger = EventLogger(os.path.join(db_path, "event_log.txt"))
+            logger = EventLogger(log_path)
             self.node_loggers[node_id] = logger
 
         p = multiprocessing.Process(
@@ -1375,7 +1378,7 @@ class NodeCluster:
                 "global_index_fields": self.global_index_fields,
                 "registry_host": self.registry_addr[0] if self.use_registry else None,
                 "registry_port": self.registry_addr[1] if self.use_registry else None,
-                "event_logger": logger,
+                "event_logger": log_path,
             },
             daemon=True,
         )

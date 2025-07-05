@@ -531,7 +531,14 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 context.abort(grpc.StatusCode.INVALID_ARGUMENT, "MissingTxId")
             raise RuntimeError("MissingTxId")
         self._node._acquire_exclusive_lock(request.key, request.tx_id, context)
-        return self.Get(request, context)
+        resp = self.Get(request, context)
+        # Remove the key from the transaction's read set since the exclusive
+        # lock ensures no concurrent writes can cause a conflict.
+        with self._node._tx_lock:
+            txdata = self._node.active_transactions.get(request.tx_id)
+            if txdata:
+                txdata.get("reads", set()).discard(request.key)
+        return resp
 
     def Increment(self, request, context):
         """Atomically increment a numeric value."""
@@ -931,11 +938,13 @@ class NodeServer:
         global_index_fields: list[str] | None = None,
         registry_host: str | None = None,
         registry_port: int | None = None,
-        event_logger: EventLogger | None = None,
+        event_logger: EventLogger | str | None = None,
         tx_lock_strategy: str = "2pl",
         lock_timeout: float = 1.0,
     ):
         self.db_path = db_path
+        if isinstance(event_logger, str):
+            event_logger = EventLogger(event_logger)
         self.event_logger = event_logger
         self.db = SimpleLSMDB(db_path=db_path, event_logger=event_logger)
         self.start_time = time.time()
@@ -1989,7 +1998,7 @@ def run_server(
     global_index_fields: list[str] | None = None,
     registry_host: str | None = None,
     registry_port: int | None = None,
-    event_logger: EventLogger | None = None,
+    event_logger: EventLogger | str | None = None,
 ):
     node = NodeServer(
         db_path,
