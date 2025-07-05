@@ -454,6 +454,40 @@ class TransactionTest(unittest.TestCase):
 
             node.db.close()
 
+    def test_serial_transfer_concurrent(self):
+        """Concurrent transfers serialized by a global lock."""
+        # Este método (`Transfer`) funciona como um *stored procedure*. Ele
+        # garante a serialização ao ser executado em uma única 'thread' lógica
+        # (protegida por um lock), mas limita a vazão do sistema, já que todas
+        # as transações de transferência são enfileiradas.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node = NodeServer(db_path=tmpdir)
+            service = ReplicaService(node)
+
+            node.db.put("from", "10", timestamp=1)
+            node.db.put("to", "0", timestamp=1)
+
+            start = threading.Barrier(2)
+
+            def do_transfer():
+                start.wait()
+                req = replication_pb2.TransferRequest(
+                    from_key="from", to_key="to", amount=1
+                )
+                service.Transfer(req, None)
+
+            t1 = threading.Thread(target=do_transfer)
+            t2 = threading.Thread(target=do_transfer)
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+            self.assertEqual(node.db.get("from"), "8")
+            self.assertEqual(node.db.get("to"), "2")
+
+            node.db.close()
+
     def test_lost_update_without_get_for_update(self):
         """Concurrent read-modify-write without locks loses an update."""
         with tempfile.TemporaryDirectory() as tmpdir:
