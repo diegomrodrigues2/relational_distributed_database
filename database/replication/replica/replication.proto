@@ -34,6 +34,13 @@ message IncrementRequest {
   int64 amount = 2;
 }
 
+// Request for an atomic transfer between two keys
+message TransferRequest {
+  string from_key = 1;
+  string to_key = 2;
+  int64 amount = 3;
+}
+
 // Resposta que devolve um valor, vazio caso nao encontrado
 // Representa um valor versionado
 message VersionedValue {
@@ -246,6 +253,7 @@ service Replica {
   // Get value acquiring a lock similar to SELECT FOR UPDATE
   rpc GetForUpdate(KeyRequest) returns (ValueResponse);
   rpc Increment(IncrementRequest) returns (Empty);
+  rpc Transfer(TransferRequest) returns (Empty);
   rpc BeginTransaction(Empty) returns (TransactionId);
   // Apply all buffered operations of a transaction
   rpc CommitTransaction(TransactionControl) returns (Empty);

@@ -99,6 +99,16 @@ class GRPCReplicaClient:
         req = replication_pb2.IncrementRequest(key=key, amount=int(amount))
         self.stub.Increment(req)
 
+    def transfer(self, from_key: str, to_key: str, amount: int) -> None:
+        """Atomically transfer ``amount`` from ``from_key`` to ``to_key``."""
+        self._ensure_channel()
+        req = replication_pb2.TransferRequest(
+            from_key=from_key,
+            to_key=to_key,
+            amount=int(amount),
+        )
+        self.stub.Transfer(req)
+
     def get(
         self, key, *, tx_id: str = "", in_progress: list[str] | None = None
     ):

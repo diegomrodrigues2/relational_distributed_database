@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 from . import replication_pb2, replication_pb2_grpc, metadata_pb2, metadata_pb2_grpc
 from .client import GRPCReplicaClient
 
+# Global lock used to serialize Transfer operations
+global_transfer_lock = threading.Lock()
+
 
 class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     """Service exposing database operations."""
@@ -519,6 +522,36 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             self._node.db.put(request.key, str(new_val), timestamp=ts)
         finally:
             lock.release()
+        return replication_pb2.Empty()
+
+    def Transfer(self, request, context):
+        """Atomically transfer amount from one key to another."""
+        global_transfer_lock.acquire()
+        try:
+            from_val = self._node.db.get(request.from_key)
+            to_val = self._node.db.get(request.to_key)
+
+            def _to_int(value):
+                if isinstance(value, list):
+                    value = value[-1]
+                try:
+                    return int(value) if value is not None else 0
+                except Exception:
+                    return 0
+
+            from_balance = _to_int(from_val)
+            to_balance = _to_int(to_val)
+            if from_balance < request.amount:
+                if context:
+                    context.abort(grpc.StatusCode.FAILED_PRECONDITION, "InsufficientFunds")
+                raise RuntimeError("InsufficientFunds")
+            new_from = from_balance - request.amount
+            new_to = to_balance + request.amount
+            ts = self._node.clock.tick()
+            self._node.db.put(request.from_key, str(new_from), timestamp=ts)
+            self._node.db.put(request.to_key, str(new_to), timestamp=ts)
+        finally:
+            global_transfer_lock.release()
         return replication_pb2.Empty()
 
     def BeginTransaction(self, request, context):
