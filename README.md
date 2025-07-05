@@ -500,6 +500,8 @@ client.commit_transaction(tx)
   dirty writes.
 - **Atomic increment** &ndash; the `Increment` RPC updates numeric values
   atomically using a per-key lock.
+- **Configurable locking** &ndash; pass `tx_lock_strategy="2pl"` to enable
+  pessimistic two-phase locking or `"basic"` for the original behavior.
 
 ## Dedicated Routing Tier
 

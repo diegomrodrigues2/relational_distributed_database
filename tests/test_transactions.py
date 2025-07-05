@@ -123,9 +123,8 @@ class TransactionTest(unittest.TestCase):
             self.assertEqual(resp.values[0].value, "v0")
 
             tx2 = service.BeginTransaction(replication_pb2.Empty(), None).id
-            resp2 = service.Get(replication_pb2.KeyRequest(key="k", tx_id=tx2), None)
-            self.assertEqual(len(resp2.values), 1)
-            self.assertEqual(resp2.values[0].value, "v0")
+            with self.assertRaises(RuntimeError):
+                service.Get(replication_pb2.KeyRequest(key="k", tx_id=tx2), None)
 
             service.CommitTransaction(
                 replication_pb2.TransactionControl(tx_id=tx1), None
@@ -151,9 +150,8 @@ class TransactionTest(unittest.TestCase):
             )
 
             tx2 = service.BeginTransaction(replication_pb2.Empty(), None).id
-            resp = service.Get(replication_pb2.KeyRequest(key="key", tx_id=tx2), None)
-            self.assertEqual(len(resp.values), 1)
-            self.assertEqual(resp.values[0].value, "old")
+            with self.assertRaises(RuntimeError):
+                service.Get(replication_pb2.KeyRequest(key="key", tx_id=tx2), None)
 
             service.CommitTransaction(
                 replication_pb2.TransactionControl(tx_id=tx1), None
@@ -562,25 +560,22 @@ class TransactionTest(unittest.TestCase):
             v2 = int(r2.values[0].value) if r2.values else 0
 
             ts1 = node.clock.tick()
-            service.Put(
-                replication_pb2.KeyValue(key="cnt", value=str(v1 + 1), timestamp=ts1, tx_id=tx1),
-                None,
-            )
-            ts2 = node.clock.tick()
-            service.Put(
-                replication_pb2.KeyValue(key="cnt", value=str(v2 + 1), timestamp=ts2, tx_id=tx2),
-                None,
-            )
-
-            service.CommitTransaction(replication_pb2.TransactionControl(tx_id=tx1), None)
             with self.assertRaises(RuntimeError):
-                service.CommitTransaction(replication_pb2.TransactionControl(tx_id=tx2), None)
+                service.Put(
+                    replication_pb2.KeyValue(key="cnt", value=str(v1 + 1), timestamp=ts1, tx_id=tx1),
+                    None,
+                )
+            ts2 = node.clock.tick()
+            with self.assertRaises(RuntimeError):
+                service.Put(
+                    replication_pb2.KeyValue(key="cnt", value=str(v2 + 1), timestamp=ts2, tx_id=tx2),
+                    None,
+                )
 
-            final_val = node.db.get("cnt")
-            if isinstance(final_val, list):
-                self.assertIn("1", final_val)
-            else:
-                self.assertEqual(final_val, "1")
+            service.AbortTransaction(replication_pb2.TransactionControl(tx_id=tx1), None)
+            service.AbortTransaction(replication_pb2.TransactionControl(tx_id=tx2), None)
+
+            self.assertEqual(node.db.get("cnt"), "0")
 
             node.db.close()
 

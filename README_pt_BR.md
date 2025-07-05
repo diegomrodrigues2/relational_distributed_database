@@ -842,6 +842,8 @@ cliente.commit_transaction(tx)
   chave por vez, evitando escritas sujas.
 - **Incremento atômico** &ndash; a RPC `Increment` atualiza contadores de forma
   atômica usando um lock dedicado.
+- **Bloqueio configurável** &ndash; defina `tx_lock_strategy="2pl"` para usar
+  bloqueio pessimista em duas fases ou `"basic"` para o comportamento anterior.
 
 ## Dedicated Routing Tier
 
