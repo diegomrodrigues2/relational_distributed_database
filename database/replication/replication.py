@@ -1025,7 +1025,7 @@ class NodeCluster:
                     expected = bytes_copied / float(self.max_transfer_rate)
                     if expected > elapsed:
                         time.sleep(expected - elapsed)
-        print(
+        self.event_logger.log(
             f"moved partition {partition_id} from {src_node.node_id} to {dst_node.node_id}"
         )
 
