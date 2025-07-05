@@ -21,6 +21,9 @@ from ...clustering.index_manager import IndexManager
 from ...clustering.global_index_manager import GlobalIndexManager
 from ...clustering.hash_ring import HashRing
 from ...utils.event_logger import EventLogger
+import logging
+
+logger = logging.getLogger(__name__)
 from . import replication_pb2, replication_pb2_grpc, metadata_pb2, metadata_pb2_grpc
 from .client import GRPCReplicaClient
 
@@ -523,6 +526,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         with self._node._tx_lock:
             snapshot = list(self._node.active_transactions.keys())
             self._node.active_transactions[tx_id] = {"ops": [], "reads": {}}
+        msg = f"Transação {tx_id} iniciada."
+        if self._node.event_logger:
+            self._node.event_logger.log(msg)
+        else:
+            logger.info(msg)
         return replication_pb2.TransactionId(id=tx_id, in_progress=snapshot)
 
     def CommitTransaction(self, request, context):
@@ -604,6 +612,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 with self._node._write_lock:
                     if self._node.write_locks.get(k) == request.tx_id:
                         self._node.write_locks.pop(k, None)
+        msg = f"Transação {request.tx_id} commit realizada com sucesso."
+        if self._node.event_logger:
+            self._node.event_logger.log(msg)
+        else:
+            logger.info(msg)
         return replication_pb2.Empty()
 
     def AbortTransaction(self, request, context):
@@ -616,6 +629,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 with self._node._write_lock:
                     if self._node.write_locks.get(k) == request.tx_id:
                         self._node.write_locks.pop(k, None)
+        msg = f"Transação {request.tx_id} abortada."
+        if self._node.event_logger:
+            self._node.event_logger.log(msg)
+        else:
+            logger.info(msg)
         return replication_pb2.Empty()
 
     def ListTransactions(self, request, context):
