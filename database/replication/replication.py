@@ -1206,6 +1206,7 @@ class NodeCluster:
         node = ClusterNode(node_id, "localhost", port, p, client)
         self.nodes.append(node)
         self.nodes_by_id[node_id] = node
+        self.event_logger.log(f"Node {node_id} adicionado ao cluster.")
         if isinstance(self.partitioner, ConsistentHashPartitioner):
             self.partitioner.nodes = self.nodes
             self._rebuild_ring_partitions()
