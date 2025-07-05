@@ -98,6 +98,8 @@ class NodeCluster:
         # Initialize event logger for cluster operations
         self.event_logger = EventLogger(os.path.join(base_path, "event_log.txt"))
         self.event_logger.log("NodeCluster created")
+        # Maintain separate loggers for each node
+        self.node_loggers: dict[str, EventLogger] = {}
 
         base_port = 9000
         self.base_port = base_port
@@ -214,6 +216,9 @@ class NodeCluster:
         for i in range(num_nodes):
             node_id = f"node_{i}"
             db_path = os.path.join(base_path, node_id)
+            node_log_path = os.path.join(db_path, "event_log.txt")
+            node_logger = EventLogger(node_log_path)
+            self.node_loggers[node_id] = node_logger
             port = base_port + i
             if topology is None:
                 peers_i = peers
@@ -251,7 +256,7 @@ class NodeCluster:
                     "global_index_fields": self.global_index_fields,
                     "registry_host": self.registry_addr[0] if self.use_registry else None,
                     "registry_port": self.registry_addr[1] if self.use_registry else None,
-                    "event_logger": self.event_logger,
+                    "event_logger": node_logger,
                 },
                 daemon=True,
             )
@@ -430,6 +435,13 @@ class NodeCluster:
     def get_partition_item_counts(self) -> dict[int, int]:
         """Return a mapping pid -> item count since last reset."""
         return {i: self.partition_item_counts.get(i, 0) for i in range(self.num_partitions)}
+
+    def get_node_events(self, node_id: str, *, offset: int = 0, limit: int | None = None) -> list[str]:
+        """Return recent event log entries for ``node_id``."""
+        logger = self.node_loggers.get(node_id)
+        if logger is None:
+            return []
+        return logger.get_events(offset=offset, limit=limit)
 
     def get_node_for_key(
         self, partition_key: str, clustering_key: str | None = None
@@ -1202,6 +1214,9 @@ class NodeCluster:
         idx = len(self.nodes)
         node_id = f"node_{idx}"
         db_path = os.path.join(self.base_path, node_id)
+        node_log_path = os.path.join(db_path, "event_log.txt")
+        node_logger = EventLogger(node_log_path)
+        self.node_loggers[node_id] = node_logger
         port = self.base_port + idx
         peers = [("localhost", self.base_port + i, f"node_{i}") for i in range(len(self.nodes) + 1)]
         if isinstance(self.partitioner, ConsistentHashPartitioner):
@@ -1229,7 +1244,7 @@ class NodeCluster:
                     "global_index_fields": self.global_index_fields,
                     "registry_host": self.registry_addr[0] if self.use_registry else None,
                     "registry_port": self.registry_addr[1] if self.use_registry else None,
-                    "event_logger": self.event_logger,
+                    "event_logger": node_logger,
                 },
                 daemon=True,
             )
@@ -1317,6 +1332,9 @@ class NodeCluster:
                 self.partitions = self.partitioner.partitions
 
         self.nodes_by_id.pop(node_id)
+        logger = self.node_loggers.pop(node_id, None)
+        if logger:
+            logger.close()
         self.event_logger.log(f"Node {node_id} removido do cluster.")
         self.update_partition_map()
         node.stop()
@@ -1337,6 +1355,11 @@ class NodeCluster:
             return
 
         db_path = os.path.join(self.base_path, node.node_id)
+        node_logger = self.node_loggers.get(node_id)
+        if node_logger is None:
+            log_path = os.path.join(db_path, "event_log.txt")
+            node_logger = EventLogger(log_path)
+            self.node_loggers[node_id] = node_logger
         peers = [(n.host, n.port, n.node_id) for n in self.nodes]
         p = multiprocessing.Process(
             target=run_server,
@@ -1361,7 +1384,7 @@ class NodeCluster:
                 "global_index_fields": self.global_index_fields,
                 "registry_host": self.registry_addr[0] if self.use_registry else None,
                 "registry_port": self.registry_addr[1] if self.use_registry else None,
-                "event_logger": self.event_logger,
+                "event_logger": node_logger,
             },
             daemon=True,
         )
@@ -1390,4 +1413,8 @@ class NodeCluster:
             self.registry_process.join()
             if self._registry_channel:
                 self._registry_channel.close()
+        # Close all event loggers
+        self.event_logger.close()
+        for logger in self.node_loggers.values():
+            logger.close()
 

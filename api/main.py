@@ -184,6 +184,16 @@ def cluster_events(offset: int = 0, limit: int | None = None) -> dict:
     return {"events": events}
 
 
+@app.get("/cluster/nodes/{node_id}/events")
+def node_events(node_id: str, offset: int = 0, limit: int | None = None) -> dict:
+    """Return recent event log entries for a specific node."""
+    cluster = app.state.cluster
+    events = cluster.get_node_events(node_id, offset=offset, limit=limit)
+    if not events and node_id not in cluster.nodes_by_id:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return {"events": events}
+
+
 @app.get("/cluster/config")
 def cluster_config() -> dict:
     """Return cluster configuration values."""

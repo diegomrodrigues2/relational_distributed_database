@@ -34,3 +34,8 @@ class EventLogger:
             offset = 0
         end = offset + limit if limit is not None else None
         return entries[offset:end]
+
+    def close(self) -> None:
+        """Close the underlying file handle."""
+        with self._lock:
+            self._fp.close()

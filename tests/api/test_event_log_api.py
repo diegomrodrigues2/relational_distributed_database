@@ -14,3 +14,12 @@ def test_event_log_endpoint_returns_events():
         assert "events" in data
         assert isinstance(data["events"], list)
         assert any("NodeCluster created" in e for e in data["events"])
+
+
+def test_node_event_log_endpoint_returns_events():
+    with TestClient(app) as client:
+        resp = client.get("/cluster/nodes/node_0/events")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "events" in data
+        assert isinstance(data["events"], list)
