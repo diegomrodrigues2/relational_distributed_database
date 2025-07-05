@@ -60,6 +60,11 @@ class ReplicaStub(object):
                 request_serializer=replication__pb2.IncrementRequest.SerializeToString,
                 response_deserializer=replication__pb2.Empty.FromString,
                 _registered_method=True)
+        self.Transfer = channel.unary_unary(
+                '/replication.Replica/Transfer',
+                request_serializer=replication__pb2.TransferRequest.SerializeToString,
+                response_deserializer=replication__pb2.Empty.FromString,
+                _registered_method=True)
         self.BeginTransaction = channel.unary_unary(
                 '/replication.Replica/BeginTransaction',
                 request_serializer=replication__pb2.Empty.SerializeToString,
@@ -167,6 +172,12 @@ class ReplicaServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def Increment(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Transfer(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -290,6 +301,11 @@ def add_ReplicaServicer_to_server(servicer, server):
             'Increment': grpc.unary_unary_rpc_method_handler(
                     servicer.Increment,
                     request_deserializer=replication__pb2.IncrementRequest.FromString,
+                    response_serializer=replication__pb2.Empty.SerializeToString,
+            ),
+            'Transfer': grpc.unary_unary_rpc_method_handler(
+                    servicer.Transfer,
+                    request_deserializer=replication__pb2.TransferRequest.FromString,
                     response_serializer=replication__pb2.Empty.SerializeToString,
             ),
             'BeginTransaction': grpc.unary_unary_rpc_method_handler(
@@ -503,6 +519,33 @@ class Replica(object):
             target,
             '/replication.Replica/Increment',
             replication__pb2.IncrementRequest.SerializeToString,
+            replication__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Transfer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/replication.Replica/Transfer',
+            replication__pb2.TransferRequest.SerializeToString,
             replication__pb2.Empty.FromString,
             options,
             channel_credentials,
