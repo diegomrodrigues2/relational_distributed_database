@@ -1287,6 +1287,7 @@ class NodeCluster:
                 self.partitions = self.partitioner.partitions
 
         self.nodes_by_id.pop(node_id)
+        self.event_logger.log(f"Node {node_id} removido do cluster.")
         self.update_partition_map()
         node.stop()
 
