@@ -176,6 +176,14 @@ def time_series_metrics() -> dict:
     return data
 
 
+@app.get("/cluster/events")
+def cluster_events(offset: int = 0, limit: int | None = None) -> dict:
+    """Return recent event log entries."""
+    cluster = app.state.cluster
+    events = cluster.event_logger.get_events(offset=offset, limit=limit)
+    return {"events": events}
+
+
 @app.get("/cluster/config")
 def cluster_config() -> dict:
     """Return cluster configuration values."""
