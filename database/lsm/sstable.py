@@ -3,6 +3,10 @@ import json
 import time
 from ..utils.vector_clock import VectorClock
 from ..clustering.partitioning import compose_key
+from ..utils.event_logger import EventLogger
+import logging
+
+logger = logging.getLogger(__name__)
 
 SSTABLE_SPARSE_INDEX_INTERVAL = 100 # Intervalo para o índice esparso (a cada 100 linhas, por exemplo)
 TOMBSTONE = "__TOMBSTONE__" # Marcador para exclusão
@@ -59,13 +63,20 @@ def _merge_version_lists(current, new_list):
 
 class SSTableManager:
 
-    def __init__(self, sstable_dir: str) -> None:
+    def __init__(self, sstable_dir: str, *, event_logger: EventLogger | None = None) -> None:
         """Gerencia arquivos SSTable no disco."""
+        self.event_logger = event_logger
         self.sstable_dir = sstable_dir
         self.sstable_segments = []
 
         self._load_existing_sstables()
-        print(f"SSTableManager inicializado. {len(self.sstable_segments)} SSTables existentes carregados.")
+        msg = (
+            f"SSTableManager inicializado. {len(self.sstable_segments)} SSTables existentes carregados."
+        )
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
     def _load_existing_sstables(self):
         """Carrega SSTables existentes e seus índices."""
@@ -83,7 +94,11 @@ class SSTableManager:
                 self.sstable_segments.append((timestamp, path, sparse_index))
         # Ordena os segmentos do mais antigo para o mais novo
         self.sstable_segments.sort(key=lambda x: x[0])
-        print(f"  SSTableManager: Carregou {len(self.sstable_segments)} SSTables do disco.")
+        msg = f"  SSTableManager: Carregou {len(self.sstable_segments)} SSTables do disco."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
     def _build_sparse_index(self, sstable_path):
         """Cria índice esparso para um SSTable."""
@@ -99,9 +114,13 @@ class SSTableManager:
                         key_part = ""
                     sparse_index.append({"key": key_part, "offset": offset})
                 offset += len(line.encode("utf-8"))
-        print(
+        msg = (
             f"  SSTableManager: Índice esparso construído para {os.path.basename(sstable_path)} com {len(sparse_index)} entradas."
         )
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
         return sparse_index
     
     def write_sstable(self, sorted_items):
@@ -120,15 +139,25 @@ class SSTableManager:
         sparse_index = self._build_sparse_index(sstable_path)
         # Adiciona o novo SSTable ao final (ele é o mais recente)
         self.sstable_segments.append((timestamp, sstable_path, sparse_index))
-        self.sstable_segments.sort(key=lambda x: x[0]) # Re-ordena para garantir o mais novo no final
-        print(f"  SSTableManager: Novo SSTable '{sstable_filename}' escrito com {len(sorted_items)} itens.")
+        self.sstable_segments.sort(key=lambda x: x[0])  # Re-ordena para garantir o mais novo no final
+        msg = (
+            f"  SSTableManager: Novo SSTable '{sstable_filename}' escrito com {len(sorted_items)} itens."
+        )
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
         return sstable_path
 
     def get_from_sstable(self, sstable_entry, key, *, clustering_key=None):
         """Busca chave em um SSTable usando o índice esparso."""
         composed = compose_key(key, clustering_key)
         _, sstable_path, sparse_index = sstable_entry
-        print(f"  SSTableManager: Buscando '{composed}' em {os.path.basename(sstable_path)}...")
+        msg = f"  SSTableManager: Buscando '{composed}' em {os.path.basename(sstable_path)}..."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
         with open(sstable_path, 'r', encoding='utf-8') as f:
             start_offset = 0
@@ -163,25 +192,45 @@ class SSTableManager:
 
                 if current_key == composed:
                     if value == TOMBSTONE:
-                        print(f"  SSTableManager: Encontrado tombstone para '{composed}'.")
+                        msg = f"  SSTableManager: Encontrado tombstone para '{composed}'."
+                        if self.event_logger:
+                            self.event_logger.log(msg)
+                        else:
+                            logger.info(msg)
                         return [(TOMBSTONE, vector)]
-                    print(f"  SSTableManager: '{composed}' encontrado em {os.path.basename(sstable_path)}.")
+                    msg = f"  SSTableManager: '{composed}' encontrado em {os.path.basename(sstable_path)}."
+                    if self.event_logger:
+                        self.event_logger.log(msg)
+                    else:
+                        logger.info(msg)
                     return [(value, vector)]
                 elif current_key > composed:
                     # Como o arquivo é ordenado, se a chave atual é maior que a chave buscada,
                     # a chave buscada não está neste SSTable.
                     break
         
-        print(f"  SSTableManager: '{composed}' não encontrado em {os.path.basename(sstable_path)}.")
+        msg = f"  SSTableManager: '{composed}' não encontrado em {os.path.basename(sstable_path)}."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
         return None
 
     def compact_segments(self):
         """Compacta todos os SSTables em um novo."""
         if len(self.sstable_segments) <= 1:
-            print("  SSTableManager: Não há segmentos suficientes para compactar.")
+            msg = "  SSTableManager: Não há segmentos suficientes para compactar."
+            if self.event_logger:
+                self.event_logger.log(msg)
+            else:
+                logger.info(msg)
             return
 
-        print(f"  SSTableManager: Iniciando compactação de {len(self.sstable_segments)} segmentos...")
+        msg = f"  SSTableManager: Iniciando compactação de {len(self.sstable_segments)} segmentos..."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
         # Para garantir que a versão mais recente prevaleça,
         # iteramos sobre os segmentos do mais novo para o mais antigo.
@@ -192,7 +241,11 @@ class SSTableManager:
         segments_to_merge = sorted(self.sstable_segments, key=lambda x: x[0], reverse=True)
 
         for _, sstable_path, _ in segments_to_merge:
-            print(f"    SSTableManager: Lendo {os.path.basename(sstable_path)} para compactação...")
+            msg = f"    SSTableManager: Lendo {os.path.basename(sstable_path)} para compactação..."
+            if self.event_logger:
+                self.event_logger.log(msg)
+            else:
+                logger.info(msg)
 
             with open(sstable_path, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -235,12 +288,28 @@ class SSTableManager:
         for old_path in old_segments_paths:
             try:
                 os.remove(old_path)
-                print(f"    SSTableManager: Deletado SSTable antigo: {os.path.basename(old_path)}")
+                msg = f"    SSTableManager: Deletado SSTable antigo: {os.path.basename(old_path)}"
+                if self.event_logger:
+                    self.event_logger.log(msg)
+                else:
+                    logger.info(msg)
             except OSError as e:
-                print(f"    SSTableManager: Erro ao deletar {os.path.basename(old_path)}: {e}")
+                msg = f"    SSTableManager: Erro ao deletar {os.path.basename(old_path)}: {e}"
+                if self.event_logger:
+                    self.event_logger.log(msg)
+                else:
+                    logger.info(msg)
         
-        print(f"  SSTableManager: Compactação concluída. Novo SSTable: '{new_sstable_filename}'.")
-        print(f"  SSTableManager: Agora temos {len(self.sstable_segments)} SSTables no disco.")
+        msg = f"  SSTableManager: Compactação concluída. Novo SSTable: '{new_sstable_filename}'."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
+        msg = f"  SSTableManager: Agora temos {len(self.sstable_segments)} SSTables no disco."
+        if self.event_logger:
+            self.event_logger.log(msg)
+        else:
+            logger.info(msg)
 
 
 

@@ -20,6 +20,7 @@ from ...clustering.partitioning import hash_key
 from ...clustering.index_manager import IndexManager
 from ...clustering.global_index_manager import GlobalIndexManager
 from ...clustering.hash_ring import HashRing
+from ...utils.event_logger import EventLogger
 from . import replication_pb2, replication_pb2_grpc, metadata_pb2, metadata_pb2_grpc
 from .client import GRPCReplicaClient
 
@@ -825,9 +826,11 @@ class NodeServer:
         global_index_fields: list[str] | None = None,
         registry_host: str | None = None,
         registry_port: int | None = None,
+        event_logger: EventLogger | None = None,
     ):
         self.db_path = db_path
-        self.db = SimpleLSMDB(db_path=db_path)
+        self.event_logger = event_logger
+        self.db = SimpleLSMDB(db_path=db_path, event_logger=event_logger)
         self.start_time = time.time()
         self.host = host
         self.port = port
@@ -1793,6 +1796,7 @@ def run_server(
     global_index_fields: list[str] | None = None,
     registry_host: str | None = None,
     registry_port: int | None = None,
+    event_logger: EventLogger | None = None,
 ):
     node = NodeServer(
         db_path,
@@ -1813,5 +1817,6 @@ def run_server(
         global_index_fields=global_index_fields,
         registry_host=registry_host,
         registry_port=registry_port,
+        event_logger=event_logger,
     )
     node.start()
