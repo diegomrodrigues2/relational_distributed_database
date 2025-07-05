@@ -73,8 +73,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node.clock.update(request.timestamp)
 
         if request.tx_id:
+            if self._node.tx_lock_strategy == "2pl":
+                self._node._acquire_exclusive_lock(request.key, request.tx_id, context)
             with self._node._tx_lock:
-                self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
                 txdata = self._node.active_transactions.setdefault(
                     request.tx_id, {"ops": [], "reads": {}}
                 )
@@ -253,8 +254,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node.clock.update(request.timestamp)
 
         if request.tx_id:
+            if self._node.tx_lock_strategy == "2pl":
+                self._node._acquire_exclusive_lock(request.key, request.tx_id, context)
             with self._node._tx_lock:
-                self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
                 txdata = self._node.active_transactions.setdefault(
                     request.tx_id, {"ops": [], "reads": {}}
                 )
@@ -403,6 +405,9 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if client:
                 return client.stub.Get(request)
 
+        if request.tx_id and self._node.tx_lock_strategy == "2pl":
+            self._node._acquire_shared_lock(request.key, request.tx_id, context)
+
         # ------------------------------------------------------------------
         # Check for pending operations from other transactions touching this key.
         # If another transaction has modified the key but not committed yet,
@@ -495,14 +500,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             if context:
                 context.abort(grpc.StatusCode.INVALID_ARGUMENT, "MissingTxId")
             raise RuntimeError("MissingTxId")
-        with self._node._tx_lock:
-            holder = self._node.locks.get(request.key)
-            if holder not in (None, request.tx_id):
-                if context:
-                    context.abort(grpc.StatusCode.ABORTED, "Locked")
-                raise RuntimeError("Locked")
-            self._node.locks[request.key] = request.tx_id
-            self._node.locks_by_tx.setdefault(request.tx_id, set()).add(request.key)
+        self._node._acquire_exclusive_lock(request.key, request.tx_id, context)
         return self.Get(request, context)
 
     def Increment(self, request, context):
@@ -583,8 +581,11 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     with self._node._tx_lock:
                         locked = self._node.locks_by_tx.pop(request.tx_id, set())
                         for k in locked:
-                            if self._node.locks.get(k) == request.tx_id:
-                                self._node.locks.pop(k, None)
+                            lock = self._node.locks.get(k)
+                            if lock and request.tx_id in lock.get("owners", set()):
+                                lock["owners"].discard(request.tx_id)
+                                if not lock["owners"]:
+                                    self._node.locks.pop(k, None)
                             with self._node._write_lock:
                                 if self._node.write_locks.get(k) == request.tx_id:
                                     self._node.write_locks.pop(k, None)
@@ -637,14 +638,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     vector=new_vc.clock,
                     skip_id=(req.node_id if req.node_id != self._node.node_id else None),
                 )
-        with self._node._tx_lock:
-            locked = self._node.locks_by_tx.pop(request.tx_id, set())
-            for k in locked:
-                if self._node.locks.get(k) == request.tx_id:
-                    self._node.locks.pop(k, None)
-                with self._node._write_lock:
-                    if self._node.write_locks.get(k) == request.tx_id:
-                        self._node.write_locks.pop(k, None)
+        self._node._release_locks(request.tx_id)
         msg = f"Transação {request.tx_id} commit realizada com sucesso."
         if self._node.event_logger:
             self._node.event_logger.log(msg)
@@ -655,13 +649,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def AbortTransaction(self, request, context):
         with self._node._tx_lock:
             self._node.active_transactions.pop(request.tx_id, None)
-            locked = self._node.locks_by_tx.pop(request.tx_id, set())
-            for k in locked:
-                if self._node.locks.get(k) == request.tx_id:
-                    self._node.locks.pop(k, None)
-                with self._node._write_lock:
-                    if self._node.write_locks.get(k) == request.tx_id:
-                        self._node.write_locks.pop(k, None)
+        self._node._release_locks(request.tx_id)
         msg = f"Transação {request.tx_id} abortada."
         if self._node.event_logger:
             self._node.event_logger.log(msg)
@@ -878,6 +866,7 @@ class NodeServer:
         registry_host: str | None = None,
         registry_port: int | None = None,
         event_logger: EventLogger | None = None,
+        tx_lock_strategy: str = "2pl",
     ):
         self.db_path = db_path
         self.event_logger = event_logger
@@ -897,6 +886,7 @@ class NodeServer:
         self.consistency_mode = consistency_mode
         self.crdt_config = crdt_config or {}
         self.enable_forwarding = bool(enable_forwarding)
+        self.tx_lock_strategy = tx_lock_strategy
         self.cache_size = int(cache_size)
         self.cache = OrderedDict() if self.cache_size > 0 else None
         self.index_fields = list(index_fields or [])
@@ -937,8 +927,8 @@ class NodeServer:
         # Track operations and read versions for active transactions
         # ``{tx_id: {"ops": [(op, request), ...], "reads": {key: read_txid}}}``
         self.active_transactions: dict[str, dict] = {}
-        # Simple lock manager mapping key -> tx_id
-        self.locks: dict[str, str] = {}
+        # Simple lock manager mapping key -> {'type': lock_type, 'owners': {tx_ids}}
+        self.locks: dict[str, dict] = {}
         self.locks_by_tx: dict[str, set[str]] = {}
         # Write locks used for transactional writes
         self.write_locks: dict[str, str] = {}
@@ -1084,6 +1074,59 @@ class NodeServer:
         if self.cache is None:
             return
         self.cache.pop(key, None)
+
+    # lock helpers ------------------------------------------------
+    def _acquire_shared_lock(self, key: str, tx_id: str, context=None):
+        """Acquire a shared (read) lock for ``tx_id`` on ``key``."""
+        if self.tx_lock_strategy != "2pl":
+            return
+        with self._tx_lock:
+            lock = self.locks.get(key)
+            if lock is None:
+                self.locks[key] = {"type": "shared", "owners": {tx_id}}
+            else:
+                if lock["type"] == "exclusive" and tx_id not in lock.get("owners", set()):
+                    if context:
+                        context.abort(grpc.StatusCode.ABORTED, "Locked")
+                    raise RuntimeError("Locked")
+                lock["owners"].add(tx_id)
+            self.locks_by_tx.setdefault(tx_id, set()).add(key)
+
+    def _acquire_exclusive_lock(self, key: str, tx_id: str, context=None):
+        """Acquire an exclusive (write) lock for ``tx_id`` on ``key``."""
+        with self._tx_lock:
+            lock = self.locks.get(key)
+            if lock is None:
+                self.locks[key] = {"type": "exclusive", "owners": {tx_id}}
+            elif lock["type"] == "exclusive":
+                if tx_id not in lock.get("owners", set()):
+                    if context:
+                        context.abort(grpc.StatusCode.ABORTED, "Locked")
+                    raise RuntimeError("Locked")
+            else:  # shared lock
+                owners = lock.get("owners", set())
+                if owners == {tx_id}:
+                    lock["type"] = "exclusive"
+                else:
+                    if context:
+                        context.abort(grpc.StatusCode.ABORTED, "Locked")
+                    raise RuntimeError("Locked")
+                lock["owners"].add(tx_id)
+            self.locks_by_tx.setdefault(tx_id, set()).add(key)
+
+    def _release_locks(self, tx_id: str) -> None:
+        """Release all locks held by ``tx_id``."""
+        with self._tx_lock:
+            locked = self.locks_by_tx.pop(tx_id, set())
+            for k in locked:
+                lock = self.locks.get(k)
+                if lock and tx_id in lock.get("owners", set()):
+                    lock["owners"].discard(tx_id)
+                    if not lock["owners"]:
+                        self.locks.pop(k, None)
+                with self._write_lock:
+                    if self.write_locks.get(k) == tx_id:
+                        self.write_locks.pop(k, None)
 
     def _latest_txid(self, key: str):
         """Return the created_txid of the most recent visible version."""
