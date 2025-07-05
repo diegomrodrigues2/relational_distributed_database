@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import ConfigurationView from './internals/ConfigurationView';
 import HotspotsView from './internals/HotspotsView';
 import ReplicationStatusView from './internals/ReplicationStatusView';
+import LogViewer from './internals/LogViewer';
 import Card from './common/Card';
 
-type InternalsTab = 'config' | 'hotspots' | 'replication';
+type InternalsTab = 'config' | 'hotspots' | 'replication' | 'logs';
 
 const TabButton: React.FC<{
     label: string;
@@ -33,6 +34,8 @@ const ClusterInternals: React.FC = () => {
                 return <HotspotsView />;
             case 'replication':
                 return <ReplicationStatusView />;
+            case 'logs':
+                return <LogViewer />;
             default:
                 return null;
         }
@@ -42,7 +45,7 @@ const ClusterInternals: React.FC = () => {
     <div className="space-y-6">
        <div>
         <h1 className="text-3xl font-bold text-white">Cluster Internals</h1>
-        <p className="text-green-300 mt-1">Observe the internal configuration, performance hotspots, and replication state.</p>
+        <p className="text-green-300 mt-1">Observe the internal configuration, performance hotspots, replication state, and logs.</p>
       </div>
 
       <Card className="p-2">
@@ -50,6 +53,7 @@ const ClusterInternals: React.FC = () => {
             <TabButton label="Configuration" isActive={activeTab === 'config'} onClick={() => setActiveTab('config')} />
             <TabButton label="Hotspots" isActive={activeTab === 'hotspots'} onClick={() => setActiveTab('hotspots')} />
             <TabButton label="Replication Status" isActive={activeTab === 'replication'} onClick={() => setActiveTab('replication')} />
+            <TabButton label="Logs" isActive={activeTab === 'logs'} onClick={() => setActiveTab('logs')} />
         </div>
       </Card>
 

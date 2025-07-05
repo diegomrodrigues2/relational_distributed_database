@@ -9,6 +9,8 @@ import {
   rebalance,
   getTransactions,
   abortTransaction,
+  getClusterEvents,
+  getNodeEvents,
 } from '../services/api'
 import { vi } from 'vitest'
 
@@ -126,5 +128,19 @@ describe('api service', () => {
       'http://localhost:8000/cluster/transactions/n1/t1/abort',
       { method: 'POST' },
     )
+  })
+
+  it('getClusterEvents hits cluster events endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ events: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    await getClusterEvents()
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/cluster/events', undefined)
+  })
+
+  it('getNodeEvents hits node events endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ events: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    await getNodeEvents('n1')
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/nodes/n1/events', undefined)
   })
 })
