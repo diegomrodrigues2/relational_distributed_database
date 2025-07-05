@@ -5,8 +5,9 @@ import DataBrowser from './components/DataBrowser';
 import Transactions from './components/Transactions';
 import Management from './components/Management';
 import ClusterInternals from './components/ClusterInternals';
+import LogViewer from './components/internals/LogViewer';
 
-type View = 'dashboard' | 'browser' | 'transactions' | 'management' | 'internals';
+type View = 'dashboard' | 'browser' | 'transactions' | 'management' | 'internals' | 'logs';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
@@ -34,6 +35,8 @@ const App: React.FC = () => {
         return <Transactions />;
       case 'internals':
         return <ClusterInternals />;
+      case 'logs':
+        return <LogViewer />;
       case 'management':
         return <Management initialSelectedNodeId={managedNodeId} />;
       default:

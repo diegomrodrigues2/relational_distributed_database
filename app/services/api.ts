@@ -298,3 +298,30 @@ export const abortTransaction = async (
     { method: 'POST' },
   );
 };
+
+export const getClusterEvents = async (
+  offset = 0,
+  limit?: number,
+): Promise<string[]> => {
+  const params = new URLSearchParams();
+  if (offset) params.append('offset', String(offset));
+  if (typeof limit === 'number') params.append('limit', String(limit));
+  const qs = params.size ? `?${params.toString()}` : '';
+  const data = await fetchJson<{ events: string[] }>(`/cluster/events${qs}`);
+  return data.events || [];
+};
+
+export const getNodeEvents = async (
+  nodeId: string,
+  offset = 0,
+  limit?: number,
+): Promise<string[]> => {
+  const params = new URLSearchParams();
+  if (offset) params.append('offset', String(offset));
+  if (typeof limit === 'number') params.append('limit', String(limit));
+  const qs = params.size ? `?${params.toString()}` : '';
+  const data = await fetchJson<{ events: string[] }>(
+    `/nodes/${encodeURIComponent(nodeId)}/events${qs}`,
+  );
+  return data.events || [];
+};

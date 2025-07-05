@@ -47,3 +47,7 @@ npm run preview
 ## Pagination controls
 
 The storage inspector lists WAL and MemTable entries in pages of 50 items. Use the Next and Prev buttons to navigate through results. These controls adjust the `offset` and `limit` query parameters sent to the backend.
+
+## Viewing logs
+
+Select **Logs** from the sidebar to inspect recent cluster or node events. Use the dropdown to switch between overall cluster logs and individual node logs.

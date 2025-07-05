@@ -14,4 +14,6 @@ export {
   mergePartitions,
   getTransactions,
   abortTransaction,
+  getClusterEvents,
+  getNodeEvents,
 } from './api';
