@@ -922,6 +922,9 @@ class NodeCluster:
             self.num_partitions = self.partitioner.num_partitions
             self.partition_ops.append(0)
             self.update_partition_map()
+            self.event_logger.log(
+                f"Partição {pid} dividida (hash). Total agora = {self.num_partitions}."
+            )
             return
         if self.partitioner is None:
             raise ValueError("range partitions not configured")
@@ -935,6 +938,11 @@ class NodeCluster:
         if new_node is not old_node:
             self.transfer_partition(old_node, new_node, new_pid)
         self.update_partition_map()
+        msg = f"Partição {pid} dividida em {pid} e {new_pid}"
+        if split_key is not None:
+            msg += f" (chave de corte = {split_key})"
+        msg += "."
+        self.event_logger.log(msg)
 
     def merge_partitions(self, pid1: int, pid2: int) -> None:
         """Merge two adjacent range partitions."""
@@ -969,6 +977,9 @@ class NodeCluster:
 
         self.partition_map = self.partitioner.get_partition_map()
         self.update_partition_map()
+        self.event_logger.log(
+            f"Partições {left_pid} e {right_pid} mescladas em uma só."
+        )
 
     def _split_key_components(self, key: str) -> tuple[str, str | None]:
         if "|" in key:
