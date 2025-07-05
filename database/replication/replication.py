@@ -1117,6 +1117,9 @@ class NodeCluster:
 
     def _rebalance_after_add(self, new_node: ClusterNode) -> None:
         """Rebalance partitions after adding ``new_node`` for simple hash partitioning."""
+        self.event_logger.log(
+            f"Iniciando rebalanceamento após adição de {new_node.node_id}."
+        )
         if self.partition_strategy != "hash" or self.ring is not None:
             return
         counts: dict[str, int] = {n.node_id: 0 for n in self.nodes}
