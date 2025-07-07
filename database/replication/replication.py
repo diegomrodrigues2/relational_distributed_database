@@ -505,6 +505,42 @@ class NodeCluster:
         """Return mapping from partition id to owning node id."""
         return dict(self.partition_map)
 
+    def get_partition_ranges(self) -> dict[int, tuple[str, str]]:
+        """Return human friendly boundaries for each partition.
+
+        For range partitioning the configured ranges are returned. Hash based
+        strategies expose the underlying hash/token intervals in hexadecimal
+        notation to aid debugging on the dashboard."""
+
+        if self.key_ranges is not None:
+            return {i: (str(start), str(end)) for i, (start, end) in enumerate(self.key_ranges)}
+
+        if isinstance(self.partitioner, ConsistentHashPartitioner):
+            ring = self.partitioner.ring._ring
+            if not ring:
+                return {}
+            max_hash = 1 << 160
+            ranges = {}
+            for i, (token, _) in enumerate(ring):
+                prev = ring[i - 1][0] if i > 0 else 0
+                ranges[i] = (hex(prev), hex(token))
+            # last range wraps around to the first token
+            ranges[len(ring) - 1] = (ranges[len(ring) - 1][0], hex(max_hash))
+            return ranges
+
+        if self.partitioner is not None:
+            n = self.partitioner.num_partitions
+        else:
+            n = self.num_partitions
+        max_hash = 1 << 160
+        step = max_hash // n
+        ranges = {}
+        for pid in range(n):
+            start = pid * step
+            end = start + step if pid < n - 1 else max_hash
+            ranges[pid] = (hex(start), hex(end))
+        return ranges
+
     def update_partition_map(self, manual: bool = False) -> dict[int, str]:
         """Send current partition map to all nodes via RPC and return it.
 

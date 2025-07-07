@@ -23,6 +23,8 @@ def test_dashboard_partitions():
         data = resp.json()
         assert "partitions" in data
         assert isinstance(data["partitions"], list)
+        for p in data["partitions"]:
+            assert "key_range" in p
 
 
 def test_dashboard_time_series():

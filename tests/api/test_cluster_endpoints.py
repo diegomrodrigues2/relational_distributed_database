@@ -27,6 +27,8 @@ def test_cluster_partitions():
         assert len(data["partitions"]) > 0
         ids = [p["id"] for p in data["partitions"]]
         assert ids == sorted(ids)
+        for p in data["partitions"]:
+            assert "key_range" in p
 
 
 def test_time_series_metrics():
