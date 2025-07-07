@@ -15,7 +15,10 @@ class EventLogger:
         self._lock = threading.Lock()
         self._events = deque(maxlen=max_events)
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        self._fp = open(log_path, "a", encoding="utf-8")
+        # allow reading appended lines from other processes
+        self._fp = open(log_path, "a+", encoding="utf-8")
+        self._fp.seek(0, os.SEEK_END)
+        self._read_pos = self._fp.tell()
 
     def close(self) -> None:
         """Close the underlying log file."""
@@ -30,6 +33,16 @@ class EventLogger:
             self._fp.write(entry + "\n")
             self._fp.flush()
             self._events.append(entry)
+
+    def sync(self) -> None:
+        """Read any new log lines written by other processes."""
+        with self._lock:
+            self._fp.flush()
+            self._fp.seek(self._read_pos)
+            for line in self._fp:
+                self._events.append(line.rstrip("\n"))
+            self._read_pos = self._fp.tell()
+            self._fp.seek(0, os.SEEK_END)
 
     def get_events(self, offset: int = 0, limit: int | None = None) -> list[str]:
         """Return recent log entries stored in memory."""
