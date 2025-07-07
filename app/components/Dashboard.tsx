@@ -72,7 +72,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onManageNode }) => {
           {config && <TopologyView nodes={nodes} config={config} />}
       </div>
       
-      <PartitionList partitions={partitions} />
+      <PartitionList partitions={partitions} nodes={nodes} strategy={config?.partitionStrategy} />
 
       {metrics && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

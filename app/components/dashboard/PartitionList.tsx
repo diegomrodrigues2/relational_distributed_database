@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { Partition } from '../../types';
+import { Partition, Node } from '../../types';
 import Card from '../common/Card';
 import Pagination from '../databrowser/Pagination';
 
 interface PartitionListProps {
   partitions: Partition[];
+  nodes: Node[];
+  strategy?: string;
 }
-
-const PartitionList: React.FC<PartitionListProps> = ({ partitions }) => {
+const PartitionList: React.FC<PartitionListProps> = ({ partitions, nodes, strategy }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -26,6 +27,11 @@ const PartitionList: React.FC<PartitionListProps> = ({ partitions }) => {
   );
 
   const hasNext = currentPage * pageSize < filtered.length;
+  const nodesById = useMemo(() => {
+    const map = new Map<string, Node>();
+    nodes.forEach(n => map.set(n.id, n));
+    return map;
+  }, [nodes]);
 
   return (
     <Card className="overflow-x-auto">
@@ -47,23 +53,30 @@ const PartitionList: React.FC<PartitionListProps> = ({ partitions }) => {
           <tr>
             <th scope="col" className="px-6 py-3">Partition ID</th>
             <th scope="col" className="px-6 py-3">Key Range</th>
-            <th scope="col" className="px-6 py-3">Primary</th>
+            <th scope="col" className="px-6 py-3">Owner Node</th>
             <th scope="col" className="px-6 py-3">Replicas</th>
+            <th scope="col" className="px-6 py-3">Type</th>
             <th scope="col" className="px-6 py-3 text-right">Size (GB)</th>
             <th scope="col" className="px-6 py-3 text-right">Item Count</th>
           </tr>
         </thead>
         <tbody>
-          {paginated.map(partition => (
-            <tr key={partition.id} className="border-b border-green-800/60 hover:bg-green-900/20">
-              <td className="px-6 py-4 font-medium text-green-100 whitespace-nowrap">{partition.id}</td>
-              <td className="px-6 py-4 font-mono text-green-400">{`[${partition.keyRange[0]}, ${partition.keyRange[1]})`}</td>
-              <td className="px-6 py-4">{partition.primaryNodeId}</td>
-              <td className="px-6 py-4">{partition.replicaNodeIds.join(', ')}</td>
-              <td className="px-6 py-4 text-right">{partition.size}</td>
-              <td className="px-6 py-4 text-right">{partition.itemCount.toLocaleString()}</td>
-            </tr>
-          ))}
+          {paginated.map(partition => {
+            const owner = nodesById.get(partition.primaryNodeId);
+            return (
+              <tr key={partition.id} className="border-b border-green-800/60 hover:bg-green-900/20">
+                <td className="px-6 py-4 font-medium text-green-100 whitespace-nowrap">{partition.id}</td>
+                <td className="px-6 py-4 font-mono text-green-400">{`[${partition.keyRange[0]}, ${partition.keyRange[1]})`}</td>
+                <td className="px-6 py-4">
+                  {owner ? `${owner.id} (${owner.address})` : partition.primaryNodeId}
+                </td>
+                <td className="px-6 py-4">{partition.replicaNodeIds.join(', ')}</td>
+                <td className="px-6 py-4">{strategy ? strategy : '-'}</td>
+                <td className="px-6 py-4 text-right">{partition.size}</td>
+                <td className="px-6 py-4 text-right">{partition.itemCount.toLocaleString()}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
        {filtered.length === 0 && (
