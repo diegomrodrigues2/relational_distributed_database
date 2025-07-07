@@ -1,7 +1,14 @@
+import json
+import sys
+import os
+
+# Ensure project root is on the import path just like the tests do
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from api.main import app
 from database.replication import NodeCluster
-from .service_runner import start_frontend
-from .data_generators import generate_range_items
+from examples.service_runner import start_frontend
+from examples.data_generators import generate_range_items
 
 
 def main() -> None:
