@@ -180,6 +180,7 @@ def time_series_metrics() -> dict:
 def cluster_events(offset: int = 0, limit: int | None = None) -> dict:
     """Return recent event log entries."""
     cluster = app.state.cluster
+    cluster.event_logger.sync()
     events = cluster.event_logger.get_events(offset=offset, limit=limit)
     return {"events": events}
 
@@ -408,6 +409,7 @@ def node_events(node_id: str, offset: int = 0, limit: int | None = None) -> dict
     logger = cluster.node_loggers.get(node_id)
     if logger is None:
         raise HTTPException(status_code=404, detail="node not found")
+    logger.sync()
     events = logger.get_events(offset=offset, limit=limit)
     return {"events": events}
 
