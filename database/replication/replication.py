@@ -393,6 +393,11 @@ class NodeCluster:
         ``min_keys`` accessed keys since the last metric reset. After a
         successful split the metrics are cleared via :py:meth:`reset_metrics`.
         """
+        if isinstance(self.partitioner, ConsistentHashPartitioner):
+            # Consistent hashing uses virtual tokens and does not expose
+            # explicit partition ranges that can be split. Simply return
+            # when running with a `ConsistentHashPartitioner`.
+            return
         candidates = self.get_hot_partitions(threshold)
         for pid in candidates:
             key_count = self.partition_item_counts.get(pid, 0)
@@ -405,7 +410,7 @@ class NodeCluster:
 
     def check_cold_partitions(self, threshold: float = 0.5, max_keys: int = 1) -> None:
         """Merge adjacent cold partitions with few distinct keys accessed."""
-        if self.partitioner is None:
+        if self.partitioner is None or isinstance(self.partitioner, ConsistentHashPartitioner):
             return
 
         cold = set(self.get_cold_partitions(threshold))
