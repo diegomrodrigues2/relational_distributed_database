@@ -87,6 +87,7 @@ def list_partitions() -> dict:
     """Return partition map with operation and item count stats."""
     cluster = app.state.cluster
     mapping = cluster.get_partition_map()
+    ranges = cluster.get_partition_ranges()
     stats = cluster.get_partition_stats()
     counts = cluster.get_partition_item_counts()
     parts = []
@@ -95,6 +96,7 @@ def list_partitions() -> dict:
             {
                 "id": pid,
                 "node": owner,
+                "key_range": ranges.get(pid, ("", "")),
                 "ops": stats.get(pid, 0),
                 "items": counts.get(pid, 0),
             }

@@ -35,7 +35,7 @@ export const getPartitions = async (): Promise<Partition[]> => {
     id: p.id.toString(),
     primaryNodeId: p.node,
     replicaNodeIds: [],
-    keyRange: ['', ''],
+    keyRange: [p.key_range?.[0] ?? '', p.key_range?.[1] ?? ''],
     size: 0,
     itemCount: p.items ?? 0,
     operationCount: p.ops ?? 0,

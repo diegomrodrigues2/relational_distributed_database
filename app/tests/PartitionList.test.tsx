@@ -13,10 +13,10 @@ const nodes: Node[] = [
 
 describe('PartitionList', () => {
   it('renders partition table', () => {
-    render(<PartitionList partitions={partitions} nodes={nodes} strategy="hash" />)
+    render(<PartitionList partitions={partitions} nodes={nodes} strategy="range" />)
     expect(screen.getByText('Partitions')).toBeInTheDocument()
     expect(screen.getByText('p1')).toBeInTheDocument()
-    expect(screen.getByText('hash')).toBeInTheDocument()
+    expect(screen.getByText('Key Range')).toBeInTheDocument()
     expect(screen.getByText('n1 (addr1)')).toBeInTheDocument()
   })
 

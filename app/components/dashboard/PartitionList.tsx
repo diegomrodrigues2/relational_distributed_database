@@ -52,7 +52,9 @@ const PartitionList: React.FC<PartitionListProps> = ({ partitions, nodes, strate
         <thead className="text-xs text-green-400 uppercase bg-green-900/30">
           <tr>
             <th scope="col" className="px-6 py-3">Partition ID</th>
-            <th scope="col" className="px-6 py-3">Key Range</th>
+            <th scope="col" className="px-6 py-3">
+              {strategy === 'range' ? 'Key Range' : 'Hash Range'}
+            </th>
             <th scope="col" className="px-6 py-3">Owner Node</th>
             <th scope="col" className="px-6 py-3">Replicas</th>
             <th scope="col" className="px-6 py-3">Type</th>
@@ -66,7 +68,11 @@ const PartitionList: React.FC<PartitionListProps> = ({ partitions, nodes, strate
             return (
               <tr key={partition.id} className="border-b border-green-800/60 hover:bg-green-900/20">
                 <td className="px-6 py-4 font-medium text-green-100 whitespace-nowrap">{partition.id}</td>
-                <td className="px-6 py-4 font-mono text-green-400">{`[${partition.keyRange[0]}, ${partition.keyRange[1]})`}</td>
+                <td className="px-6 py-4 font-mono text-green-400">
+                  {partition.keyRange[0] || partition.keyRange[1]
+                    ? `[${partition.keyRange[0]}, ${partition.keyRange[1]})`
+                    : '-'}
+                </td>
                 <td className="px-6 py-4">
                   {owner ? `${owner.id} (${owner.address})` : partition.primaryNodeId}
                 </td>
