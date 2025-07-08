@@ -8,8 +8,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SSTABLE_SPARSE_INDEX_INTERVAL = 100 # Intervalo para o índice esparso (a cada 100 linhas, por exemplo)
-TOMBSTONE = "__TOMBSTONE__" # Marcador para exclusão
+SSTABLE_SPARSE_INDEX_INTERVAL = (
+    100  # Intervalo para o índice esparso (a cada 100 linhas, por exemplo)
+)
+TOMBSTONE = "__TOMBSTONE__"  # Marcador para exclusão
+
 
 def bisect_left(array, value):
     """Retorna o índice de inserção ordenada."""
@@ -23,7 +26,7 @@ def bisect_left(array, value):
             left = mid + 1
         else:
             right = mid
-    
+
     return left
 
 
@@ -61,18 +64,19 @@ def _merge_version_lists(current, new_list):
         result = updated
     return result
 
+
 class SSTableManager:
 
-    def __init__(self, sstable_dir: str, *, event_logger: EventLogger | None = None) -> None:
+    def __init__(
+        self, sstable_dir: str, *, event_logger: EventLogger | None = None
+    ) -> None:
         """Gerencia arquivos SSTable no disco."""
         self.event_logger = event_logger
         self.sstable_dir = sstable_dir
         self.sstable_segments = []
 
         self._load_existing_sstables()
-        msg = (
-            f"SSTableManager inicializado. {len(self.sstable_segments)} SSTables existentes carregados."
-        )
+        msg = f"SSTableManager inicializado. {len(self.sstable_segments)} SSTables existentes carregados."
         if self.event_logger:
             self.event_logger.log(msg)
         else:
@@ -84,12 +88,14 @@ class SSTableManager:
         for filename in files:
             if filename.endswith(".txt"):
                 path = os.path.join(self.sstable_dir, filename)
-                timestamp_str = filename.split('_')[1].split('.')[0] # Ex: sstable_16788899000.txt -> 16788899000
+                timestamp_str = filename.split("_")[1].split(".")[
+                    0
+                ]  # Ex: sstable_16788899000.txt -> 16788899000
                 try:
                     timestamp = int(timestamp_str)
                 except ValueError:
-                    timestamp = 0 # Fallback for malformed names
-                
+                    timestamp = 0  # Fallback for malformed names
+
                 sparse_index = self._build_sparse_index(path)
                 self.sstable_segments.append((timestamp, path, sparse_index))
         # Ordena os segmentos do mais antigo para o mais novo
@@ -103,6 +109,8 @@ class SSTableManager:
     def _build_sparse_index(self, sstable_path):
         """Cria índice esparso para um SSTable."""
         sparse_index = []
+        if not os.path.exists(sstable_path):
+            return sparse_index
         with open(sstable_path, "r", encoding="utf-8") as file:
             offset = 0
             for idx, line in enumerate(file):
@@ -114,15 +122,13 @@ class SSTableManager:
                         key_part = ""
                     sparse_index.append({"key": key_part, "offset": offset})
                 offset += len(line.encode("utf-8"))
-        msg = (
-            f"  SSTableManager: Índice esparso construído para {os.path.basename(sstable_path)} com {len(sparse_index)} entradas."
-        )
+        msg = f"  SSTableManager: Índice esparso construído para {os.path.basename(sstable_path)} com {len(sparse_index)} entradas."
         if self.event_logger:
             self.event_logger.log(msg)
         else:
             logger.info(msg)
         return sparse_index
-    
+
     def write_sstable(self, sorted_items):
         """Escreve itens ordenados em novo SSTable."""
         timestamp = int(time.time() * 1000)
@@ -139,10 +145,10 @@ class SSTableManager:
         sparse_index = self._build_sparse_index(sstable_path)
         # Adiciona o novo SSTable ao final (ele é o mais recente)
         self.sstable_segments.append((timestamp, sstable_path, sparse_index))
-        self.sstable_segments.sort(key=lambda x: x[0])  # Re-ordena para garantir o mais novo no final
-        msg = (
-            f"  SSTableManager: Novo SSTable '{sstable_filename}' escrito com {len(sorted_items)} itens."
-        )
+        self.sstable_segments.sort(
+            key=lambda x: x[0]
+        )  # Re-ordena para garantir o mais novo no final
+        msg = f"  SSTableManager: Novo SSTable '{sstable_filename}' escrito com {len(sorted_items)} itens."
         if self.event_logger:
             self.event_logger.log(msg)
         else:
@@ -159,7 +165,16 @@ class SSTableManager:
         else:
             logger.info(msg)
 
-        with open(sstable_path, 'r', encoding='utf-8') as f:
+        try:
+            f = open(sstable_path, "r", encoding="utf-8")
+        except FileNotFoundError:
+            msg = f"  SSTableManager: arquivo {os.path.basename(sstable_path)} nao encontrado."
+            if self.event_logger:
+                self.event_logger.log(msg)
+            else:
+                logger.info(msg)
+            return None
+        with f:
             start_offset = 0
             search_keys = [entry["key"] for entry in sparse_index]
 
@@ -175,9 +190,9 @@ class SSTableManager:
                 # Como bisect_left encontra o ponto de inserção, o elemento ANTES desse ponto é o maior <= key
                 if start_idx == len(sparse_index) or search_keys[start_idx] != composed:
                     start_offset = sparse_index[start_idx - 1]["offset"]
-                else: # key é exatamente um dos sparse_index keys
+                else:  # key é exatamente um dos sparse_index keys
                     start_offset = sparse_index[start_idx]["offset"]
-            
+
             f.seek(start_offset)
 
             # Varredura linear a partir do offset encontrado
@@ -192,7 +207,9 @@ class SSTableManager:
 
                 if current_key == composed:
                     if value == TOMBSTONE:
-                        msg = f"  SSTableManager: Encontrado tombstone para '{composed}'."
+                        msg = (
+                            f"  SSTableManager: Encontrado tombstone para '{composed}'."
+                        )
                         if self.event_logger:
                             self.event_logger.log(msg)
                         else:
@@ -208,7 +225,7 @@ class SSTableManager:
                     # Como o arquivo é ordenado, se a chave atual é maior que a chave buscada,
                     # a chave buscada não está neste SSTable.
                     break
-        
+
         msg = f"  SSTableManager: '{composed}' não encontrado em {os.path.basename(sstable_path)}."
         if self.event_logger:
             self.event_logger.log(msg)
@@ -238,7 +255,9 @@ class SSTableManager:
         merged_data = {}
 
         # Iterar do mais novo para o mais antigo para garantir que a versão mais recente seja mantida
-        segments_to_merge = sorted(self.sstable_segments, key=lambda x: x[0], reverse=True)
+        segments_to_merge = sorted(
+            self.sstable_segments, key=lambda x: x[0], reverse=True
+        )
 
         for _, sstable_path, _ in segments_to_merge:
             msg = f"    SSTableManager: Lendo {os.path.basename(sstable_path)} para compactação..."
@@ -247,16 +266,18 @@ class SSTableManager:
             else:
                 logger.info(msg)
 
-            with open(sstable_path, 'r', encoding='utf-8') as f:
+            with open(sstable_path, "r", encoding="utf-8") as f:
                 for line in f:
                     try:
                         data = json.loads(line)
-                        key = data.get('key')
-                        value = data.get('value')
-                        vc = VectorClock(data.get('vector', {}))
+                        key = data.get("key")
+                        value = data.get("value")
+                        vc = VectorClock(data.get("vector", {}))
                     except Exception:
                         continue
-                    merged_data[key] = _merge_version_lists(merged_data.get(key, []), [(value, vc)])
+                    merged_data[key] = _merge_version_lists(
+                        merged_data.get(key, []), [(value, vc)]
+                    )
 
         # Remove tombstones da lista final de dados
         final_merged_data = {
@@ -273,7 +294,7 @@ class SSTableManager:
         new_sstable_filename = f"sstable_compacted_{new_timestamp}.txt"
         new_sstable_path = os.path.join(self.sstable_dir, new_sstable_filename)
 
-        with open(new_sstable_path, 'w', encoding='utf-8') as f:
+        with open(new_sstable_path, "w", encoding="utf-8") as f:
             for key, value, vc in sorted_merged_items:
                 entry = {"key": key, "value": value, "vector": vc.clock}
                 f.write(json.dumps(entry) + "\n")
@@ -283,7 +304,7 @@ class SSTableManager:
         # Atualiza a lista de segmentos: remove os antigos e adiciona o novo
         old_segments_paths = [s[1] for s in self.sstable_segments]
         self.sstable_segments = [(new_timestamp, new_sstable_path, new_sparse_index)]
-        
+
         # Deleta os arquivos antigos
         for old_path in old_segments_paths:
             try:
@@ -299,7 +320,7 @@ class SSTableManager:
                     self.event_logger.log(msg)
                 else:
                     logger.info(msg)
-        
+
         msg = f"  SSTableManager: Compactação concluída. Novo SSTable: '{new_sstable_filename}'."
         if self.event_logger:
             self.event_logger.log(msg)
@@ -310,8 +331,3 @@ class SSTableManager:
             self.event_logger.log(msg)
         else:
             logger.info(msg)
-
-
-
-
-
