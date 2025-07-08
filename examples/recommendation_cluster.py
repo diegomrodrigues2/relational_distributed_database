@@ -23,7 +23,7 @@ def main() -> None:
     for pid, owner in sorted(cluster.get_partition_map().items()):
         print(f"  P{pid}: {owner}")
 
-    for key, value in generate_recommendation_data(50):
+    for key, value in generate_recommendation_data(10000):
         cluster.put(0, key, value)
         pref = json.loads(value)["preference"]
         pid = cluster.get_partition_id(key)
