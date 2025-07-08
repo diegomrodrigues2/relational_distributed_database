@@ -1127,7 +1127,7 @@ class NodeServer:
         if self.clients_by_id:
             return [
                 (c.host, c.port, node_id, c)
-                for node_id, c in self.clients_by_id.items()
+                for node_id, c in list(self.clients_by_id.items())
             ]
         return [
             (c.host, c.port, f"{c.host}:{c.port}", c)
@@ -1384,9 +1384,9 @@ class NodeServer:
     def get_replication_status(self):
         """Return last seen sequence numbers and hint counts."""
 
-        hints_count = {peer: len(ops) for peer, ops in self.hints.items()}
+        hints_count = {peer: len(ops) for peer, ops in list(self.hints.items())}
         return replication_pb2.ReplicationStatusResponse(
-            last_seen={peer: int(seq) for peer, seq in self.last_seen.items()},
+            last_seen={peer: int(seq) for peer, seq in list(self.last_seen.items())},
             hints=hints_count,
         )
 
