@@ -26,7 +26,7 @@ def main() -> None:
         print(f"  P{pid}: {owner}")
 
     print("Loading catalog...")
-    for key, value in generate_product_catalog(20):
+    for key, value in generate_product_catalog(200):
         cluster.put(0, key, value)
         pid = cluster.get_partition_id(key)
         owner = cluster.get_partition_map().get(pid)
@@ -34,7 +34,7 @@ def main() -> None:
         print(f"Catalog product {key} {attrs} in partition {pid} on {owner}")
 
     print("Loading carts...")
-    for key, value in generate_cart_items(10):
+    for key, value in generate_cart_items(10000):
         cluster.put(0, key, value)
         pid = cluster.get_partition_id(key)
         owner = cluster.get_partition_map().get(pid)
