@@ -1086,10 +1086,25 @@ class NodeCluster:
                     continue
             for val, vc, *_ in versions:
                 ts = vc.clock.get("ts", 0)
+                if src_node.process.is_alive():
+                    new_ts = ts
+                    new_vec = vc.clock
+                else:
+                    new_ts = max(ts + 1, int(time.time() * 1000))
+                    new_vec = {"ts": new_ts}
                 dst_node.client.put(
-                    key, val, timestamp=ts, node_id=dst_node.node_id, vector=vc.clock
+                    key,
+                    val,
+                    timestamp=new_ts,
+                    node_id=dst_node.node_id,
+                    vector=new_vec,
                 )
-                src_node.client.delete(key, timestamp=ts + 1, node_id=src_node.node_id)
+                if src_node.process.is_alive():
+                    src_node.client.delete(
+                        key,
+                        timestamp=new_ts + 1,
+                        node_id=src_node.node_id,
+                    )
                 if self.max_transfer_rate:
                     record_size = len(key.encode("utf-8"))
                     if val is not None:
