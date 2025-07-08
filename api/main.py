@@ -5,6 +5,8 @@ from database.replication import NodeCluster
 from database.replication.replica import replication_pb2
 from concurrent.futures import ThreadPoolExecutor
 import time
+import os
+import tempfile
 
 app = FastAPI()
 
@@ -28,7 +30,9 @@ class Record(BaseModel):
 def startup_event() -> None:
     """Initialize the cluster when the API starts."""
     app.state.cluster_start = time.time()
-    app.state.cluster = NodeCluster(base_path="/tmp/api_cluster", num_nodes=3)
+    app.state.cluster = NodeCluster(
+        base_path=os.path.join(tempfile.gettempdir(), "api_cluster"), num_nodes=3
+    )
 
 
 @app.on_event("shutdown")
