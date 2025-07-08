@@ -6,6 +6,7 @@ import NodeSelector from './management/NodeSelector';
 import NodeDetail from './management/NodeDetail';
 import ClusterActions from './management/ClusterActions';
 import PartitionActions from './management/PartitionActions';
+import Alert from './common/Alert';
 
 interface ManagementProps {
   initialSelectedNodeId: string | null;
@@ -16,6 +17,7 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(initialSelectedNodeId);
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const fetchNodes = useCallback(async () => {
     setIsLoading(true);
@@ -52,8 +54,10 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
     try {
         await addNode();
         await fetchNodes(); // Re-fetch all nodes to get the new list
+        setAlert({ message: 'Node added', type: 'success' });
     } catch (error) {
         console.error("Failed to add node:", error);
+        setAlert({ message: 'Failed to add node', type: 'error' });
     } finally {
         setIsActionLoading(false);
     }
@@ -66,8 +70,10 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
             await removeNode(nodeId);
             setSelectedNodeId(null);
             await fetchNodes(); // Re-fetch all nodes
+            setAlert({ message: 'Node removed', type: 'success' });
         } catch (error) {
             console.error("Failed to remove node:", error);
+            setAlert({ message: 'Failed to remove node', type: 'error' });
         } finally {
             setIsActionLoading(false);
         }
@@ -79,8 +85,10 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
     try {
         const updatedNode = await stopNode(nodeId);
         handleUpdateNode(updatedNode);
+        setAlert({ message: 'Node stopped', type: 'success' });
     } catch (error) {
         console.error("Failed to stop node:", error);
+        setAlert({ message: 'Failed to stop node', type: 'error' });
     } finally {
         setIsActionLoading(false);
     }
@@ -91,8 +99,10 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
     try {
         const updatedNode = await startNode(nodeId);
         handleUpdateNode(updatedNode);
+        setAlert({ message: 'Node started', type: 'success' });
     } catch (error) {
         console.error("Failed to start node:", error);
+        setAlert({ message: 'Failed to start node', type: 'error' });
     } finally {
         setIsActionLoading(false);
     }
@@ -110,6 +120,13 @@ const Management: React.FC<ManagementProps> = ({ initialSelectedNodeId }) => {
 
   return (
     <div className="space-y-6">
+      {alert && (
+        <Alert
+          message={alert.message}
+          type={alert.type}
+          onClose={() => setAlert(null)}
+        />
+      )}
        <div>
         <h1 className="text-3xl font-bold text-white">Cluster Management</h1>
         <p className="text-green-300 mt-1">Perform administrative actions on the cluster and its nodes.</p>
