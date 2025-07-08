@@ -1165,7 +1165,10 @@ class NodeCluster:
         records: list[tuple[str, str | None, object]] = []
         for key in sorted(key_set):
             pk, ck = self._split_key_components(key)
-            value = self.get(0, pk, ck)
+            try:
+                value = self.get(0, pk, ck)
+            except Exception:
+                continue
             if value is None or value == TOMBSTONE:
                 continue
             records.append((pk, ck, value))
@@ -1439,9 +1442,19 @@ class NodeCluster:
             daemon=True,
         )
         p.start()
-        time.sleep(0.2)
+        # wait briefly for the server to accept connections
+        client = None
+        for _ in range(10):
+            try:
+                client = GRPCReplicaClient(node.host, node.port)
+                client.ping(node.node_id)
+                break
+            except Exception:
+                time.sleep(0.2)
+        if client is None:
+            client = GRPCReplicaClient(node.host, node.port)
         node.process = p
-        node.client = GRPCReplicaClient(node.host, node.port)
+        node.client = client
         self.update_partition_map()
 
 

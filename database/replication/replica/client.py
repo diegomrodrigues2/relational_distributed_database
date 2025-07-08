@@ -294,7 +294,14 @@ class GRPCReplicaClient:
         self.heartbeat_stub.Ping(req)
 
     def close(self):
-        self.channel.close()
+        """Close the underlying gRPC channel and reset state."""
+        try:
+            if self.channel is not None:
+                self.channel.close()
+        finally:
+            self.channel = None
+            self.stub = None
+            self.heartbeat_stub = None
 
     def __getstate__(self):
         return {"host": self.host, "port": self.port}
