@@ -25,3 +25,23 @@ def generate_range_items(num: int = 10):
     for i in range(1, num + 1):
         letter = chr(ord('a') + (i - 1) % 26)
         yield compose_key(letter, str(i)), f"v{i}"
+
+
+PREFERENCES = [
+    "sports",
+    "movies",
+    "music",
+    "travel",
+    "tech",
+    "fashion",
+]
+
+
+def generate_recommendation_data(num: int = 10):
+    """Yield user IDs mapped to preference vectors and recent items."""
+    for i in range(1, num + 1):
+        user_id = f"u{i}"
+        pref = random.choice(PREFERENCES)
+        recent = random.sample(range(100), k=3)
+        value = json.dumps({"preference": pref, "recent": recent})
+        yield user_id, value
