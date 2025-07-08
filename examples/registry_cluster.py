@@ -9,13 +9,14 @@ from api.main import app
 from database.replication import NodeCluster
 from examples.service_runner import start_frontend
 from examples.data_generators import generate_hash_items
+import tempfile
 
 
 def main() -> None:
     app.router.on_startup.clear()
     ranges = [("a", "m"), ("m", "z")]
     cluster = NodeCluster(
-        base_path="/tmp/registry_cluster",
+        base_path=os.path.join(tempfile.gettempdir(), "registry_cluster"),
         num_nodes=2,
         key_ranges=ranges,
         start_router=True,

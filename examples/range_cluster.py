@@ -1,6 +1,7 @@
 import json
 import sys
 import os
+import tempfile
 
 # Ensure project root is on the import path just like the tests do
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -15,7 +16,7 @@ def main() -> None:
     app.router.on_startup.clear()
     ranges = [("a", "m"), ("m", "z")]
     cluster = NodeCluster(
-        base_path="/tmp/range_cluster",
+        base_path=os.path.join(tempfile.gettempdir(), "range_cluster"),
         num_nodes=3,
         key_ranges=ranges,
     )

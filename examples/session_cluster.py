@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 
 # Ensure project root is on the import path just like the tests do
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -13,7 +14,7 @@ from examples.data_generators import generate_session_data
 def main() -> None:
     app.router.on_startup.clear()
     cluster = NodeCluster(
-        base_path="/tmp/session_cluster",
+        base_path=os.path.join(tempfile.gettempdir(), "session_cluster"),
         num_nodes=3,
         partition_strategy="hash",
         replication_factor=2,
