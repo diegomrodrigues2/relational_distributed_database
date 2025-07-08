@@ -39,3 +39,22 @@ def generate_session_data(num: int = 10):
             "lang": random.choice(LANGS),
         }
         yield session_id, json.dumps({"user": user, "prefs": prefs})
+
+PREFERENCES = [
+    "sports",
+    "movies",
+    "music",
+    "travel",
+    "tech",
+    "fashion",
+]
+
+
+def generate_recommendation_data(num: int = 10):
+    """Yield user IDs mapped to preference vectors and recent items."""
+    for i in range(1, num + 1):
+        user_id = f"u{i}"
+        pref = random.choice(PREFERENCES)
+        recent = random.sample(range(100), k=3)
+        value = json.dumps({"preference": pref, "recent": recent})
+        yield user_id, value
