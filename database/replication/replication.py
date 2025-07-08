@@ -1143,7 +1143,7 @@ class NodeCluster:
         return {k: [tpl for tpl in v if tpl[0] != TOMBSTONE] for k, v in merged.items()}
 
     def list_records(
-        self, offset: int = 0, limit: int | None = None
+        self, offset: int = 0, limit: int | None = None, query: str | None = None
     ) -> list[tuple[str, str | None, object]]:
         """Return records stored across the cluster with optional slicing.
 
@@ -1163,6 +1163,7 @@ class NodeCluster:
                     continue
 
         records: list[tuple[str, str | None, object]] = []
+        q = (query or "").lower()
         for key in sorted(key_set):
             pk, ck = self._split_key_components(key)
             try:
@@ -1170,6 +1171,12 @@ class NodeCluster:
             except Exception:
                 continue
             if value is None or value == TOMBSTONE:
+                continue
+            if q and not (
+                q in pk.lower()
+                or (ck and q in ck.lower())
+                or q in str(value).lower()
+            ):
                 continue
             records.append((pk, ck, value))
 

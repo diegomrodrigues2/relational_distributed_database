@@ -8,7 +8,6 @@ import Pagination from './databrowser/Pagination';
 
 const DataBrowser: React.FC = () => {
   const [records, setRecords] = useState<UserRecord[]>([]);
-  const [filteredRecords, setFilteredRecords] = useState<UserRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<UserRecord | null>(null);
@@ -22,32 +21,24 @@ const DataBrowser: React.FC = () => {
     setIsLoading(true);
     try {
       const offset = (currentPage - 1) * pageSize;
-      const recordsData = await databaseService.getUserRecords(offset, pageSize);
+      const recordsData = await databaseService.getUserRecords(
+        offset,
+        pageSize,
+        searchTerm,
+      );
       setRecords(recordsData);
-      setFilteredRecords(recordsData);
       setHasNext(recordsData.length === pageSize);
     } catch (error) {
       console.error('Failed to fetch user records:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, pageSize]);
+  }, [currentPage, pageSize, searchTerm]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    const lowercasedFilter = searchTerm.toLowerCase();
-    const filteredData = records.filter(item => {
-      return (
-        item.partitionKey.toLowerCase().includes(lowercasedFilter) ||
-        item.clusteringKey?.toLowerCase().includes(lowercasedFilter) ||
-        item.value.toLowerCase().includes(lowercasedFilter)
-      );
-    });
-    setFilteredRecords(filteredData);
-  }, [searchTerm, records]);
 
 
   const handleOpenCreateModal = () => {
@@ -103,7 +94,7 @@ const DataBrowser: React.FC = () => {
         </div>
       ) : (
         <>
-          <DataTable records={filteredRecords} onEdit={handleOpenEditModal} onDelete={handleDeleteRecord} />
+          <DataTable records={records} onEdit={handleOpenEditModal} onDelete={handleDeleteRecord} />
           <Pagination
             currentPage={currentPage}
             onPageChange={setCurrentPage}
@@ -115,7 +106,7 @@ const DataBrowser: React.FC = () => {
         </>
       )}
       
-      <DataEditorModal 
+      <DataEditorModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSave={handleSaveRecord}
@@ -124,5 +115,4 @@ const DataBrowser: React.FC = () => {
     </div>
   );
 };
-
 export default DataBrowser;
