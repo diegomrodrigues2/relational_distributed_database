@@ -789,7 +789,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 self.Put(req, context)
 
         ops = []
-        for op_id, (key, value, ts) in self._node.replication_log.items():
+        for op_id, (key, value, ts) in list(self._node.replication_log.items()):
             origin, seq = op_id.split(":")
             seq = int(seq)
             seen = last_seen.get(origin, 0)

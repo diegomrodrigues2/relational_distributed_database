@@ -265,7 +265,7 @@ class SSTableManager:
 
         sorted_merged_items = []
         for k, vers in sorted(final_merged_data.items()):
-            for val, vc in vers:
+            for val, vc, *_ in vers:
                 sorted_merged_items.append((k, val, vc))
 
         # Escreve o novo SSTable compactado
