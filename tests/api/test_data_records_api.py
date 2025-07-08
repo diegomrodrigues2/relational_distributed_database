@@ -64,3 +64,21 @@ def test_records_pagination():
         assert len(data) == 2
         assert data[0]["partition_key"] == "pk2"
         assert data[1]["partition_key"] == "pk3"
+
+
+def test_records_query_filter():
+    with TestClient(app) as client:
+        for i in range(3):
+            resp = client.post(
+                "/data/records",
+                json={"partitionKey": f"foo{i}", "clusteringKey": None, "value": f"v{i}"},
+            )
+            assert resp.status_code == 200
+
+        # allow log flush
+        time.sleep(0.1)
+        resp = client.get("/data/records", params={"query": "foo1"})
+        assert resp.status_code == 200
+        data = resp.json().get("records", [])
+        assert len(data) == 1
+        assert data[0]["partition_key"] == "foo1"

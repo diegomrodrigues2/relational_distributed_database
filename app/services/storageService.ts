@@ -22,7 +22,8 @@ export const getSstableEntries = (nodeId: string, sstableId: string): Promise<St
 export const getUserRecords = (
   offset = 0,
   limit = 50,
-): Promise<UserRecord[]> => db.getUserRecords(offset, limit);
+  query = '',
+): Promise<UserRecord[]> => db.getUserRecords(offset, limit, query);
 export const saveUserRecord = (record: UserRecord): Promise<UserRecord> => db.saveUserRecord(record);
 export const deleteUserRecord = (partitionKey: string, clusteringKey: string): Promise<void> => db.deleteUserRecord(partitionKey, clusteringKey);
 

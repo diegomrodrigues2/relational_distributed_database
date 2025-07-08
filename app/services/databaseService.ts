@@ -4,11 +4,15 @@ import { fetchJson } from './request';
 export const getUserRecords = async (
   offset = 0,
   limit = 50,
+  query = '',
 ): Promise<UserRecord[]> => {
   const params = new URLSearchParams({
     offset: String(offset),
     limit: String(limit),
   });
+  if (query) {
+    params.append('query', query);
+  }
   const data = await fetchJson<{ records: { partition_key: string; clustering_key: string | null; value: string }[] }>(`/data/records?${params.toString()}`);
   return data.records.map(r => ({
     partitionKey: r.partition_key,
