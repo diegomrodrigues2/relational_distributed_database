@@ -25,7 +25,8 @@ def main() -> None:
     for pid, owner in sorted(cluster.get_partition_map().items()):
         print(f"  P{pid}: {owner}")
 
-    for sid, value in generate_session_data(50000):
+    NUM_SESSIONS = 1000
+    for sid, value in generate_session_data(NUM_SESSIONS):
         cluster.put(0, sid, value)
         pid = cluster.get_partition_id(sid)
         owner = cluster.get_partition_map().get(pid)
