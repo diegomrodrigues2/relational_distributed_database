@@ -807,7 +807,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
         local_hashes = self._node.db.segment_hashes
         if remote_hashes:
-            for seg, h in local_hashes.items():
+            for seg, h in list(local_hashes.items()):
                 if remote_hashes.get(seg) == h:
                     continue
                 items = [
@@ -1829,7 +1829,7 @@ class NodeServer:
 
         hashes = self.db.segment_hashes
         trees = []
-        for seg in hashes:
+        for seg in list(hashes):
             items = [
                 (k, v)
                 for k, v, _vc in self.db.get_segment_items(seg)
