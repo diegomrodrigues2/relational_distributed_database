@@ -195,12 +195,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 op_id = request.op_id
                 if not op_id:
                     op_id = self._node.next_op_id()
-                    self._node.replication_log[op_id] = (
-                        request.key,
-                        request.value,
-                        request.timestamp,
-                    )
-                    self._node.save_replication_log()
+                    with self._node._replog_lock:
+                        self._node.replication_log[op_id] = (
+                            request.key,
+                            request.value,
+                            request.timestamp,
+                        )
+                        self._node.save_replication_log()
                 self._node.replicate(
                     "PUT",
                     request.key,
@@ -354,12 +355,13 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 op_id = request.op_id
                 if not op_id:
                     op_id = self._node.next_op_id()
-                    self._node.replication_log[op_id] = (
-                        request.key,
-                        None,
-                        request.timestamp,
-                    )
-                    self._node.save_replication_log()
+                    with self._node._replog_lock:
+                        self._node.replication_log[op_id] = (
+                            request.key,
+                            None,
+                            request.timestamp,
+                        )
+                        self._node.save_replication_log()
                 self._node.replicate(
                     "DELETE",
                     request.key,
@@ -1341,8 +1343,9 @@ class NodeServer:
         vc = VectorClock({"ts": ts})
         self.db.put(key, state_json, vector_clock=vc)
         op_id = self.next_op_id()
-        self.replication_log[op_id] = (key, state_json, ts)
-        self.save_replication_log()
+        with self._replog_lock:
+            self.replication_log[op_id] = (key, state_json, ts)
+            self.save_replication_log()
         self.replicate(
             "PUT",
             key,
@@ -1490,10 +1493,11 @@ class NodeServer:
             for op_id in list(self.replication_log.keys())
             if int(op_id.split(":")[1]) <= int(min_seen)
         ]
-        for op_id in to_remove:
-            self.replication_log.pop(op_id, None)
         if to_remove:
-            self.save_replication_log()
+            with self._replog_lock:
+                for op_id in to_remove:
+                    self.replication_log.pop(op_id, None)
+                self.save_replication_log()
 
     def _replay_replication_log(self) -> None:
         """Resend operations from replication_log to peers in batches."""
