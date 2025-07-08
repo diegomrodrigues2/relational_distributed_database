@@ -261,7 +261,8 @@ class NodeCluster:
                 daemon=True,
             )
             p.start()
-            time.sleep(0.2)
+            # Aguarda o servidor gRPC inicializar para evitar conexões recusadas
+            time.sleep(0.5)
             client = GRPCReplicaClient("localhost", port)
             node = ClusterNode(node_id, "localhost", port, p, client, node_logger)
             self.nodes.append(node)
@@ -295,7 +296,8 @@ class NodeCluster:
                 daemon=True,
             )
             self.router_process.start()
-            time.sleep(0.2)
+            # Aguarda o router inicializar antes de criar o cliente
+            time.sleep(0.5)
             self.router_client = GRPCRouterClient("localhost", router_port)
 
         self._cold_stop = threading.Event()
@@ -1308,7 +1310,8 @@ class NodeCluster:
             daemon=True,
         )
         p.start()
-        time.sleep(0.2)
+        # Espera o novo nó aceitar conexões gRPC
+        time.sleep(0.5)
         client = GRPCReplicaClient("localhost", port)
         node = ClusterNode(node_id, "localhost", port, p, client, node_logger)
         self.nodes.append(node)
