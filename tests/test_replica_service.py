@@ -261,6 +261,8 @@ class StorageRPCTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             node = NodeServer(db_path=tmpdir, port=9103, node_id="A", peers=[])
             node.server.start()
+            # ensure the server is fully bound before issuing RPCs
+            time.sleep(0.1)
             try:
                 node.db.put("k1", "v1")
                 node.db.put("k2", "v2")
