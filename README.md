@@ -511,7 +511,7 @@ A standalone gRPC router can relay all client requests to the correct node. Star
 from replication import NodeCluster
 from replica.client import GRPCRouterClient
 
-cluster = NodeCluster('/tmp/router_cluster', num_nodes=3,
+cluster = NodeCluster('/tmp/router_cluster_<id>', num_nodes=3,
                       partition_strategy='hash',
                       start_router=True, router_port=7000)
 

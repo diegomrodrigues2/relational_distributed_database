@@ -1,6 +1,7 @@
 import json
 import sys
 import os
+import uuid
 
 # Ensure project root is on the import path just like the tests do
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -15,8 +16,9 @@ import tempfile
 def main() -> None:
     app.router.on_startup.clear()
     ranges = [("a", "m"), ("m", "z")]
+    cluster_name = f"registry_cluster_{uuid.uuid4().hex[:6]}"
     cluster = NodeCluster(
-        base_path=os.path.join(tempfile.gettempdir(), "registry_cluster"),
+        base_path=os.path.join(tempfile.gettempdir(), cluster_name),
         num_nodes=2,
         key_ranges=ranges,
         start_router=True,
