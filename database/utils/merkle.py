@@ -40,7 +40,11 @@ def compute_segment_hashes(db) -> Dict[str, str]:
         hashes["memtable"] = merkle_root(items)
 
     if hasattr(db, "sstable_manager"):
-        for _, path, _ in db.sstable_manager.sstable_segments:
+        # Protect sstable_segments access during potential compaction
+        with db.sstable_manager._segments_lock:
+            sstable_segments_copy = list(db.sstable_manager.sstable_segments)
+        
+        for _, path, _ in sstable_segments_copy:
             seg_id = os.path.basename(path)
             seg_items: List[Tuple[str, str]] = []
             try:
@@ -58,6 +62,7 @@ def compute_segment_hashes(db) -> Dict[str, str]:
                         except json.JSONDecodeError:
                             continue
             except FileNotFoundError:
+                # File may have been deleted by compaction, skip it
                 continue
             hashes[seg_id] = merkle_root(seg_items)
     return hashes

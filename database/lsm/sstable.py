@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import threading
 from ..utils.vector_clock import VectorClock
 from ..clustering.partitioning import compose_key
 from ..utils.event_logger import EventLogger
@@ -68,6 +69,7 @@ class SSTableManager:
         self.event_logger = event_logger
         self.sstable_dir = sstable_dir
         self.sstable_segments = []
+        self._segments_lock = threading.RLock()  # Protect sstable_segments and file operations
 
         self._load_existing_sstables()
         msg = (
@@ -80,20 +82,21 @@ class SSTableManager:
 
     def _load_existing_sstables(self):
         """Carrega SSTables existentes e seus índices."""
-        files = sorted(os.listdir(self.sstable_dir))
-        for filename in files:
-            if filename.endswith(".txt"):
-                path = os.path.join(self.sstable_dir, filename)
-                timestamp_str = filename.split('_')[1].split('.')[0] # Ex: sstable_16788899000.txt -> 16788899000
-                try:
-                    timestamp = int(timestamp_str)
-                except ValueError:
-                    timestamp = 0 # Fallback for malformed names
-                
-                sparse_index = self._build_sparse_index(path)
-                self.sstable_segments.append((timestamp, path, sparse_index))
-        # Ordena os segmentos do mais antigo para o mais novo
-        self.sstable_segments.sort(key=lambda x: x[0])
+        with self._segments_lock:
+            files = sorted(os.listdir(self.sstable_dir))
+            for filename in files:
+                if filename.endswith(".txt"):
+                    path = os.path.join(self.sstable_dir, filename)
+                    timestamp_str = filename.split('_')[1].split('.')[0] # Ex: sstable_16788899000.txt -> 16788899000
+                    try:
+                        timestamp = int(timestamp_str)
+                    except ValueError:
+                        timestamp = 0 # Fallback for malformed names
+                    
+                    sparse_index = self._build_sparse_index(path)
+                    self.sstable_segments.append((timestamp, path, sparse_index))
+            # Ordena os segmentos do mais antigo para o mais novo
+            self.sstable_segments.sort(key=lambda x: x[0])
         msg = f"  SSTableManager: Carregou {len(self.sstable_segments)} SSTables do disco."
         if self.event_logger:
             self.event_logger.log(msg)
@@ -137,9 +140,13 @@ class SSTableManager:
                 f.write(json.dumps(entry) + "\n")
 
         sparse_index = self._build_sparse_index(sstable_path)
-        # Adiciona o novo SSTable ao final (ele é o mais recente)
-        self.sstable_segments.append((timestamp, sstable_path, sparse_index))
-        self.sstable_segments.sort(key=lambda x: x[0])  # Re-ordena para garantir o mais novo no final
+        
+        # Protect sstable_segments modification
+        with self._segments_lock:
+            # Adiciona o novo SSTable ao final (ele é o mais recente)
+            self.sstable_segments.append((timestamp, sstable_path, sparse_index))
+            self.sstable_segments.sort(key=lambda x: x[0])  # Re-ordena para garantir o mais novo no final
+        
         msg = (
             f"  SSTableManager: Novo SSTable '{sstable_filename}' escrito com {len(sorted_items)} itens."
         )
@@ -159,7 +166,18 @@ class SSTableManager:
         else:
             logger.info(msg)
 
-        with open(sstable_path, 'r', encoding='utf-8') as f:
+        # Protect file access during potential compaction
+        with self._segments_lock:
+            # Double-check that the file still exists (not deleted by compaction)
+            if not os.path.exists(sstable_path):
+                msg = f"  SSTableManager: SSTable {os.path.basename(sstable_path)} não existe mais (possivelmente compactado)."
+                if self.event_logger:
+                    self.event_logger.log(msg)
+                else:
+                    logger.info(msg)
+                return None
+                
+        with self._segments_lock, open(sstable_path, 'r', encoding='utf-8') as f:
             start_offset = 0
             search_keys = [entry["key"] for entry in sparse_index]
 
@@ -218,6 +236,11 @@ class SSTableManager:
 
     def compact_segments(self):
         """Compacta todos os SSTables em um novo."""
+        with self._segments_lock:
+            return self._compact_segments_locked()
+    
+    def _compact_segments_locked(self):
+        """Internal compaction method that assumes _segments_lock is held."""
         if len(self.sstable_segments) <= 1:
             msg = "  SSTableManager: Não há segmentos suficientes para compactar."
             if self.event_logger:

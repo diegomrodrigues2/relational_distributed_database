@@ -107,6 +107,7 @@ class NodeCluster:
         self.nodes_by_id: dict[str, ClusterNode] = {}
         self.drivers: list = []
         self._tx_lock = threading.Lock()
+        self._key_freq_lock = threading.Lock()  # Protect key_freq from concurrent access
         self._tx_counter = 0
         self.salted_keys: dict[str, int] = {}
         self.consistency_mode = consistency_mode
@@ -351,13 +352,17 @@ class NodeCluster:
         key whose counter exceeds ``threshold`` and isn't already salted.
         The frequency counter for a key is reset once salting is enabled.
         """
-        for comp_key, count in list(self.key_freq.items()):
+        with self._key_freq_lock:
+            key_freq_snapshot = list(self.key_freq.items())
+
+        for comp_key, count in key_freq_snapshot:
             if count >= threshold:
                 pk, _ = self._split_key_components(comp_key)
                 if pk in self.salted_keys:
                     continue
                 self.mark_hot_key(pk, buckets)
-                self.key_freq[comp_key] = 0
+                with self._key_freq_lock:
+                    self.key_freq[comp_key] = 0
 
     def set_max_transfer_rate(self, rate: int | None) -> None:
         """Configure maximum transfer rate in bytes/second."""
@@ -431,7 +436,10 @@ class NodeCluster:
 
     def get_hot_keys(self, top_n: int = 5) -> list[str]:
         """Return most frequently accessed keys."""
-        return [k for k, _ in sorted(self.key_freq.items(), key=lambda kv: kv[1], reverse=True)[:top_n]]
+        with self._key_freq_lock:
+            key_freq_snapshot = list(self.key_freq.items())
+
+        return [k for k, _ in sorted(key_freq_snapshot, key=lambda kv: kv[1], reverse=True)[:top_n]]
 
     def get_partition_stats(self) -> dict[int, int]:
         """Return a mapping pid -> operation count."""
@@ -668,7 +676,8 @@ class NodeCluster:
             prefix = random.randint(0, buckets - 1)
             partition_key = f"{prefix}#{partition_key}"
         composed_key = compose_key(partition_key, clustering_key)
-        self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
+        with self._key_freq_lock:
+            self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
         node = self._coordinator(partition_key, clustering_key)
         node.put(composed_key, value)
         pid = self._pid_for_key(partition_key, clustering_key)
@@ -691,7 +700,8 @@ class NodeCluster:
         single combined key as ``partition_key``.
         """
         composed_key = compose_key(partition_key, clustering_key)
-        self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
+        with self._key_freq_lock:
+            self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
         node = self._coordinator(partition_key, clustering_key)
         node.delete(composed_key)
         pid = self._pid_for_key(partition_key, clustering_key)
@@ -756,7 +766,8 @@ class NodeCluster:
                 return [(val, vc.clock) for val, vc, *_ in merged]
 
         composed_key = compose_key(partition_key, clustering_key)
-        self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
+        with self._key_freq_lock:
+            self.key_freq[composed_key] = self.key_freq.get(composed_key, 0) + 1
         ring = getattr(self.partitioner, "ring", None)
         if self.load_balance_reads and ring is not None:
             pref_nodes = ring.get_preference_list(

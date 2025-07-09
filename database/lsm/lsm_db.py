@@ -206,7 +206,11 @@ class SimpleLSMDB:
         if record:
             versions = _merge_version_lists(versions, record)
 
-        for sstable_entry in reversed(self.sstable_manager.sstable_segments):
+        # Protect sstable_segments access during potential compaction
+        with self.sstable_manager._segments_lock:
+            sstable_segments_copy = list(reversed(self.sstable_manager.sstable_segments))
+        
+        for sstable_entry in sstable_segments_copy:
             rec = self.sstable_manager.get_from_sstable(sstable_entry, key)
             if rec:
                 versions = _merge_version_lists(versions, rec)
@@ -251,7 +255,11 @@ class SimpleLSMDB:
         if record:
             versions = _merge_version_lists(versions, record)
 
-        for sstable_entry in reversed(self.sstable_manager.sstable_segments):
+        # Protect sstable_segments access during potential compaction  
+        with self.sstable_manager._segments_lock:
+            sstable_segments_copy = list(reversed(self.sstable_manager.sstable_segments))
+        
+        for sstable_entry in sstable_segments_copy:
             rec = self.sstable_manager.get_from_sstable(sstable_entry, key)
             if rec:
                 versions = _merge_version_lists(versions, rec)
@@ -348,22 +356,30 @@ class SimpleLSMDB:
                 items.setdefault(k, [])
                 items[k] = _merge_version_lists(items[k], [(val, vc)])
 
-        for _, path, _ in reversed(self.sstable_manager.sstable_segments):
-            with open(path, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        data = json.loads(line)
-                    except Exception:
-                        continue
-                    key = data.get("key")
-                    if not key or not key.startswith(prefix):
-                        continue
-                    if key < start_key or key > end_key:
-                        continue
-                    val = data.get("value")
-                    vc = VectorClock(data.get("vector", {}))
-                    items.setdefault(key, [])
-                    items[key] = _merge_version_lists(items[key], [(val, vc)])
+        # Protect sstable_segments access during potential compaction
+        with self.sstable_manager._segments_lock:
+            sstable_segments_copy = list(reversed(self.sstable_manager.sstable_segments))
+        
+        for _, path, _ in sstable_segments_copy:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            data = json.loads(line)
+                        except Exception:
+                            continue
+                        key = data.get("key")
+                        if not key or not key.startswith(prefix):
+                            continue
+                        if key < start_key or key > end_key:
+                            continue
+                        val = data.get("value")
+                        vc = VectorClock(data.get("vector", {}))
+                        items.setdefault(key, [])
+                        items[key] = _merge_version_lists(items[key], [(val, vc)])
+            except FileNotFoundError:
+                # File may have been deleted by compaction, skip it
+                pass
 
         result = []
         for k in sorted(items):
@@ -389,23 +405,32 @@ class SimpleLSMDB:
                 for val, vc, *_ in versions:
                     res.append((k, val, vc))
             return res
-        for ts, path, _ in self.sstable_manager.sstable_segments:
+        
+        # Protect sstable_segments access during potential compaction
+        with self.sstable_manager._segments_lock:
+            sstable_segments_copy = list(self.sstable_manager.sstable_segments)
+        
+        for ts, path, _ in sstable_segments_copy:
             name = os.path.basename(path)
             if name == segment_id:
                 items = []
-                with open(path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            data = json.loads(line)
-                            items.append(
-                                (data.get("key"), data.get("value"), VectorClock(data.get("vector", {})))
-                            )
-                        except json.JSONDecodeError:
-                            continue
-                return items
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                data = json.loads(line)
+                                items.append(
+                                    (data.get("key"), data.get("value"), VectorClock(data.get("vector", {})))
+                                )
+                            except json.JSONDecodeError:
+                                continue
+                    return items
+                except FileNotFoundError:
+                    # File may have been deleted by compaction
+                    return []
         return []
 
     def close(self):

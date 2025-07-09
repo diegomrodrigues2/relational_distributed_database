@@ -430,15 +430,18 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         # we must ignore those buffered values and return the committed version.
         skip_cache = False
         with self._node._tx_lock:
-            for tx_id, txdata in self._node.active_transactions.items():
-                if tx_id == (request.tx_id or ""):
-                    continue
-                for op, req in txdata.get("ops", []):
-                    if req.key == request.key:
-                        skip_cache = True
-                        break
-                if skip_cache:
+            # Create a copy of active_transactions to avoid "dictionary changed size during iteration"
+            active_txs_copy = dict(self._node.active_transactions.items())
+        
+        for tx_id, txdata in active_txs_copy.items():
+            if tx_id == (request.tx_id or ""):
+                continue
+            for op, req in txdata.get("ops", []):
+                if req.key == request.key:
+                    skip_cache = True
                     break
+            if skip_cache:
+                break
 
         if skip_cache:
             if request.tx_id:
@@ -791,7 +794,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 self.Put(req, context)
 
         ops = []
-        for op_id, (key, value, ts) in list(self._node.replication_log.items()):
+        with self._node._replog_lock:
+            replog_snapshot = list(self._node.replication_log.items())
+        
+        for op_id, (key, value, ts) in replog_snapshot:
             origin, seq = op_id.split(":")
             seq = int(seq)
             seen = last_seen.get(origin, 0)
@@ -1326,8 +1332,13 @@ class NodeServer:
         if not self._replog_fp:
             return
         with self._replog_lock:
+            # Create a copy of replication_log for JSON serialization to avoid iteration issues
+            replog_copy = dict(self.replication_log.items())
+        
+        # Serialize outside the lock to minimize lock time
+        with self._replog_lock:  # Still need lock for file operations
             self._replog_fp.seek(0)
-            json.dump(self.replication_log, self._replog_fp)
+            json.dump(replog_copy, self._replog_fp)
             self._replog_fp.truncate()
             self._replog_fp.flush()
             os.fsync(self._replog_fp.fileno())
@@ -1396,7 +1407,11 @@ class NodeServer:
     def get_replication_status(self):
         """Return last seen sequence numbers and hint counts."""
 
-        hints_count = {peer: len(ops) for peer, ops in self.hints.items()}
+        with self._hints_lock:
+            hints_count = {peer: len(ops) for peer, ops in self.hints.items()}
+        
+        # Note: last_seen doesn't need a lock as it's only modified during replication operations
+        # which are already synchronized
         return replication_pb2.ReplicationStatusResponse(
             last_seen={peer: int(seq) for peer, seq in self.last_seen.items()},
             hints=hints_count,
@@ -1435,75 +1450,90 @@ class NodeServer:
     def get_sstables(self):
         """Return metadata about SSTables stored by this node."""
         tables = []
-        for _ts, path, _index in self.db.sstable_manager.sstable_segments:
-            size = os.path.getsize(path) // 1024
-            item_count = 0
-            first_key = last_key = ""
-            with open(path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                    except Exception:
-                        continue
-                    k = data.get("key", "")
-                    if not first_key:
-                        first_key = k
-                    last_key = k
-                    item_count += 1
-            tables.append(
-                replication_pb2.SSTableInfo(
-                    id=os.path.basename(path),
-                    level=0,
-                    size=size,
-                    item_count=item_count,
-                    start_key=first_key,
-                    end_key=last_key,
+        # Protect sstable_segments access during potential compaction
+        with self.db.sstable_manager._segments_lock:
+            sstable_segments_copy = list(self.db.sstable_manager.sstable_segments)
+        
+        for _ts, path, _index in sstable_segments_copy:
+            try:
+                size = os.path.getsize(path) // 1024
+                item_count = 0
+                first_key = last_key = ""
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                        except Exception:
+                            continue
+                        k = data.get("key", "")
+                        if not first_key:
+                            first_key = k
+                        last_key = k
+                        item_count += 1
+                tables.append(
+                    replication_pb2.SSTableInfo(
+                        id=os.path.basename(path),
+                        level=0,
+                        size=size,
+                        item_count=item_count,
+                        start_key=first_key,
+                        end_key=last_key,
+                    )
                 )
-            )
-        return tables
+            except (FileNotFoundError, OSError):
+                # File may have been deleted by compaction, skip it
+                continue
 
     def get_sstable_content(self, sstable_id: str):
         """Return all entries stored in ``sstable_id``."""
         entries = []
-        for _ts, path, _index in self.db.sstable_manager.sstable_segments:
+        # Protect sstable_segments access during potential compaction
+        with self.db.sstable_manager._segments_lock:
+            sstable_segments_copy = list(self.db.sstable_manager.sstable_segments)
+        
+        for _ts, path, _index in sstable_segments_copy:
             if os.path.basename(path) != sstable_id:
                 continue
-            with open(path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                    except Exception:
-                        continue
-                    entries.append(
-                        replication_pb2.StorageEntry(
-                            key=data.get("key", ""),
-                            value=str(data.get("value", "")),
-                            vector=replication_pb2.VersionVector(
-                                items=data.get("vector", {})
-                            ),
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                        except Exception:
+                            continue
+                        entries.append(
+                            replication_pb2.StorageEntry(
+                                key=data.get("key", ""),
+                                value=str(data.get("value", "")),
+                                vector=replication_pb2.VersionVector(
+                                    items=data.get("vector", {})
+                                ),
+                            )
                         )
-                    )
-            break
-        return entries
+                break
+            except FileNotFoundError:
+                # File may have been deleted by compaction
+                break
 
     def cleanup_replication_log(self) -> None:
         """Remove acknowledged operations from replication_log."""
         if not self.last_seen:
             return
         min_seen = min(self.last_seen.values())
-        to_remove = [
-            op_id
-            for op_id in list(self.replication_log.keys())
-            if int(op_id.split(":")[1]) <= int(min_seen)
-        ]
-        for op_id in to_remove:
-            self.replication_log.pop(op_id, None)
+        with self._replog_lock:
+            to_remove = [
+                op_id
+                for op_id in list(self.replication_log.keys())
+                if int(op_id.split(":")[1]) <= int(min_seen)
+            ]
+            for op_id in to_remove:
+                self.replication_log.pop(op_id, None)
         if to_remove:
             self.save_replication_log()
 
@@ -1532,12 +1562,16 @@ class NodeServer:
             for host, port, peer_id, client in self._iter_peers():
                 try:
                     client.ping(self.node_id)
-                    self.peer_status[peer_id] = now
+                    with self._peer_lock:
+                        self.peer_status[peer_id] = now
                 except Exception:
                     pass
-            for pid, ts in list(self.peer_status.items()):
+            with self._peer_lock:
+                peer_status_snapshot = list(self.peer_status.items())
+            for pid, ts in peer_status_snapshot:
                 if ts is not None and now - ts > self.heartbeat_timeout:
-                    self.peer_status[pid] = None
+                    with self._peer_lock:
+                        self.peer_status[pid] = None
             time.sleep(self.heartbeat_interval)
 
     def _hinted_handoff_loop(self) -> None:
@@ -1828,7 +1862,10 @@ class NodeServer:
             return
 
         pending_ops = []
-        for op_id, (key, value, ts) in list(self.replication_log.items())[: self.max_batch_size]:
+        with self._replog_lock:
+            replog_snapshot = list(self.replication_log.items())[: self.max_batch_size]
+        
+        for op_id, (key, value, ts) in replog_snapshot:
             pending_ops.append(
                 replication_pb2.Operation(
                     key=key,
@@ -1891,7 +1928,8 @@ class NodeServer:
                         pass
 
             # attempt to flush hinted handoff operations
-            hints = self.hints.get(peer_id, [])
+            with self._hints_lock:
+                hints = self.hints.get(peer_id, [])
             if hints:
                 remaining = []
                 for h_op_id, h_op, h_key, h_val, h_ts in hints:
