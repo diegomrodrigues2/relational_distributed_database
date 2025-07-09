@@ -176,9 +176,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     apply_update = False
 
         if apply_update and request.hinted_for and request.hinted_for != self._node.node_id:
-            self._node.hints.setdefault(request.hinted_for, []).append(
-                [request.op_id or "", "PUT", request.key, request.value, int(request.timestamp)]
-            )
+            with self._node._hints_lock:
+                self._node.hints.setdefault(request.hinted_for, []).append(
+                    [request.op_id or "", "PUT", request.key, request.value, int(request.timestamp)]
+                )
             self._node.save_hints()
             return replication_pb2.Empty()
 
@@ -335,9 +336,10 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     apply_update = False
 
         if apply_update and request.hinted_for and request.hinted_for != self._node.node_id:
-            self._node.hints.setdefault(request.hinted_for, []).append(
-                [request.op_id or "", "DELETE", request.key, None, int(request.timestamp)]
-            )
+            with self._node._hints_lock:
+                self._node.hints.setdefault(request.hinted_for, []).append(
+                    [request.op_id or "", "DELETE", request.key, None, int(request.timestamp)]
+                )
             self._node.save_hints()
             return replication_pb2.Empty()
 
@@ -1039,11 +1041,14 @@ class NodeServer:
         self.client_map = {}
         self.clients_by_id = {}
         self.peer_status: dict[str, float | None] = {}
+        # Initialize locks before calling _set_peers which uses them
+        self._replog_lock = threading.Lock()
+        self._peer_lock = threading.Lock()
+        self._hints_lock = threading.Lock()
         self._set_peers(self.peers)
 
         self.hints: dict[str, list[tuple]] = {}
         self._replog_fp = None
-        self._replog_lock = threading.Lock()
 
         # Initialize CRDT instances for configured keys
         self.crdts = {}
@@ -1091,12 +1096,14 @@ class NodeServer:
     # registry helpers ----------------------------------------------------
     def _set_peers(self, peers) -> None:
         """Replace peer list and rebuild gRPC clients."""
-        self.peers = peers
-        self.peer_clients = []
-        self.client_map = {}
-        self.clients_by_id = {}
-        self.peer_status = {}
-        for peer in self.peers:
+        # Build new structures first to avoid mutating dictionaries that might be
+        # iterated concurrently by background threads. Finally swap the
+        # references in one go so other threads always see a consistent object.
+        new_peer_clients = []
+        new_client_map = {}
+        new_clients_by_id = {}
+        new_peer_status = {}
+        for peer in peers:
             if len(peer) == 2:
                 ph, pp = peer
                 pid = f"{ph}:{pp}"
@@ -1105,10 +1112,18 @@ class NodeServer:
             if ph == self.host and pp == self.port:
                 continue
             c = GRPCReplicaClient(ph, pp)
-            self.peer_clients.append(c)
-            self.client_map[f"{ph}:{pp}"] = c
-            self.clients_by_id[pid] = c
-            self.peer_status[pid] = None
+            new_peer_clients.append(c)
+            new_client_map[f"{ph}:{pp}"] = c
+            new_clients_by_id[pid] = c
+            new_peer_status[pid] = None
+
+        # Atomically replace the structures under lock
+        with self._peer_lock:
+            self.peers = peers
+            self.peer_clients = new_peer_clients
+            self.client_map = new_client_map
+            self.clients_by_id = new_clients_by_id
+            self.peer_status = new_peer_status
 
     def _apply_cluster_state(self, state) -> None:
         """Update peers and partition map from ClusterState message."""
@@ -1124,15 +1139,11 @@ class NodeServer:
 
     def _iter_peers(self):
         """Yield tuples of (host, port, node_id, client) for all peers."""
-        if self.clients_by_id:
-            return [
-                (c.host, c.port, node_id, c)
-                for node_id, c in self.clients_by_id.items()
-            ]
-        return [
-            (c.host, c.port, f"{c.host}:{c.port}", c)
-            for c in self.peer_clients
-        ]
+        with self._peer_lock:
+            if self.clients_by_id:
+                items = list(self.clients_by_id.items())
+                return [(c.host, c.port, node_id, c) for node_id, c in items]
+            return [(c.host, c.port, f"{c.host}:{c.port}", c) for c in list(self.peer_clients)]
 
     # cache helpers ------------------------------------------------
     def _cache_get(self, key):
@@ -1306,9 +1317,10 @@ class NodeServer:
 
     def save_hints(self) -> None:
         """Persist hints to disk."""
-        path = self._hints_file()
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.hints, f)
+        with self._hints_lock:
+            path = self._hints_file()
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.hints, f)
 
     def _persist_replication_log(self) -> None:
         if not self._replog_fp:
@@ -1531,7 +1543,9 @@ class NodeServer:
     def _hinted_handoff_loop(self) -> None:
         while not self._hinted_stop.is_set():
             updated = False
-            for peer_id, hints in list(self.hints.items()):
+            with self._hints_lock:
+                hints_snapshot = list(self.hints.items())
+            for peer_id, hints in hints_snapshot:
                 # Attempt handoff regardless of heartbeat status to reduce
                 # latency when a node comes back online.
                 client = self.clients_by_id.get(peer_id) or self.client_map.get(peer_id)
@@ -1572,10 +1586,11 @@ class NodeServer:
                         self.event_logger.log(msg)
                     else:
                         print(msg)
-                if remaining:
-                    self.hints[peer_id] = [list(r) for r in remaining]
-                else:
-                    self.hints.pop(peer_id, None)
+                with self._hints_lock:
+                    if remaining:
+                        self.hints[peer_id] = [list(r) for r in remaining]
+                    else:
+                        self.hints.pop(peer_id, None)
                 updated = True
             if updated:
                 self.save_hints()
@@ -1685,7 +1700,7 @@ class NodeServer:
                     continue
                 if self.peer_status.get(node_id) is None:
                     if len(peer_list) >= self.replication_factor - 1:
-                        self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
+                        self._add_hint(node_id, op_id, op, key, value, timestamp)
                         continue
                     missing.append(node_id)
                     peer_list.append((client.host, client.port, node_id, "", client))
@@ -1713,7 +1728,7 @@ class NodeServer:
                 peer_list.append((client.host, client.port, node_id, hinted, client))
 
             for node_id in missing:
-                self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
+                self._add_hint(node_id, op_id, op, key, value, timestamp)
         else:
             peer_list = []
             missing = []
@@ -1723,7 +1738,7 @@ class NodeServer:
                     continue
                 if self.peer_status.get(node_id) is None:
                     if len(peer_list) >= self.replication_factor - 1:
-                        self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
+                        self._add_hint(node_id, op_id, op, key, value, timestamp)
                         continue
                     missing.append(node_id)
                     peer_list.append((host, port, node_id, "", client))
@@ -1747,7 +1762,7 @@ class NodeServer:
                 peer_list.append((host, port, node_id, hinted, client))
 
             for node_id in missing:
-                self.hints.setdefault(node_id, []).append([op_id, op, key, value, timestamp])
+                self._add_hint(node_id, op_id, op, key, value, timestamp)
 
         errors = []
         def do_rpc(params):
@@ -1797,9 +1812,7 @@ class NodeServer:
                         ack += 1
                 except Exception as exc:
                     print(f"Falha ao replicar: {exc}")
-                    self.hints.setdefault(peer_id, []).append(
-                        [op_id, op, key, value, timestamp]
-                    )
+                    self._add_hint(peer_id, op_id, op, key, value, timestamp)
                     errors.append(exc)
                 if ack >= self.write_quorum:
                     break
@@ -1903,10 +1916,12 @@ class NodeServer:
                     except Exception:
                         remaining.append((h_op_id, h_op, h_key, h_val, h_ts))
                 if remaining:
-                    self.hints[peer_id] = [list(r) for r in remaining]
-                else:
-                    self.hints.pop(peer_id, None)
-                self.save_hints()
+                    with self._hints_lock:
+                        if remaining:
+                            self.hints[peer_id] = [list(r) for r in remaining]
+                        else:
+                            self.hints.pop(peer_id, None)
+                    self.save_hints()
 
     # lifecycle -----------------------------------------------------------
     def start(self):
@@ -1976,6 +1991,13 @@ class NodeServer:
         if self._registry_channel:
             self._registry_channel.close()
         self.server.stop(0).wait()
+
+    # ------------------------------------------------------------------
+    # Thread-safe helper methods
+    def _add_hint(self, peer_id: str, op_id: str, op: str, key: str, value, ts: int) -> None:
+        """Add a hinted handoff entry protected by ``_hints_lock``."""
+        with self._hints_lock:
+            self.hints.setdefault(peer_id, []).append([op_id, op, key, value, ts])
 
 
 def run_server(
