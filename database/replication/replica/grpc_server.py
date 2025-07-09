@@ -1487,6 +1487,8 @@ class NodeServer:
                 # File may have been deleted by compaction, skip it
                 continue
 
+        return tables
+
     def get_sstable_content(self, sstable_id: str):
         """Return all entries stored in ``sstable_id``."""
         entries = []

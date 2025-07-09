@@ -22,7 +22,10 @@ class RegistryNodeChangesTest(unittest.TestCase):
                 use_registry=True,
             )
             try:
-                time.sleep(0.5)
+                # give the gRPC services a moment to start before issuing
+                # requests. slower machines may require a slightly longer
+                # pause for the underlying servers to bind to their ports.
+                time.sleep(1.0)
                 channel = grpc.insecure_channel("localhost:9100")
                 stub = metadata_pb2_grpc.MetadataServiceStub(channel)
 
