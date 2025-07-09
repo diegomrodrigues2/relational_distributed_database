@@ -492,7 +492,7 @@ de faixas em `key_ranges` ao criar o cluster:
 from replication import NodeCluster
 
 ranges = [('a', 'm'), ('m', None)]  # exemplo
-cluster = NodeCluster('/tmp/range_cluster', num_nodes=2, key_ranges=ranges)
+cluster = NodeCluster('/tmp/range_cluster_<id>', num_nodes=2, key_ranges=ranges)
 ```
 
 Cada tupla define o início e o fim (exclusivo) de uma faixa. No exemplo
@@ -511,7 +511,7 @@ Cada partição corresponde a um nó (ou réplica) responsável pelo armazenamen
 ```python
 from replication import NodeCluster
 
-cluster = NodeCluster('/tmp/hash_cluster', num_nodes=3,
+cluster = NodeCluster('/tmp/hash_cluster_<id>', num_nodes=3,
                       partition_strategy='hash',
                       replication_factor=1)
 ```
@@ -547,7 +547,7 @@ as variações retornando o valor mais recente.
 ```python
 from replication import NodeCluster
 
-cluster = NodeCluster('/tmp/hash_cluster', num_nodes=3,
+cluster = NodeCluster('/tmp/hash_cluster_<id>', num_nodes=3,
                       partition_strategy='hash')
 cluster.enable_salt('hotkey', buckets=4)
 
@@ -855,7 +855,7 @@ it using `GRPCRouterClient`:
 from replication import NodeCluster
 from replica.client import GRPCRouterClient
 
-cluster = NodeCluster('/tmp/router_cluster', num_nodes=3,
+cluster = NodeCluster('/tmp/router_cluster_<id>', num_nodes=3,
                       partition_strategy='hash',
                       start_router=True, router_port=7000)
 

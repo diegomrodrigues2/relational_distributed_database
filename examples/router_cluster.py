@@ -1,6 +1,7 @@
 import sys
 import os
 import tempfile
+import uuid
 
 # Ensure project root is on the import path just like the tests do
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -13,8 +14,9 @@ from examples.data_generators import generate_hash_items
 
 def main() -> None:
     app.router.on_startup.clear()
+    cluster_name = f"router_cluster_{uuid.uuid4().hex[:6]}"
     cluster = NodeCluster(
-        base_path=os.path.join(tempfile.gettempdir(), "router_cluster"),
+        base_path=os.path.join(tempfile.gettempdir(), cluster_name),
         num_nodes=2,
         start_router=True,
     )
