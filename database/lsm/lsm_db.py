@@ -74,6 +74,7 @@ class SimpleLSMDB:
             self.sstable_dir, event_logger=self.event_logger
         )
         self._compaction_thread = None
+        self._last_timestamp = 0
         self._recover_from_wal()
         msg = f"--- Banco de Dados Iniciado em {self.db_path} ---"
         if self.event_logger:
@@ -99,6 +100,15 @@ class SimpleLSMDB:
         if self._compaction_thread:
             self._compaction_thread.join()
             self._compaction_thread = None
+
+    def _generate_timestamp(self, ts: int | None = None) -> int:
+        """Return a monotonically increasing timestamp in milliseconds."""
+        if ts is None:
+            ts = int(time.time() * 1000)
+        if ts <= self._last_timestamp:
+            ts = self._last_timestamp + 1
+        self._last_timestamp = ts
+        return ts
 
     def _recover_from_wal(self):
         """Recupera o MemTable a partir do WAL."""
@@ -174,8 +184,7 @@ class SimpleLSMDB:
         key = compose_key(str(key), clustering_key)
         value = str(value)
         if vector_clock is None:
-            if timestamp is None:
-                timestamp = int(time.time() * 1000)
+            timestamp = self._generate_timestamp(timestamp)
             vector_clock = VectorClock({"ts": int(timestamp)})
         self.wal.append("PUT", key, value, vector_clock, clustering_key=None)
         current = self.memtable.get(key) or []
@@ -298,8 +307,7 @@ class SimpleLSMDB:
         else:
             logger.info(msg)
         if vector_clock is None:
-            if timestamp is None:
-                timestamp = int(time.time() * 1000)
+            timestamp = self._generate_timestamp(timestamp)
             vector_clock = VectorClock({"ts": int(timestamp)})
         self.wal.append("DELETE", key, TOMBSTONE, vector_clock, clustering_key=None)
         current = self.memtable.get(key) or []
