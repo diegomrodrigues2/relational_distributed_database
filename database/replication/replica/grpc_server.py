@@ -1523,6 +1523,8 @@ class NodeServer:
                 # File may have been deleted by compaction
                 break
 
+        return entries
+
     def cleanup_replication_log(self) -> None:
         """Remove acknowledged operations from replication_log."""
         if not self.last_seen:

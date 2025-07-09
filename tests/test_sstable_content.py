@@ -17,6 +17,7 @@ class SSTableContentRPCTest(unittest.TestCase):
             try:
                 node.db.put("k1", "v1")
                 node.db._flush_memtable_to_sstable()
+                node.db.wait_for_compaction()
                 seg = node.db.sstable_manager.sstable_segments[-1]
                 sstable_id = os.path.basename(seg[1])
 
