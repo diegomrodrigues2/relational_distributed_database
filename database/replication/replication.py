@@ -1162,7 +1162,9 @@ class NodeCluster:
         set is empty it loads the keys from disk for each node using
         :py:meth:`_load_node_items`. For each discovered key the value is fetched
         via :py:meth:`get` and tombstones are ignored. The resulting list is
-        ordered by primary and clustering keys.
+        ordered by primary and clustering keys. Offset and limit are applied
+        during iteration so the entire dataset doesn't need to be processed when
+        only a subset of rows is requested.
         """
 
         key_set: set[str] = set(self._known_keys)
@@ -1175,26 +1177,32 @@ class NodeCluster:
 
         records: list[tuple[str, str | None, object]] = []
         q = (query or "").lower()
+        idx = 0
+        start = max(offset, 0)
+        stop = start + limit if limit is not None else None
         for key in sorted(key_set):
+            if stop is not None and idx >= stop:
+                break
             pk, ck = self._split_key_components(key)
             try:
                 value = self.get(0, pk, ck)
             except Exception:
+                idx += 1
                 continue
             if value is None or value == TOMBSTONE:
+                idx += 1
                 continue
             if q and not (
                 q in pk.lower()
                 or (ck and q in ck.lower())
                 or q in str(value).lower()
             ):
+                idx += 1
                 continue
-            records.append((pk, ck, value))
-
-        if offset < 0:
-            offset = 0
-        end = offset + limit if limit is not None else None
-        return records[offset:end]
+            if idx >= start:
+                records.append((pk, ck, value))
+            idx += 1
+        return records
 
     def _move_hash_partition(self, pid: int, src: ClusterNode, dest: ClusterNode) -> None:
         items = self._load_node_items(src)

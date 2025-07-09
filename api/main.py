@@ -436,9 +436,13 @@ def health() -> dict:
 
 @app.get("/data/records")
 def list_records_endpoint(
-    offset: int = 0, limit: int | None = None, query: str | None = None
+    offset: int = 0, limit: int | None = 100, query: str | None = None
 ) -> dict:
-    """Return records stored in the cluster with optional pagination."""
+    """Return records stored in the cluster with optional pagination.
+
+    ``limit`` defaults to 100 to avoid loading the entire dataset when many
+    records exist.
+    """
     cluster = app.state.cluster
     records = [
         {

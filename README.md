@@ -150,7 +150,7 @@ The REST server offers simple endpoints to manage data stored in the cluster.
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| `GET` | `/data/records` | List all records in the cluster (optional `offset` and `limit` query params) |
+| `GET` | `/data/records` | List records (optional `offset` and `limit` query params, `limit` defaults to 100) |
 | `POST` | `/data/records` | Insert a new record using a JSON body |
 | `PUT` | `/data/records/{partition_key}/{clustering_key}` | Update an existing record (send `value` as query param) |
 | `DELETE` | `/data/records/{partition_key}/{clustering_key}` | Remove a record |
