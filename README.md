@@ -598,3 +598,19 @@ docker run -e NODE_ID=node1 -e GRPC_PORT=50051 -e API_PORT=8000 \
 Set `PEERS` to a comma‑separated list of `host:port` pairs when connecting
 multiple containers. Optional variables like `DATA_DIR`, `REGISTRY_HOST` and
 `REGISTRY_PORT` are also respected by `start_node.py`.
+
+## Running a cluster with Docker Compose
+
+The repository includes a `docker-compose.yml` that starts the metadata registry and three nodes. Build the images and launch the cluster with:
+
+```bash
+docker compose up --build
+```
+
+Once running, each node exposes both its API and gRPC port on the host:
+
+- node1: `http://localhost:8001` / `50051`
+- node2: `http://localhost:8002` / `50052`
+- node3: `http://localhost:8003` / `50053`
+
+The registry service listens on port `9100`.
