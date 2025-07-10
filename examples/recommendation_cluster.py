@@ -45,7 +45,7 @@ def main() -> None:
     print("API running at http://localhost:8000")
     try:
         import uvicorn
-        uvicorn.run("api.main:app", port=8000)
+        uvicorn.run("api.main:app", host="0.0.0.0", port=8000)
     finally:
         front_proc.terminate()
         cluster.shutdown()
