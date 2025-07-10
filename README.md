@@ -599,22 +599,30 @@ Set `PEERS` to a comma‑separated list of `host:port` pairs when connecting
 multiple containers. Optional variables like `DATA_DIR`, `REGISTRY_HOST` and
 `REGISTRY_PORT` are also respected by `start_node.py`.
 
-## Running a cluster with Docker Compose
+## Running with Docker Compose
 
-The repository includes a `docker-compose.yml` that starts the metadata registry and three nodes. Build the images and launch the cluster with:
+The repository ships with a `docker-compose.yml` that builds the image and
+starts a metadata registry together with three nodes. Launch everything with:
 
 ```bash
 docker compose up --build
 ```
 
-Once running, each node exposes both its API and gRPC port on the host:
+All services bind to `0.0.0.0` so the containers can communicate on the Docker
+network. After startup the dashboards are available at:
 
-- node1: `http://localhost:8001` / `50051`
-- node2: `http://localhost:8002` / `50052`
-- node3: `http://localhost:8003` / `50053`
+- node1: [http://localhost:8001](http://localhost:8001) (gRPC `50051`)
+- node2: [http://localhost:8002](http://localhost:8002) (gRPC `50052`)
+- node3: [http://localhost:8003](http://localhost:8003) (gRPC `50053`)
 
 The registry service listens on port `9100`.
 
 Stopping the container (for example with `docker stop`) sends `SIGTERM` to the
 process. `start_node.py` registers a handler for this signal so each node
 finishes background tasks and shuts down cleanly.
+
+Need more nodes? Duplicate the service definition or scale it with:
+
+```bash
+docker compose up --scale node=4
+```
