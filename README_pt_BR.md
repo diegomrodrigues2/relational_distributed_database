@@ -927,3 +927,18 @@ Esse comando inicia o `hash_cluster.py`, que lança a interface React em segundo
 docker run -p 8000:8000 -p 5173:5173 py_db python examples/range_cluster.py
 ```
 
+## Executando um único nó com Docker
+
+Também é possível iniciar apenas um `NodeServer` utilizando variáveis de
+ambiente para configurar portas e outras opções:
+
+```bash
+docker build -t py_db .
+docker run -e NODE_ID=node1 -e GRPC_PORT=50051 -e API_PORT=8000 \
+           -p 50051:50051 -p 8000:8000 py_db
+```
+
+Defina `PEERS` com uma lista separada por vírgulas de `host:porta` ao conectar
+vários contêineres. Variáveis opcionais como `DATA_DIR`, `REGISTRY_HOST` e
+`REGISTRY_PORT` também são reconhecidas pelo `start_node.py`.
+

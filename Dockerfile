@@ -14,4 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install frontend dependencies
 RUN cd app && npm install --legacy-peer-deps
 
-CMD ["python", "examples/hash_cluster.py"]
+EXPOSE 50051 8000
+
+ENTRYPOINT ["python", "start_node.py"]
