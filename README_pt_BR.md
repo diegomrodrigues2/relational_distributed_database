@@ -942,3 +942,28 @@ Defina `PEERS` com uma lista separada por vírgulas de `host:porta` ao conectar
 vários contêineres. Variáveis opcionais como `DATA_DIR`, `REGISTRY_HOST` e
 `REGISTRY_PORT` também são reconhecidas pelo `start_node.py`.
 
+## Executando com Docker Compose
+
+O repositório traz um `docker-compose.yml` que constrói a imagem e inicia o
+registro de metadados junto com três nós. Execute tudo com:
+
+```bash
+docker compose up --build
+```
+
+Todos os serviços escutam em `0.0.0.0`, permitindo que os contêineres conversem
+entre si. Os painéis podem ser acessados em:
+
+- node1: [http://localhost:8001](http://localhost:8001) (gRPC `50051`)
+- node2: [http://localhost:8002](http://localhost:8002) (gRPC `50052`)
+- node3: [http://localhost:8003](http://localhost:8003) (gRPC `50053`)
+
+Para adicionar novos nós duplique a definição no compose ou utilize:
+
+```bash
+docker compose up --scale node=4
+```
+
+O serviço de registro fica disponível em
+[http://localhost:9100](http://localhost:9100).
+
