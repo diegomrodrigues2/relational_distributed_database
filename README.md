@@ -583,3 +583,18 @@ This starts `hash_cluster.py`, which also launches the API and React UI in the b
 ```bash
 docker run -p 8000:8000 -p 5173:5173 py_db python examples/range_cluster.py
 ```
+
+## Running a single node with Docker
+
+You can also start an individual `NodeServer` container using environment
+variables to configure ports and other settings:
+
+```bash
+docker build -t py_db .
+docker run -e NODE_ID=node1 -e GRPC_PORT=50051 -e API_PORT=8000 \
+           -p 50051:50051 -p 8000:8000 py_db
+```
+
+Set `PEERS` to a comma‑separated list of `host:port` pairs when connecting
+multiple containers. Optional variables like `DATA_DIR`, `REGISTRY_HOST` and
+`REGISTRY_PORT` are also respected by `start_node.py`.
