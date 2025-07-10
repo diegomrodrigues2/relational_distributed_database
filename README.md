@@ -614,3 +614,7 @@ Once running, each node exposes both its API and gRPC port on the host:
 - node3: `http://localhost:8003` / `50053`
 
 The registry service listens on port `9100`.
+
+Stopping the container (for example with `docker stop`) sends `SIGTERM` to the
+process. `start_node.py` registers a handler for this signal so each node
+finishes background tasks and shuts down cleanly.
