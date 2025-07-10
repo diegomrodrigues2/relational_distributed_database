@@ -983,6 +983,8 @@ class NodeServer:
         self.index_fields = list(index_fields or [])
         self.index_manager = IndexManager(self.index_fields)
         self.index_manager.rebuild(self.db)
+        from ...sql.metadata import CatalogManager
+        self.catalog = CatalogManager(self)
         self.global_index_fields = list(global_index_fields or [])
         self.global_index_manager = GlobalIndexManager(self.global_index_fields)
         self.registry_host = registry_host
