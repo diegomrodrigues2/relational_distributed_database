@@ -10,6 +10,7 @@ DATA_DIR, PEERS, REGISTRY_HOST and REGISTRY_PORT when set.
 
 import argparse
 import os
+import signal
 from typing import List, Tuple
 
 from database.replication.replica.grpc_server import NodeServer
@@ -57,6 +58,7 @@ def main(argv: List[str] | None = None) -> None:
         registry_host=args.registry_host,
         registry_port=args.registry_port,
     )
+    signal.signal(signal.SIGTERM, lambda *_: node.stop())
     node.start()
 
 

@@ -615,10 +615,14 @@ network. After startup the dashboards are available at:
 - node2: [http://localhost:8002](http://localhost:8002) (gRPC `50052`)
 - node3: [http://localhost:8003](http://localhost:8003) (gRPC `50053`)
 
+The registry service listens on port `9100`.
+
+Stopping the container (for example with `docker stop`) sends `SIGTERM` to the
+process. `start_node.py` registers a handler for this signal so each node
+finishes background tasks and shuts down cleanly.
+
 Need more nodes? Duplicate the service definition or scale it with:
 
 ```bash
 docker compose up --scale node=4
 ```
-
-The registry service listens on [http://localhost:9100](http://localhost:9100).
