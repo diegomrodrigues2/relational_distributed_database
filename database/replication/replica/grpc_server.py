@@ -915,7 +915,13 @@ class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
 
 
 class NodeServer:
-    """Encapsulates gRPC server and replication logic for a node."""
+    """Encapsulates gRPC server and replication logic for a node.
+
+    The ``host`` parameter controls which network interface the gRPC server
+    binds to. It defaults to ``localhost`` for local development. When running
+    inside Docker or similar container environments, set ``host="0.0.0.0"`` so
+    the service is reachable from outside the container.
+    """
 
     local_seq: int
     last_seen: dict[str, int]
