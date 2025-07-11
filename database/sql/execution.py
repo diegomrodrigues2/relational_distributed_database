@@ -10,6 +10,11 @@ from .serialization import RowSerializer
 from ..lsm.lsm_db import SimpleLSMDB
 from ..lsm.sstable import TOMBSTONE
 from ..utils.vector_clock import VectorClock
+from ..replication.replica import replication_pb2
+from ..clustering.partitioning import compose_key
+from .metadata import CatalogManager
+import json
+import time
 
 class PlanNode:
     """Abstract execution plan node."""
@@ -279,3 +284,83 @@ class NestedLoopJoinNode(PlanNode):
                 matches = inner_rows_by_key.get(val) or []
                 for i in matches:
                     yield {**o, **i}
+
+
+class InsertPlanNode(PlanNode):
+    def __init__(self, service, catalog: CatalogManager, table: str, columns: list[str], values: list[Expression]) -> None:
+        self.service = service
+        self.catalog = catalog
+        self.table = table
+        self.columns = columns
+        self.values = values
+
+    def execute(self) -> Iterator[dict]:
+        schema = self.catalog.get_schema(self.table)
+        if schema is None:
+            raise ValueError("Unknown table")
+        row = {}
+        for col, expr in zip(self.columns, self.values):
+            if isinstance(expr, Literal):
+                row[col] = expr.value
+            else:
+                raise ValueError("Only literal values supported")
+        schema.validate_row(row)
+        pk = next((c.name for c in schema.columns if c.primary_key), None)
+        if pk is None:
+            raise ValueError("No primary key")
+        key = compose_key(self.table, str(row[pk]), None)
+        ts = int(time.time() * 1000)
+        req = replication_pb2.KeyValue(key=key, value=json.dumps(row), timestamp=ts)
+        self.service.Put(req, None)
+        return iter([])
+
+
+class DeletePlanNode(PlanNode):
+    def __init__(self, service, planner, table: str, where_clause: Expression | None) -> None:
+        self.service = service
+        self.planner = planner
+        self.table = table
+        self.where_clause = where_clause
+
+    def execute(self) -> Iterator[dict]:
+        schema = self.planner.catalog.get_schema(self.table)
+        if schema is None:
+            raise ValueError("Unknown table")
+        pk = next((c.name for c in schema.columns if c.primary_key), None)
+        if pk is None:
+            raise ValueError("No primary key")
+        scan = self.planner._plan_table(self.table, self.where_clause)
+        ts = int(time.time() * 1000)
+        for row in scan.execute():
+            key = compose_key(self.table, str(row.get(pk)), None)
+            req = replication_pb2.KeyRequest(key=key, timestamp=ts)
+            self.service.Delete(req, None)
+        return iter([])
+
+
+class UpdatePlanNode(PlanNode):
+    def __init__(self, service, planner, table: str, assignments: list[tuple[str, Expression]], where_clause: Expression | None) -> None:
+        self.service = service
+        self.planner = planner
+        self.table = table
+        self.assignments = assignments
+        self.where_clause = where_clause
+
+    def execute(self) -> Iterator[dict]:
+        schema = self.planner.catalog.get_schema(self.table)
+        if schema is None:
+            raise ValueError("Unknown table")
+        pk = next((c.name for c in schema.columns if c.primary_key), None)
+        if pk is None:
+            raise ValueError("No primary key")
+        scan = self.planner._plan_table(self.table, self.where_clause)
+        for row in scan.execute():
+            for col, expr in self.assignments:
+                if isinstance(expr, Literal):
+                    row[col] = expr.value
+            schema.validate_row(row)
+            key = compose_key(self.table, str(row.get(pk)), None)
+            ts = int(time.time() * 1000)
+            req = replication_pb2.KeyValue(key=key, value=json.dumps(row), timestamp=ts)
+            self.service.Put(req, None)
+        return iter([])

@@ -56,3 +56,23 @@ class SelectQuery:
     from_clause: FromClause
     join_clause: JoinClause | None = None
     where_clause: Optional[Expression] = None
+
+
+@dataclass
+class InsertQuery:
+    table: str
+    columns: list[str]
+    values: list[Expression]
+
+
+@dataclass
+class UpdateQuery:
+    table: str
+    assignments: list[tuple[str, Expression]]
+    where_clause: Optional[Expression] = None
+
+
+@dataclass
+class DeleteQuery:
+    table: str
+    where_clause: Optional[Expression] = None
