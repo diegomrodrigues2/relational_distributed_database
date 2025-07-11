@@ -31,6 +31,29 @@ def parse_create_table(sql_string: str) -> TableSchema:
         columns.append(ColumnDefinition(col_name, col_type.lower(), primary_key=pk))
     return TableSchema(name=name, columns=columns)
 
+
+def parse_alter_table(sql_string: str) -> tuple[str, ColumnDefinition]:
+    """Parse ``ALTER TABLE ... ADD COLUMN`` statements."""
+    ddl = sql_string.strip().rstrip(";")
+    m = re.match(
+        r"ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(.*)$",
+        ddl,
+        re.IGNORECASE,
+    )
+    if not m:
+        raise ValueError("Invalid ALTER TABLE syntax")
+    table = m.group(1)
+    col_part = m.group(2).strip()
+    parts = col_part.split()
+    if len(parts) < 2:
+        raise ValueError("Invalid column definition")
+    col_name = parts[0]
+    col_type = parts[1]
+    rest = " ".join(parts[2:]).upper()
+    pk = "PRIMARY KEY" in rest
+    column = ColumnDefinition(col_name, col_type.lower(), primary_key=pk)
+    return table, column
+
 import sqlglot
 from sqlglot import expressions as exp
 

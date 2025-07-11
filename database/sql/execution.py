@@ -148,11 +148,14 @@ class SeqScanNode(PlanNode):
         table: str,
         where_clause: Expression | None = None,
         columns: List[str] | None = None,
+        *,
+        catalog: CatalogManager | None = None,
     ) -> None:
         self.db = db
         self.table = table
         self.where_clause = where_clause
         self.columns = columns
+        self.catalog = catalog
 
     def _iterators(self) -> list[Iterable[tuple[str, str, VectorClock]]]:
         prefix = f"{self.table}||"
@@ -187,6 +190,11 @@ class SeqScanNode(PlanNode):
                 row = RowSerializer.loads(decoded)
             except Exception:
                 continue
+            if self.catalog is not None:
+                schema = self.catalog.get_schema(self.table)
+                if schema is not None:
+                    for col in schema.columns:
+                        row.setdefault(col.name, None)
             if self.where_clause is not None:
                 try:
                     ok = bool(_eval_expr(row, self.where_clause))
@@ -211,6 +219,8 @@ class IndexScanNode(PlanNode):
         index_name: str,
         lookup_value,
         columns: List[str] | None = None,
+        *,
+        catalog: CatalogManager | None = None,
     ) -> None:
         self.db = db
         self.index_manager = index_manager
@@ -218,6 +228,7 @@ class IndexScanNode(PlanNode):
         self.index_name = index_name
         self.lookup_value = lookup_value
         self.columns = columns
+        self.catalog = catalog
 
     def execute(self) -> Iterator[dict]:
         keys = self.index_manager.query(self.index_name, self.lookup_value, self.table_name)
@@ -234,6 +245,11 @@ class IndexScanNode(PlanNode):
                 row = RowSerializer.loads(decoded)
             except Exception:
                 continue
+            if self.catalog is not None:
+                schema = self.catalog.get_schema(self.table_name)
+                if schema is not None:
+                    for col in schema.columns:
+                        row.setdefault(col.name, None)
             if self.columns:
                 yield {c: row.get(c) for c in self.columns}
             else:
