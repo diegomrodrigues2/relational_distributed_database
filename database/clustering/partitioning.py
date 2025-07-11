@@ -11,16 +11,34 @@ def hash_key(key: str) -> int:
     return int(h, 16)
 
 
-def compose_key(partition_key: str, clustering_key: str | None = None) -> str:
-    """Compose partition and clustering components into a sortable key.
+def compose_key(*args) -> str:
+    """Compose table, partition and clustering components into a sortable key.
 
-    The representation preserves lexicographic ordering for the pair. When
-    no ``clustering_key`` is provided, the function simply returns the
-    ``partition_key`` to keep backwards compatibility with existing
-    single-part keys.
+    Supports old calls using ``(partition_key, clustering_key)`` as well as the
+    new ``(table_id, partition_key, clustering_key)`` format. When only the
+    partition key is provided, the result is simply that string to preserve
+    backwards compatibility.
     """
+
+    if not 1 <= len(args) <= 3:
+        raise TypeError("compose_key expects 1 to 3 arguments")
+
+    table_id = None
+    if len(args) == 1:
+        partition_key = args[0]
+        clustering_key = None
+    elif len(args) == 2:
+        partition_key, clustering_key = args
+    else:
+        table_id, partition_key, clustering_key = args
+
     if clustering_key is None or clustering_key == "":
+        if table_id:
+            return f"{table_id}||{partition_key}"
         return str(partition_key)
+
+    if table_id:
+        return f"{table_id}||{partition_key}|{clustering_key}"
     return f"{partition_key}|{clustering_key}"
 
 
