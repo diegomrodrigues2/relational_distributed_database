@@ -12,7 +12,7 @@ from ..lsm.sstable import TOMBSTONE
 from ..utils.vector_clock import VectorClock
 from ..replication.replica import replication_pb2
 from ..clustering.partitioning import compose_key
-from .metadata import CatalogManager
+from .metadata import CatalogManager, TableStats, ColumnStats
 import json
 import time
 
@@ -379,4 +379,24 @@ class UpdatePlanNode(PlanNode):
             ts = int(time.time() * 1000)
             req = replication_pb2.KeyValue(key=key, value=json.dumps(row), timestamp=ts)
             self.service.Put(req, None)
+        return iter([])
+
+
+class AnalyzePlanNode(PlanNode):
+    def __init__(self, db: SimpleLSMDB, catalog: CatalogManager, table: str) -> None:
+        self.db = db
+        self.catalog = catalog
+        self.table = table
+
+    def execute(self) -> Iterator[dict]:
+        scan = SeqScanNode(self.db, self.table, catalog=self.catalog)
+        num_rows = 0
+        distinct: dict[str, set] = {}
+        for row in scan.execute():
+            num_rows += 1
+            for col, val in row.items():
+                distinct.setdefault(col, set()).add(val)
+        self.catalog.save_table_stats(TableStats(table_name=self.table, num_rows=num_rows))
+        for col, vals in distinct.items():
+            self.catalog.save_column_stats(ColumnStats(self.table, col, len(vals)))
         return iter([])
