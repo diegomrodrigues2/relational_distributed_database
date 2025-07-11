@@ -8,6 +8,7 @@ from bisect import bisect_right
 from concurrent import futures
 from collections import OrderedDict
 import uuid
+import base64
 
 import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
@@ -23,6 +24,7 @@ from ...clustering.hash_ring import HashRing
 from ...utils.event_logger import EventLogger
 from ...sql.metadata import ColumnDefinition, TableSchema
 from ...sql.parser import parse_create_table
+from ...sql.serialization import RowSerializer
 import logging
 
 logger = logging.getLogger(__name__)
@@ -105,6 +107,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 apply_update = False
 
         if apply_update:
+            try:
+                data_obj = json.loads(request.value) if request.value else None
+            except Exception:
+                data_obj = None
+            if isinstance(data_obj, dict):
+                serialized_value = base64.b64encode(RowSerializer.dumps(data_obj)).decode("ascii")
+            else:
+                serialized_value = request.value
+
             if request.vector.items:
                 new_vc = VectorClock(dict(request.vector.items))
             else:
@@ -149,7 +160,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         self._node.index_manager.remove_record(request.key, existing)
                     self._node.db.put(
                         request.key,
-                        request.value,
+                        serialized_value,
                         vector_clock=new_vc,
                     )
                     self._node._cache_delete(request.key)
@@ -171,7 +182,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         self._node.index_manager.remove_record(request.key, existing)
                     self._node.db.put(
                         request.key,
-                        request.value,
+                        serialized_value,
                         timestamp=int(request.timestamp),
                     )
                     self._node._cache_delete(request.key)
@@ -530,9 +541,14 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         values = []
         for val, vc, *_ in records:
             ts = vc.clock.get("ts", 0) if vc is not None else 0
+            try:
+                row = RowSerializer.loads(base64.b64decode(val))
+                val_str = json.dumps(row)
+            except Exception:
+                val_str = val
             values.append(
                 replication_pb2.VersionedValue(
-                    value=val,
+                    value=val_str,
                     timestamp=ts,
                     vector=replication_pb2.VersionVector(items=vc.clock if vc else {}),
                 )
