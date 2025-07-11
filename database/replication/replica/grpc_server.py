@@ -23,7 +23,7 @@ from ...clustering.global_index_manager import GlobalIndexManager
 from ...clustering.hash_ring import HashRing
 from ...utils.event_logger import EventLogger
 from ...sql.metadata import ColumnDefinition, TableSchema
-from ...sql.parser import parse_create_table
+from ...sql.parser import parse_create_table, parse_alter_table
 from ...sql.serialization import RowSerializer
 import logging
 
@@ -674,6 +674,14 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 context.abort(grpc.StatusCode.ALREADY_EXISTS, "TableExists")
             open(tbl_path, "wb").close()
             self._node.catalog.save_schema(schema)
+        elif ddl.upper().startswith("ALTER TABLE"):
+            try:
+                table, col_def = parse_alter_table(ddl)
+            except Exception:
+                context.abort(grpc.StatusCode.INVALID_ARGUMENT, "InvalidDDL")
+            if self._node.catalog.get_schema(table) is None:
+                context.abort(grpc.StatusCode.NOT_FOUND, "TableNotFound")
+            self._node.catalog.add_column_to_table(table, col_def)
         else:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "UnsupportedDDL")
         return replication_pb2.Empty()
@@ -995,7 +1003,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             table = plan.get("table")
         except Exception:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "InvalidPlan")
-        node = SeqScanNode(self._node.db, table)
+        node = SeqScanNode(self._node.db, table, catalog=self._node.catalog)
         for row in node.execute():
             yield replication_pb2.RowData(data=json.dumps(row))
 

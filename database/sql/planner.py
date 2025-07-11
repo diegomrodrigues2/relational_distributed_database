@@ -71,8 +71,14 @@ class QueryPlanner:
                 table,
                 column,
                 lookup_value,
+                catalog=self.catalog,
             )
-        return SeqScanNode(self.db, table, where_clause=where_clause)
+        return SeqScanNode(
+            self.db,
+            table,
+            where_clause=where_clause,
+            catalog=self.catalog,
+        )
 
     # public API -------------------------------------------------------
     def create_plan(self, query):

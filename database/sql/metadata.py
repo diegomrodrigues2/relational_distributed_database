@@ -203,3 +203,13 @@ class CatalogManager:
         self.node.save_replication_log()
         self.node.replicate("PUT", key, value, ts, op_id=op_id, vector=vc.clock)
         self.schemas[schema.name] = schema
+
+    def add_column_to_table(self, table_name: str, column_def: ColumnDefinition) -> None:
+        """Add ``column_def`` to ``table_name`` and persist the updated schema."""
+        schema = self.schemas.get(table_name)
+        if schema is None:
+            raise KeyError("Unknown table")
+        if any(c.name == column_def.name for c in schema.columns):
+            raise ValueError("Column already exists")
+        schema.columns.append(column_def)
+        self.save_schema(schema)
