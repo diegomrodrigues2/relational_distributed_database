@@ -43,6 +43,9 @@ from .ast import (
     SelectQuery,
     Expression,
     JoinClause,
+    InsertQuery,
+    UpdateQuery,
+    DeleteQuery,
 )
 
 
@@ -67,6 +70,8 @@ def _map_expression(node: exp.Expression) -> Expression:
         return Column(name=node.name, table=node.table)
     if isinstance(node, exp.Literal):
         return _map_literal(node)
+    if isinstance(node, exp.Star):
+        return Column(name="*")
     if isinstance(node, (exp.And, exp.Or, exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)):
         left = _map_expression(node.args['this'])
         right = _map_expression(node.args['expression'])
@@ -75,62 +80,97 @@ def _map_expression(node: exp.Expression) -> Expression:
     raise ValueError(f"Unsupported expression: {type(node).__name__}")
 
 
-def parse_sql(sql_string: str) -> SelectQuery:
-    """Parse a simple SELECT statement into the internal AST."""
+def parse_sql(sql_string: str):
+    """Parse a simple SQL statement into the internal AST."""
     try:
         parsed = sqlglot.parse_one(sql_string)
-    except Exception as e:  # pragma: no cover - ensure any parsing error is surfaced
+    except Exception as e:  # pragma: no cover
         raise ValueError("Invalid SQL") from e
 
-    if not isinstance(parsed, exp.Select):
-        raise ValueError("Only SELECT statements are supported")
+    if isinstance(parsed, exp.Select):
+        select_items: list[SelectItem] = []
+        for item in parsed.expressions:
+            alias: str | None = None
+            expr = item
+            if isinstance(item, exp.Alias):
+                alias = item.alias
+                expr = item.this
+            select_items.append(SelectItem(expression=_map_expression(expr), alias=alias))
 
-    # SELECT items
-    select_items: list[SelectItem] = []
-    for item in parsed.expressions:
-        alias: str | None = None
-        expr = item
-        if isinstance(item, exp.Alias):
-            alias = item.alias
-            expr = item.this
-        select_items.append(SelectItem(expression=_map_expression(expr), alias=alias))
+        from_exp = parsed.args.get("from")
+        if not from_exp or not isinstance(from_exp.this, exp.Table):
+            raise ValueError("FROM clause required")
 
-    from_exp = parsed.args.get("from")
-    if not from_exp or not isinstance(from_exp.this, exp.Table):
-        raise ValueError("FROM clause required")
+        table_expr: exp.Table = from_exp.this
+        table_name = table_expr.name
+        alias = None
+        alias_exp = table_expr.args.get("alias")
+        if alias_exp is not None and isinstance(alias_exp.this, exp.Identifier):
+            alias = alias_exp.this.this
 
-    table_expr: exp.Table = from_exp.this
-    table_name = table_expr.name
-    alias = None
-    alias_exp = table_expr.args.get("alias")
-    if alias_exp is not None and isinstance(alias_exp.this, exp.Identifier):
-        alias = alias_exp.this.this
+        from_clause = FromClause(table=table_name, alias=alias)
 
-    from_clause = FromClause(table=table_name, alias=alias)
+        join_clause = None
+        joins = parsed.args.get("joins")
+        if joins:
+            join_exp = joins[0]
+            if isinstance(join_exp, exp.Join) and isinstance(join_exp.this, exp.Table):
+                jtable = join_exp.this.name
+                jalias = None
+                alias_exp = join_exp.this.args.get("alias")
+                if alias_exp is not None and isinstance(alias_exp.this, exp.Identifier):
+                    jalias = alias_exp.this.this
+                on_expr = join_exp.args.get("on")
+                on_mapped = _map_expression(on_expr) if on_expr is not None else None
+                join_clause = JoinClause(table=jtable, alias=jalias, on=on_mapped)
+            else:
+                raise ValueError("Unsupported JOIN clause")
 
-    join_clause = None
-    joins = parsed.args.get("joins")
-    if joins:
-        join_exp = joins[0]
-        if isinstance(join_exp, exp.Join) and isinstance(join_exp.this, exp.Table):
-            jtable = join_exp.this.name
-            jalias = None
-            alias_exp = join_exp.this.args.get("alias")
-            if alias_exp is not None and isinstance(alias_exp.this, exp.Identifier):
-                jalias = alias_exp.this.this
-            on_expr = join_exp.args.get("on")
-            on_mapped = _map_expression(on_expr) if on_expr is not None else None
-            join_clause = JoinClause(table=jtable, alias=jalias, on=on_mapped)
+        where_clause = None
+        if parsed.args.get("where") is not None:
+            where_clause = _map_expression(parsed.args["where"].this)
+
+        return SelectQuery(
+            select_items=select_items,
+            from_clause=from_clause,
+            join_clause=join_clause,
+            where_clause=where_clause,
+        )
+
+    if isinstance(parsed, exp.Insert):
+        tbl = parsed.this
+        if isinstance(tbl, exp.Schema):
+            table = tbl.this.name
+            columns = [c.name for c in tbl.expressions]
         else:
-            raise ValueError("Unsupported JOIN clause")
+            table = tbl.name
+            columns = []
+        values_exp = parsed.args.get("expression")
+        vals = []
+        if isinstance(values_exp, exp.Values):
+            first = values_exp.expressions[0]
+            if isinstance(first, exp.Tuple):
+                vals = [_map_expression(e) for e in first.expressions]
+            else:
+                vals = [_map_expression(first)]
+        return InsertQuery(table=table, columns=columns, values=vals)
 
-    where_clause = None
-    if parsed.args.get("where") is not None:
-        where_clause = _map_expression(parsed.args["where"].this)
+    if isinstance(parsed, exp.Update):
+        table = parsed.this.name if isinstance(parsed.this, exp.Table) else parsed.this.this
+        assigns = []
+        for a in parsed.args.get("expressions") or []:
+            if isinstance(a, exp.EQ) and isinstance(a.this, exp.Column):
+                assigns.append((a.this.name, _map_expression(a.expression)))
+        where_clause = None
+        if parsed.args.get("where") is not None:
+            where_clause = _map_expression(parsed.args["where"].this)
+        return UpdateQuery(table=table, assignments=assigns, where_clause=where_clause)
 
-    return SelectQuery(
-        select_items=select_items,
-        from_clause=from_clause,
-        join_clause=join_clause,
-        where_clause=where_clause,
-    )
+    if isinstance(parsed, exp.Delete):
+        table = parsed.this.name if isinstance(parsed.this, exp.Table) else parsed.this.this
+        where_clause = None
+        if parsed.args.get("where") is not None:
+            where_clause = _map_expression(parsed.args["where"].this)
+        return DeleteQuery(table=table, where_clause=where_clause)
+
+    raise ValueError("Unsupported SQL statement")

@@ -2,18 +2,35 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
-from .ast import SelectQuery, Expression, BinOp, Column, Literal
-from .execution import SeqScanNode, IndexScanNode, NestedLoopJoinNode
+from .ast import (
+    SelectQuery,
+    InsertQuery,
+    UpdateQuery,
+    DeleteQuery,
+    Expression,
+    BinOp,
+    Column,
+    Literal,
+)
+from .execution import (
+    SeqScanNode,
+    IndexScanNode,
+    NestedLoopJoinNode,
+    InsertPlanNode,
+    DeletePlanNode,
+    UpdatePlanNode,
+)
 from .metadata import CatalogManager
 
 
 class QueryPlanner:
     """Very small rule-based query planner."""
 
-    def __init__(self, db, catalog: CatalogManager, index_manager) -> None:
+    def __init__(self, db, catalog: CatalogManager, index_manager, service=None) -> None:
         self.db = db
         self.catalog = catalog
         self.index_manager = index_manager
+        self.service = service
 
     # internal helpers -------------------------------------------------
     def _get_index_columns(self, table: str) -> set[str]:
@@ -58,29 +75,48 @@ class QueryPlanner:
         return SeqScanNode(self.db, table, where_clause=where_clause)
 
     # public API -------------------------------------------------------
-    def create_plan(self, query: SelectQuery):
-        if query.join_clause:
-            outer_plan = self._plan_table(query.from_clause.table, query.where_clause)
-            def _inner_plan():
-                return self._plan_table(query.join_clause.table, None)
+    def create_plan(self, query):
+        if isinstance(query, SelectQuery):
+            if query.join_clause:
+                outer_plan = self._plan_table(query.from_clause.table, query.where_clause)
 
-            pred = query.join_clause.on
-            if not isinstance(pred, BinOp) or pred.op != "EQ":
-                raise ValueError("Only EQ join supported")
-            if not isinstance(pred.left, Column) or not isinstance(pred.right, Column):
-                raise ValueError("Join predicate must compare columns")
+                def _inner_plan():
+                    return self._plan_table(query.join_clause.table, None)
 
-            outer_alias = query.from_clause.alias or query.from_clause.table
-            if pred.left.table == outer_alias:
-                outer_key = pred.left.name
-                inner_key = pred.right.name
-            elif pred.right.table == outer_alias:
-                outer_key = pred.right.name
-                inner_key = pred.left.name
-            else:
-                outer_key = pred.left.name
-                inner_key = pred.right.name
+                pred = query.join_clause.on
+                if not isinstance(pred, BinOp) or pred.op != "EQ":
+                    raise ValueError("Only EQ join supported")
+                if not isinstance(pred.left, Column) or not isinstance(pred.right, Column):
+                    raise ValueError("Join predicate must compare columns")
 
-            return NestedLoopJoinNode(outer_plan, _inner_plan, outer_key, inner_key)
+                outer_alias = query.from_clause.alias or query.from_clause.table
+                if pred.left.table == outer_alias:
+                    outer_key = pred.left.name
+                    inner_key = pred.right.name
+                elif pred.right.table == outer_alias:
+                    outer_key = pred.right.name
+                    inner_key = pred.left.name
+                else:
+                    outer_key = pred.left.name
+                    inner_key = pred.right.name
 
-        return self._plan_table(query.from_clause.table, query.where_clause)
+                return NestedLoopJoinNode(outer_plan, _inner_plan, outer_key, inner_key)
+
+            return self._plan_table(query.from_clause.table, query.where_clause)
+
+        if isinstance(query, InsertQuery):
+            if not self.service:
+                raise ValueError("service required for INSERT")
+            return InsertPlanNode(self.service, self.catalog, query.table, query.columns, query.values)
+
+        if isinstance(query, DeleteQuery):
+            if not self.service:
+                raise ValueError("service required for DELETE")
+            return DeletePlanNode(self.service, self, query.table, query.where_clause)
+
+        if isinstance(query, UpdateQuery):
+            if not self.service:
+                raise ValueError("service required for UPDATE")
+            return UpdatePlanNode(self.service, self, query.table, query.assignments, query.where_clause)
+
+        raise ValueError("Unsupported query type")
