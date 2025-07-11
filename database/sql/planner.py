@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List, Optional, Tuple
 
 from .ast import SelectQuery, Expression, BinOp, Column, Literal
-from .execution import SeqScanNode, IndexScanNode
+from .execution import SeqScanNode, IndexScanNode, NestedLoopJoinNode
 from .metadata import CatalogManager
 
 
@@ -39,11 +39,9 @@ class QueryPlanner:
             return self._find_eq_predicate(expr.right)
         return None
 
-    # public API -------------------------------------------------------
-    def create_plan(self, query: SelectQuery):
-        table = query.from_clause.table
+    def _plan_table(self, table: str, where_clause: Expression | None):
         indexed_columns = self._get_index_columns(table)
-        eq_pred = self._find_eq_predicate(query.where_clause)
+        eq_pred = self._find_eq_predicate(where_clause)
 
         if eq_pred and eq_pred[0] in indexed_columns:
             column, value_expr = eq_pred
@@ -57,4 +55,32 @@ class QueryPlanner:
                 column,
                 lookup_value,
             )
-        return SeqScanNode(self.db, table, where_clause=query.where_clause)
+        return SeqScanNode(self.db, table, where_clause=where_clause)
+
+    # public API -------------------------------------------------------
+    def create_plan(self, query: SelectQuery):
+        if query.join_clause:
+            outer_plan = self._plan_table(query.from_clause.table, query.where_clause)
+            def _inner_plan():
+                return self._plan_table(query.join_clause.table, None)
+
+            pred = query.join_clause.on
+            if not isinstance(pred, BinOp) or pred.op != "EQ":
+                raise ValueError("Only EQ join supported")
+            if not isinstance(pred.left, Column) or not isinstance(pred.right, Column):
+                raise ValueError("Join predicate must compare columns")
+
+            outer_alias = query.from_clause.alias or query.from_clause.table
+            if pred.left.table == outer_alias:
+                outer_key = pred.left.name
+                inner_key = pred.right.name
+            elif pred.right.table == outer_alias:
+                outer_key = pred.right.name
+                inner_key = pred.left.name
+            else:
+                outer_key = pred.left.name
+                inner_key = pred.right.name
+
+            return NestedLoopJoinNode(outer_plan, _inner_plan, outer_key, inner_key)
+
+        return self._plan_table(query.from_clause.table, query.where_clause)

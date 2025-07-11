@@ -34,7 +34,16 @@ def parse_create_table(sql_string: str) -> TableSchema:
 import sqlglot
 from sqlglot import expressions as exp
 
-from .ast import Column, Literal, BinOp, SelectItem, FromClause, SelectQuery, Expression
+from .ast import (
+    Column,
+    Literal,
+    BinOp,
+    SelectItem,
+    FromClause,
+    SelectQuery,
+    Expression,
+    JoinClause,
+)
 
 
 def _map_literal(lit: exp.Literal) -> Literal:
@@ -99,8 +108,29 @@ def parse_sql(sql_string: str) -> SelectQuery:
 
     from_clause = FromClause(table=table_name, alias=alias)
 
+    join_clause = None
+    joins = parsed.args.get("joins")
+    if joins:
+        join_exp = joins[0]
+        if isinstance(join_exp, exp.Join) and isinstance(join_exp.this, exp.Table):
+            jtable = join_exp.this.name
+            jalias = None
+            alias_exp = join_exp.this.args.get("alias")
+            if alias_exp is not None and isinstance(alias_exp.this, exp.Identifier):
+                jalias = alias_exp.this.this
+            on_expr = join_exp.args.get("on")
+            on_mapped = _map_expression(on_expr) if on_expr is not None else None
+            join_clause = JoinClause(table=jtable, alias=jalias, on=on_mapped)
+        else:
+            raise ValueError("Unsupported JOIN clause")
+
     where_clause = None
     if parsed.args.get("where") is not None:
         where_clause = _map_expression(parsed.args["where"].this)
 
-    return SelectQuery(select_items=select_items, from_clause=from_clause, where_clause=where_clause)
+    return SelectQuery(
+        select_items=select_items,
+        from_clause=from_clause,
+        join_clause=join_clause,
+        where_clause=where_clause,
+    )

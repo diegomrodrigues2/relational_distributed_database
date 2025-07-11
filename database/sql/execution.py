@@ -233,3 +233,49 @@ class IndexScanNode(PlanNode):
                 yield {c: row.get(c) for c in self.columns}
             else:
                 yield row
+
+
+class NestedLoopJoinNode(PlanNode):
+    """Batched nested loop join implementation."""
+
+    def __init__(
+        self,
+        outer_plan: PlanNode,
+        inner_plan_builder,
+        outer_key: str,
+        inner_key: str,
+        batch_size: int = 100,
+    ) -> None:
+        self.outer_plan = outer_plan
+        self.inner_plan_builder = inner_plan_builder
+        self.outer_key = outer_key
+        self.inner_key = inner_key
+        self.batch_size = batch_size
+
+    def execute(self) -> Iterator[dict]:
+        outer_iter = iter(self.outer_plan.execute())
+        while True:
+            batch: list[dict] = []
+            for _ in range(self.batch_size):
+                try:
+                    batch.append(next(outer_iter))
+                except StopIteration:
+                    break
+            if not batch:
+                break
+
+            key_set = {row.get(self.outer_key) for row in batch}
+            key_set.discard(None)
+
+            inner_rows_by_key: dict[object, list[dict]] = {}
+            inner_plan = self.inner_plan_builder()
+            for row in inner_plan.execute():
+                val = row.get(self.inner_key)
+                if val in key_set:
+                    inner_rows_by_key.setdefault(val, []).append(row)
+
+            for o in batch:
+                val = o.get(self.outer_key)
+                matches = inner_rows_by_key.get(val) or []
+                for i in matches:
+                    yield {**o, **i}
