@@ -7,3 +7,5 @@ fastapi
 uvicorn
 httpx<0.25
 msgpack
+
+sqlglot
