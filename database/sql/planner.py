@@ -78,6 +78,8 @@ class CostBasedPlanner:
             where_clause=where_clause,
             catalog=self.catalog,
         )
+        best_plan.blocksAccessed = int(seq_cost if seq_cost != float("inf") else 0)
+        best_plan.recordsOutput = table_stats.num_rows if table_stats is not None else 0
         best_cost = seq_cost
 
         if eq_pred and eq_pred[0] in indexed_columns:
@@ -104,6 +106,8 @@ class CostBasedPlanner:
                 lookup_value,
                 catalog=self.catalog,
             )
+            index_plan.blocksAccessed = int(index_cost)
+            index_plan.recordsOutput = int(est_rows) if table_stats is not None and col_stats is not None and col_stats.num_distinct else 0
             if index_cost < best_cost:
                 best_plan = index_plan
                 best_cost = index_cost
@@ -136,7 +140,10 @@ class CostBasedPlanner:
                     outer_key = pred.left.name
                     inner_key = pred.right.name
 
-                return NestedLoopJoinNode(outer_plan, _inner_plan, outer_key, inner_key)
+                join_node = NestedLoopJoinNode(outer_plan, _inner_plan, outer_key, inner_key)
+                join_node.blocksAccessed = outer_plan.blocksAccessed + outer_plan.recordsOutput * (_inner_plan().blocksAccessed)
+                join_node.recordsOutput = outer_plan.recordsOutput  # simplistic
+                return join_node
 
             return self._plan_table(query.from_clause.table, query.where_clause)
 

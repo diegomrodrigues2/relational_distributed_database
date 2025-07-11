@@ -5,6 +5,10 @@ from database.replication import NodeCluster
 from database.replication.replica import replication_pb2
 from concurrent.futures import ThreadPoolExecutor
 from database.sql.query_coordinator import QueryCoordinator
+from database.sql.parser import parse_sql
+from database.sql.planner import QueryPlanner
+from database.sql.metadata import CatalogManager
+from database.lsm.lsm_db import SimpleLSMDB
 import time
 import os
 import tempfile
@@ -515,6 +519,43 @@ def sql_query(payload: dict) -> dict:
         "columns": [{"name": c, "type": "text"} for c in columns],
         "rows": rows,
     }
+
+
+@app.post("/sql/explain")
+def sql_explain(payload: dict) -> dict:
+    """Return the planned execution tree for the given SQL."""
+    sql = payload.get("sql", "")
+    cluster = app.state.cluster
+    node = cluster.nodes[0]
+    db_path = os.path.join(cluster.base_path, node.node_id)
+
+    class DummyNode:
+        def __init__(self, db):
+            self.db = db
+            self.replication_log = {}
+
+        def next_op_id(self):
+            return "api:1"
+
+        def save_replication_log(self):
+            pass
+
+        def replicate(self, *args, **kwargs):
+            pass
+
+    db = SimpleLSMDB(db_path=db_path)
+    dummy = DummyNode(db)
+    catalog = CatalogManager(dummy)
+    planner = QueryPlanner(db, catalog, index_manager=object())
+    try:
+        query = parse_sql(sql)
+        plan = planner.create_plan(query)
+        result = plan.to_dict()
+    except Exception as exc:  # pragma: no cover - unexpected errors
+        db.close()
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.close()
+    return result
 
 
 @app.post("/sql/execute")
