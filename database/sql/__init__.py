@@ -1,5 +1,5 @@
 from .metadata import ColumnDefinition, IndexDefinition, TableSchema, CatalogManager
-from .parser import parse_create_table
+from .parser import parse_create_table, parse_sql
 
 __all__ = [
     "ColumnDefinition",
@@ -7,4 +7,5 @@ __all__ = [
     "TableSchema",
     "CatalogManager",
     "parse_create_table",
+    "parse_sql",
 ]
