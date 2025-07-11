@@ -21,6 +21,7 @@ from ...clustering.index_manager import IndexManager
 from ...clustering.global_index_manager import GlobalIndexManager
 from ...clustering.hash_ring import HashRing
 from ...utils.event_logger import EventLogger
+from ...sql.metadata import ColumnDefinition, TableSchema
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,29 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
 
     def __init__(self, node):
         self._node = node
+
+    def _parse_create_table(self, ddl: str) -> TableSchema:
+        """Parse a very small subset of CREATE TABLE statements."""
+        import re
+
+        ddl = ddl.strip().rstrip(';')
+        m = re.match(r"CREATE\s+TABLE\s+(\w+)\s*\((.*)\)", ddl, re.IGNORECASE)
+        if not m:
+            raise ValueError("Invalid CREATE TABLE")
+        name = m.group(1)
+        cols_part = m.group(2)
+        cols = []
+        for col_def in cols_part.split(','):
+            col_def = col_def.strip()
+            if not col_def:
+                continue
+            parts = col_def.split()
+            col_name = parts[0]
+            col_type = parts[1] if len(parts) > 1 else "str"
+            rest = " ".join(parts[2:]).upper()
+            pk = "PRIMARY KEY" in rest
+            cols.append(ColumnDefinition(col_name, col_type, primary_key=pk))
+        return TableSchema(name=name, columns=cols)
 
     # ------------------------------------------------------------------
     def _owner_for_key(self, key: str) -> str:
@@ -247,6 +271,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                                         node_id=self._node.node_id,
                                     )
 
+        if apply_update and request.key.startswith("_meta:"):
+            table = request.key.split(":", 2)[-1]
+            try:
+                self._node.catalog.reload_schema(table)
+            except Exception:
+                pass
         return replication_pb2.Empty()
 
     def Delete(self, request, context):
@@ -412,6 +442,12 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                                         node_id=self._node.node_id,
                                     )
 
+        if apply_update and request.key.startswith("_meta:"):
+            table = request.key.split(":", 2)[-1]
+            try:
+                self._node.catalog.reload_schema(table)
+            except Exception:
+                pass
         return replication_pb2.Empty()
 
     def Get(self, request, context):
@@ -592,6 +628,19 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
             self._node.db.put(request.to_key, str(new_to), timestamp=ts)
         finally:
             global_transfer_lock.release()
+        return replication_pb2.Empty()
+
+    def ExecuteDDL(self, request, context):
+        """Execute a DDL statement like CREATE TABLE."""
+        ddl = request.ddl.strip()
+        if ddl.upper().startswith("CREATE TABLE"):
+            try:
+                schema = self._parse_create_table(ddl)
+            except Exception:
+                context.abort(grpc.StatusCode.INVALID_ARGUMENT, "InvalidDDL")
+            self._node.catalog.save_schema(schema)
+        else:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "UnsupportedDDL")
         return replication_pb2.Empty()
 
     def BeginTransaction(self, request, context):

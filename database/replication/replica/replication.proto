@@ -41,6 +41,11 @@ message TransferRequest {
   int64 amount = 3;
 }
 
+// Request containing a DDL statement to execute
+message DdlRequest {
+  string ddl = 1;
+}
+
 // Resposta que devolve um valor, vazio caso nao encontrado
 // Representa um valor versionado
 message VersionedValue {
@@ -254,6 +259,7 @@ service Replica {
   rpc GetForUpdate(KeyRequest) returns (ValueResponse);
   rpc Increment(IncrementRequest) returns (Empty);
   rpc Transfer(TransferRequest) returns (Empty);
+  rpc ExecuteDDL(DdlRequest) returns (Empty);
   rpc BeginTransaction(Empty) returns (TransactionId);
   // Apply all buffered operations of a transaction
   rpc CommitTransaction(TransactionControl) returns (Empty);
