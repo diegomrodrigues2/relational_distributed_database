@@ -124,6 +124,20 @@ class CatalogManager:
     def get_schema(self, table: str) -> TableSchema | None:
         return self.schemas.get(table)
 
+    def reload_schema(self, name: str) -> None:
+        key = f"_meta:table:{name}"
+        val = self.node.db.get(key)
+        if isinstance(val, list):
+            val = val[-1] if val else None
+        if not val:
+            self.schemas.pop(name, None)
+            return
+        try:
+            schema = TableSchema.from_json(val)
+        except Exception:
+            return
+        self.schemas[name] = schema
+
     def save_schema(self, schema: TableSchema) -> None:
         key = f"_meta:table:{schema.name}"
         value = schema.to_json()

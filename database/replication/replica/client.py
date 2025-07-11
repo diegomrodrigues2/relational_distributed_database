@@ -109,6 +109,12 @@ class GRPCReplicaClient:
         )
         self.stub.Transfer(req)
 
+    def execute_ddl(self, ddl: str) -> None:
+        """Send a DDL statement to the replica."""
+        self._ensure_channel()
+        req = replication_pb2.DdlRequest(ddl=ddl)
+        self.stub.ExecuteDDL(req)
+
     def get(
         self, key, *, tx_id: str = "", in_progress: list[str] | None = None
     ):
