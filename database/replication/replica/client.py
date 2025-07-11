@@ -1,5 +1,6 @@
 import time
 import os
+import json
 import grpc
 from . import replication_pb2, replication_pb2_grpc, router_pb2_grpc
 
@@ -257,6 +258,13 @@ class GRPCReplicaClient:
                 )
             )
         return results
+
+    def execute_plan(self, plan: str):
+        """Execute serialized plan on the remote node."""
+        self._ensure_channel()
+        req = replication_pb2.PlanRequest(plan=plan)
+        for row in self.stub.ExecutePlan(req):
+            yield json.loads(row.data)
 
     def get_sstables(self) -> list[tuple[str, int, int, int, str, str]]:
         self._ensure_channel()

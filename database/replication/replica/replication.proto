@@ -250,6 +250,16 @@ message SSTableContentRequest {
   string sstable_id = 2;
 }
 
+// Simple serialized execution plan
+message PlanRequest {
+  string plan = 1;
+}
+
+// Row returned by a query execution
+message RowData {
+  string data = 1;
+}
+
 // Servico disponibilizado por cada seguidor
 service Replica {
   rpc Put(KeyValue) returns (Empty);
@@ -277,6 +287,7 @@ service Replica {
   rpc GetMemtableEntries(NodeInfoRequest) returns (StorageEntriesResponse);
   rpc GetSSTables(NodeInfoRequest) returns (SSTableInfoResponse);
   rpc GetSSTableContent(SSTableContentRequest) returns (StorageEntriesResponse);
+  rpc ExecutePlan(PlanRequest) returns (stream RowData);
 }
 
 // Servico dedicado para heartbeat

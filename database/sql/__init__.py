@@ -1,5 +1,6 @@
 from .metadata import ColumnDefinition, IndexDefinition, TableSchema, CatalogManager
 from .parser import parse_create_table, parse_sql
+from .query_coordinator import QueryCoordinator
 
 __all__ = [
     "ColumnDefinition",
@@ -8,4 +9,6 @@ __all__ = [
     "CatalogManager",
     "parse_create_table",
     "parse_sql",
+    "QueryCoordinator",
 ]
+
