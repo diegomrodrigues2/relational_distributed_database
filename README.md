@@ -1,38 +1,60 @@
-# py_distributed_database
+# Relational Distributed Database in Python from Scratch
 
-This project showcases a didactic implementation of a distributed database written in Python. Each node stores data locally using an LSM Tree and replicates updates to its peers via gRPC. Replication follows a **multi‑leader all‑to‑all** model with conflict resolution based on **Last Write Wins (LWW)** using **Lamport clocks**.
+This project showcases a didactic implementation of a **distributed relational database** built from the ground up in Python. It features a SQL-like interface, a query planner, and a distributed execution engine, all layered on top of a durable, replicated key-value store using an LSM Tree. Replication at the storage layer follows a **multi‑leader all‑to‑all** model with conflict resolution based on **Last Write Wins (LWW)** using **Lamport clocks**.
+
+## From Key-Value to Relational
+This project has evolved from a simple distributed key-value store into a system with relational capabilities. It now includes:
+- A **System Catalog** to manage table schemas, stored directly within the database.
+- A **SQL Parser and Planner** that can understand a subset of SQL, including DDL (`CREATE TABLE`, `ALTER TABLE`) and DML (`INSERT`, `UPDATE`, `DELETE`, `SELECT`).
+- A **Cost-Based Optimizer (CBO)** that chooses between execution strategies like full table scans (`SeqScan`) and index-based lookups (`IndexScan`).
+- **Distributed Query Execution** using a scatter-gather model for parallel processing.
+- **Secondary Indexing** to accelerate queries.
+- **Transactional Support** with snapshot isolation and row-level locking.
 
 ## Architecture overview
+The underlying storage and replication architecture remains a multi-leader, eventually consistent system. A SQL processing layer is built on top of this foundation.
 
 ```mermaid
 flowchart LR
-    subgraph Node_A["Node A"]
-        ADB["LSM DB"]
-        AClock["Lamport Clock"]
-        AServer["gRPC Server"]
+    subgraph "SQL Layer"
+        direction TB
+        Parser["SQL Parser (sqlglot)"] --> AST["Internal AST"]
+        AST --> Planner["Query Planner (CBO)"]
+        Planner --> Plan["Execution Plan"]
+        Plan --> Executor["Distributed Executor"]
     end
-    subgraph Node_B["Node B"]
-        BDB["LSM DB"]
-        BClock["Lamport Clock"]
-        BServer["gRPC Server"]
+    
+    subgraph "Storage & Replication Layer"
+        direction LR
+        subgraph Node_A["Node A"]
+            ADB["LSM DB"]
+            AClock["Lamport Clock"]
+            AServer["gRPC Server"]
+        end
+        subgraph Node_B["Node B"]
+            BDB["LSM DB"]
+            BClock["Lamport Clock"]
+            BServer["gRPC Server"]
+        end
+        subgraph Node_C["Node C"]
+            CDB["LSM DB"]
+            CClock["Lamport Clock"]
+            CServer["gRPC Server"]
+        end
+        AServer -- Replication --> BServer
+        AServer -- Replication --> CServer
+        BServer -- Replication --> AServer
+        BServer -- Replication --> CServer
+        CServer -- Replication --> AServer
+        CServer -- Replication --> BServer
     end
-    subgraph Node_C["Node C"]
-        CDB["LSM DB"]
-        CClock["Lamport Clock"]
-        CServer["gRPC Server"]
-    end
-    AServer -- Replication --> BServer
-    AServer -- Replication --> CServer
-    BServer -- Replication --> AServer
-    BServer -- Replication --> CServer
-    CServer -- Replication --> AServer
-    CServer -- Replication --> BServer
-    BServer -. FetchUpdates .-> AServer
-```
 
-Each instance keeps its own logical clock and stores `(value, timestamp)`. When an update arrives from another node its timestamp is compared with the local one: if newer, it overwrites the current value; otherwise it is discarded.
+    Executor -- Read/Write --> Storage_Replication_Layer
+```
+Each node's LSM Tree stores not only user data but also system catalog information (e.g., table schemas) using reserved keys. Changes to the catalog are replicated just like regular data, ensuring all nodes eventually converge to the same schema definition.
 
 ## Write flow
+A DML operation like `INSERT` or `UPDATE` is parsed and planned, then translated into one or more `Put` operations at the storage layer. These `Put` operations are then replicated to peers.
 
 ```mermaid
 sequenceDiagram
@@ -42,10 +64,11 @@ sequenceDiagram
     participant NodeB
     participant NodeC
 
-    Client->>NodeA: PUT(key, value)
-    NodeA->>NodeA: tick clock + write locally
-    NodeA-->>NodeB: replicate(key, value, ts)
-    NodeA-->>NodeC: replicate(key, value, ts)
+    Client->>NodeA: INSERT INTO users...
+    NodeA->>NodeA: Parse, Plan, Validate Schema
+    NodeA->>NodeA: tick clock + write locally (LSM)
+    NodeA-->>NodeB: replicate(key, row_data, ts)
+    NodeA-->>NodeC: replicate(key, row_data, ts)
     NodeB->>NodeB: update(ts)
     alt ts greater than local
         NodeB->>NodeB: apply write
@@ -60,407 +83,96 @@ sequenceDiagram
     end
 ```
 
-The same rule applies to deletions which propagate as *tombstones*, ensuring **eventual convergence** of all replicas.
-
-## Idempotency and duplicate prevention
-
-Every replicated write carries a unique identifier `op_id` in the format `"<node>:<seq>"`. Nodes keep a **version vector** (`last_seen`) with the highest counter applied from each source. When an update arrives:
-
-1. The origin and counter are extracted from `op_id`.
-2. If the counter is greater than `last_seen[origin]` the operation is applied and the value updated.
-3. Otherwise it is ignored, guaranteeing **idempotency**.
-
-Operations generated locally are stored in a **replication log** until all peers acknowledge them. If a node goes offline it can recover lost updates by replaying this log when it comes back.
+The same rule applies to `DELETE` operations, which propagate as *tombstones*, ensuring **eventual convergence** of all replicas.
 
 ## Main components
-
-- **Write-Ahead Log (WAL)** – records each operation before applying it, ensuring durability.
-- **MemTable** – in-memory (Red‑Black Tree) structure for fast writes.
-- **SSTables** – immutable files storing data permanently.
-- **Compaction** – removes obsolete records by merging SSTables.
-- **Lamport Clock** – logical counter used to order operations across nodes.
-- **Multi-leader replication** – any node can accept writes and asynchronously replicate them.
-- **Optional Driver** – client aware of the topology that keeps a partition map cache.
-- **Optional LRU cache** – each node can store recent reads by setting `cache_size` in `NodeServer`.
-- **Optional secondary indexes** – set `index_fields` in `NodeServer` to keep simple in-memory indexes.
-- **Optional global indexes** – set `global_index_fields` in `NodeServer` or `NodeCluster` to rebuild global indexes on startup.
-- **Replication log** – stores locally generated operations until all peers confirm receipt.
-- **Version vector** – each node maintains `last_seen` (origin → last counter) to apply every operation exactly once.
-- **Heartbeat** – `Ping` service that monitors peer availability.
-- **Sloppy quorum** – uses extra healthy nodes when the original owners are offline.
-- **Hinted handoff** – writes destined for unavailable nodes are stored on substitutes and resent in the background.
-- **Read repair** – outdated replicas are updated asynchronously during reads.
-
-## Offline sync and anti-entropy
-
-To tolerate temporary node failures the system offers a **pull** synchronization. When restarting, a node issues the `FetchUpdates` RPC sending its `last_seen` vector and receives the missing operations. A background process repeats this periodically (anti‑entropy) ensuring replicas eventually converge.
-
-```mermaid
-sequenceDiagram
-    participant NodeB
-    participant NodeA
-    NodeB->>NodeA: FetchUpdates(last_seen)
-    NodeA-->>NodeB: pending operations
-    NodeB->>NodeB: apply operations
-```
-
-- The replication log is persisted in `replication_log.json` and resent in batches.
-- If a destination is unreachable another healthy node keeps the update with `hinted_for` and delivers it once the peer recovers (hinted handoff).
-- **Merkle tree** hashes allow skipping already synchronized data when exchanging updates, sending only divergent keys. This runs periodically as anti‑entropy.
+- **System Catalog**: Stores table and index schemas as special keys within the database itself, ensuring metadata is replicated along with data.
+- **SQL Parser**: Uses `sqlglot` to parse SQL strings into an Abstract Syntax Tree (AST).
+- **Query Planner**: A cost-based optimizer (CBO) that analyzes the AST and statistics to choose the most efficient execution plan (e.g., `SeqScan` vs. `IndexScan`).
+- **Distributed Execution Engine**: Coordinates query execution across multiple nodes using a scatter-gather pattern.
+- **Row-based Storage**: Table rows are serialized using MessagePack for efficient storage and retrieval.
+- **Write-Ahead Log (WAL)**: Records each operation before applying it, ensuring durability.
+- **LSM Tree**: Each node uses a Log-Structured Merge-Tree (`MemTable`, `SSTables`, Compaction) for its local storage engine.
+- **Multi-leader Replication**: Any node can accept writes, which are asynchronously replicated.
+- **Lamport Clocks & Vector Clocks**: Used for ordering operations and conflict resolution.
+- **Topology-Aware Driver**: An optional client that caches the partition map to route requests directly to the correct node.
+- **Secondary Indexes**: In-memory indexes on non-primary-key columns to speed up queries.
+- **Heartbeat & Hinted Handoff**: For fault tolerance, writes to offline nodes are temporarily stored by healthy nodes and delivered later.
+- **Read Repair**: Outdated replicas are asynchronously updated during reads.
 
 ## Running
 
-1. Install the dependencies (including `grpcio` and `protobuf` for gRPC communication)
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Start the example
-   ```bash
-   python main.py
-   ```
-   The script creates a local cluster with multiple nodes and replicates operations between them.
+1.  Install the dependencies (including `grpcio`, `protobuf`, and `sqlglot`):
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  Start the example cluster:
+    ```bash
+    python main.py
+    ```
+    This script launches a local `NodeCluster` and a FastAPI server that exposes a REST API and a web-based UI.
 
-### FastAPI server
+### SQL Interface
 
-`main.py` runs a small FastAPI application. Launch it with
+The primary way to interact with the database is through SQL. You can execute DDL and DML statements via the API.
 
-```bash
-python main.py
-# or: python -m api.main
-# or: uvicorn api.main:app --reload
-```
-This automatically starts a `NodeCluster` during the startup event so the HTTP endpoints are backed by a live cluster.
-
-For per-user consistency use the `Driver`:
-
+**DDL Example (`CREATE TABLE`)**
 ```python
-from replication import NodeCluster
-from driver import Driver
-
-cluster = NodeCluster(num_nodes=2)
-driver = Driver(cluster)
-driver.put("alice", "k", "1", "v")
-value = driver.get("alice", "k", "1")
-cluster.shutdown()
+# Via GRPCReplicaClient
+client.execute_ddl("CREATE TABLE users (id INT PRIMARY KEY, name STRING)")
 ```
 
-### Data CRUD API
-
-The REST server offers simple endpoints to manage data stored in the cluster.
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/data/records` | List records (optional `offset` and `limit` query params, `limit` defaults to 100) |
-| `POST` | `/data/records` | Insert a new record using a JSON body |
-| `PUT` | `/data/records/{partition_key}/{clustering_key}` | Update an existing record (send `value` as query param) |
-| `DELETE` | `/data/records/{partition_key}/{clustering_key}` | Remove a record |
-| `GET` | `/data/records/scan_range` | Retrieve items for a partition between two clustering keys |
-| `GET` | `/data/query_index` | Retrieve keys from a secondary index |
-
-Example usage with `curl`:
-
-```bash
-curl -X POST http://localhost:8000/data/records \
-     -H "Content-Type: application/json" \
-     -d '{"partitionKey":"alpha","clusteringKey":"a","value":"v1"}'
-
-curl http://localhost:8000/data/records
-
-curl -X PUT "http://localhost:8000/data/records/alpha/a?value=v2"
-
-curl -X DELETE http://localhost:8000/data/records/alpha/a
-
-curl "http://localhost:8000/data/query_index?field=color&value=red"
-# {"keys": ["p1"]}
+**DML Example (`INSERT`, `SELECT`)**
+```python
+# The system does not yet expose a direct SQL client in Python,
+# but queries can be sent via the API endpoints.
+# (See API section below)
 ```
 
-### Storage inspection API
+### Low-Level API
 
-These endpoints expose internal storage data from individual nodes.
+While SQL is the preferred interface, the system still exposes a lower-level Key-Value API for direct data manipulation and inspection, which is used by the UI's Data Browser.
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/nodes/{id}/wal` | List WAL entries (optional `offset` and `limit` query params) |
-| `GET` | `/nodes/{id}/memtable` | List MemTable contents (optional `offset` and `limit` query params) |
-| `GET` | `/nodes/{id}/sstables` | Show SSTable metadata |
+| Method | Path                                             | Description                                      |
+| :----- | :----------------------------------------------- | :----------------------------------------------- |
+| `GET`  | `/data/records`                                  | List records with optional pagination.           |
+| `POST` | `/data/records`                                  | Insert a new raw record.                         |
+| `PUT`  | `/data/records/{partition_key}/{clustering_key}` | Update a raw record.                             |
+| `GET`  | `/data/query_index`                              | Query a secondary index.                         |
+| `GET`  | `/nodes/{id}/wal`                                | Inspect a node's Write-Ahead Log.                |
+| `GET`  | `/nodes/{id}/memtable`                           | Inspect a node's MemTable contents.              |
+| `GET`  | `/nodes/{id}/sstables`                           | View SSTable metadata for a node.                |
 
-### Cluster actions API
+### Cluster Management API
 
 The API also exposes maintenance operations to manage the cluster:
 
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `POST` | `/cluster/actions/check_hot_partitions` | Split partitions with heavy traffic |
-| `POST` | `/cluster/actions/reset_metrics` | Reset hotspot counters |
-| `POST` | `/cluster/actions/mark_hot_key` | Enable salting for a hot key |
-| `POST` | `/cluster/actions/split_partition` | Manually divide a partition |
-| `POST` | `/cluster/actions/merge_partitions` | Merge two adjacent partitions |
-| `POST` | `/cluster/actions/rebalance` | Evenly redistribute partitions |
-
-`split_partition` expects `pid` (partition id) and an optional `split_key` that
-defines the new boundary. `merge_partitions` receives `pid1` and `pid2` for the
-two consecutive partitions to be joined.
-
-Example:
-
-```bash
-curl -X POST "http://localhost:8000/cluster/actions/reset_metrics"
-curl -X POST "http://localhost:8000/cluster/actions/check_hot_partitions"
-curl -X POST "http://localhost:8000/cluster/actions/mark_hot_key?key=hot&buckets=4"
-curl -X POST "http://localhost:8000/cluster/actions/split_partition?pid=0&split_key=g"
-curl -X POST "http://localhost:8000/cluster/actions/merge_partitions?pid1=0&pid2=1"
-curl -X POST "http://localhost:8000/cluster/actions/rebalance"
-```
-
-The management dashboard under `app/` exposes buttons for these split and merge
-operations alongside other cluster tasks.
-
-### Topology aware driver
-
-The driver keeps a local cache of the partition map obtained with `get_partition_map()`. Requests go directly to the responsible node. If a `NotOwner` error is returned (for example after a partition migration) the driver refreshes the cache and retries.
-
-## Replication topology
-
-`NodeCluster` has an optional `topology` parameter defining which nodes replicate to each other. When omitted the cluster forms a full mesh (all-to-all). The dictionary uses the node index as the key and a list of destinations as the value.
-
-The cluster also uses a `ConsistentHashRing` to determine which nodes own each key. The `replication_factor` parameter indicates how many replicas should store the same value:
-
-```python
-from replication import NodeCluster
-
-cluster = NodeCluster(
-    "/tmp/quorum", num_nodes=3,
-    replication_factor=3,
-    write_quorum=2,  # W
-    read_quorum=2,   # R
-)
-```
-
-Lower values of `W` and `R` increase availability because fewer nodes must be online, while higher quorums improve consistency at the cost of requiring more active replicas.
-
-## Virtual partitions (vnodes)
-
-Using the hash ring enables the `ConsistentHashPartitioner`. Each server receives several virtual tokens randomly distributed in the 160-bit space. Set `partitions_per_node` to indicate how many tokens each node will hold. Total partitions become `num_nodes * partitions_per_node`, allowing finer balance and smooth redistribution when `add_node()` or `remove_node()` are executed.
-
-```python
-from replication import NodeCluster
-
-cluster = NodeCluster(
-    "/tmp/vnodes",
-    num_nodes=3,
-    partition_strategy="hash",
-    partitions_per_node=64,
-)
-```
-
-The `UpdateHashRing` RPC propagates new tokens whenever the ring changes.
-
-### Ring topology
-
-```python
-from replication import NodeCluster
-
-ring = {
-    0: [1],
-    1: [2],
-    2: [0],
-}
-cluster = NodeCluster("/tmp/ring", num_nodes=3, topology=ring)
-```
-
-```mermaid
-graph LR
-    0 --> 1
-    1 --> 2
-    2 --> 0
-```
-
-### Star topology
-
-```python
-from replication import NodeCluster
-
-star = {
-    0: [1, 2, 3],
-    1: [0],
-    2: [0],
-    3: [0],
-}
-cluster = NodeCluster("/tmp/star", num_nodes=4, topology=star)
-```
-
-```mermaid
-graph LR
-    0 --> 1
-    0 --> 2
-    0 --> 3
-    1 --> 0
-    2 --> 0
-    3 --> 0
-```
-
-## Sloppy Quorum and Hinted Handoff
-
-Each node monitors peer availability through a heartbeat service. If a node responsible for a given key is offline the write is not rejected: other healthy nodes are selected to complete the quorum (**sloppy quorum**). The operation is sent to the substitute with the field `hinted_for` indicating the original destination.
-
-These updates are recorded in `hints.json` and a background thread periodically checks if the peer is back online. When it is, the data is transferred and the hint removed.
-
-The same principle applies to reads: if the preferred replicas are unavailable the cluster contacts additional nodes until `R` responses are gathered. During this read, values are compared and outdated replicas are updated asynchronously (read repair).
-
-## Vector Clocks, CRDTs and consistency modes
-
-Besides the default **LWW**, the system supports concurrency control using **Vector Clocks** and **CRDT** structures. The `consistency_mode` parameter sets the algorithm used by each node:
-
-- `"lww"` – Last Write Wins with Lamport clocks (default)
-- `"vector"` – version vectors to detect conflicts
-- `"crdt"` – replicates serialized state of configured CRDTs
-
-### CRDT counter example
-
-To manipulate a grow-only counter (`GCounter`) create nodes manually with `consistency_mode="crdt"` and a `crdt_config` mapping:
-
-```python
-from tempfile import TemporaryDirectory
-from replica.grpc_server import NodeServer
-
-cfg = {"c": "gcounter"}
-
-with TemporaryDirectory() as dir_a, TemporaryDirectory() as dir_b:
-    node_a = NodeServer(dir_a, node_id="A", peers=[("localhost", 8001, "B")],
-                        consistency_mode="crdt", crdt_config=cfg)
-    node_b = NodeServer(dir_b, node_id="B", peers=[("localhost", 8000, "A")],
-                        consistency_mode="crdt", crdt_config=cfg)
-    node_a.start(); node_b.start()
-
-    node_a.apply_crdt("c", 1)
-    node_b.apply_crdt("c", 2)
-
-    print(node_a.crdts["c"].value)  # 3
-    print(node_b.crdts["c"].value)  # 3
-
-    node_a.stop(); node_b.stop()
-```
-
-## Composite keys
-
-Keys may have two components: the **partition key** and the **clustering key**. The function `compose_key(partition_key, clustering_key)` generates the unified representation `"partition|cluster"`. In hash partitioning only the partition key is used in the hash, so all records with the same prefix stay in the same partition regardless of the clustering component.
-
-## Secondary indexes
-
-Enable in-memory secondary indexes by creating the `NodeServer` with the `index_fields` option:
-
-```python
-from replica.grpc_server import NodeServer
-
-node = NodeServer('/tmp/db', index_fields=['name'])
-```
-
-At startup the server automatically rebuilds the indexes by reading existing data. `Put` and `Delete` operations keep them updated. Queries can be executed through `query_index()`.
-
-## Sharding and Routing
-
-The cluster supports both range-based partitions and hash-based partitions.
-
-### Partitioning strategies
-
-- **Ranges** – set `partition_strategy='range'` and pass `key_ranges`.
-- **Hash** – set `partition_strategy='hash'` and optionally `num_partitions`.
-
-### Routing
-
-1. With `enable_forwarding=True` the receiving node forwards requests to the partition owner.
-2. A dedicated router can use `get_partition_map()` to choose the destination.
-3. The `Driver` inside each client keeps the map and updates it after a `NotOwner` response.
-
-Whenever the mapping changes call `cluster.update_partition_map()` to send the new table to replicas and update caches.
-
-```mermaid
-flowchart LR
-    Client --> Router
-    Router --> A["Node A\nP0"]
-    Router --> B["Node B\nP1"]
-    Router --> C["Node C\nP2"]
-```
-
-## Key range partitioning
-
-Keys can also be distributed manually by range, associating each partition with a specific node using the `key_ranges` parameter.
-
-## Key hash partitioning
-
-Keys may be distributed automatically via `hash(key) % num_partitions`. If `num_partitions` is omitted the cluster creates 128 logical ranges by default.
-
-## Random prefixing / Salting
-
-Hot keys can be spread across partitions by enabling salting which adds a random prefix before the partition key. Reads probe all salted variants and return the latest value.
-
-### Dynamic salting of hot keys
-
-Call `mark_hot_key(key, buckets, migrate=True)` to dynamically distribute new writes among `buckets` prefixes and optionally migrate the current value to each variant.
-
-## Hotspot metrics
-
-`NodeCluster` maintains operation counters per partition (`partition_ops`) and per key (`key_freq`). Use `reset_metrics()` to reset counters and `get_hot_partitions()` / `get_hot_keys()` to inspect hotspots.
-
-## Read balancing
-
-Set `load_balance_reads=True` when creating the cluster (or the driver) to distribute reads among replicas.
-
-## Partition splitting
-
-Use `split_partition(pid, split_key=None)` to manually divide a busy range. The cluster can also monitor metrics and automatically split hot partitions by calling `check_hot_partitions()`.
-
-### Automatic hotspot repartitioning
-
-`get_partition_stats()` provides the amount of operations executed in each partition. Combine it with `check_hot_partitions()` to automatically split heavy regions.
-
-## Adding and removing nodes
-
-Use `add_node()` to include a new server in the cluster. Partitions are redistributed and existing records copied to the new node. To remove a machine call `remove_node(node_id)` which transfers its data before shutting it down. After any redistribution call `cluster.update_partition_map()` so all replicas receive the new mapping via the RPCs `UpdatePartitionMap` and `UpdateHashRing`.
-
-## Stage 6 – Request Routing
-
-The cluster can forward each request to the correct partition owner in different ways.
-
-### Coordinator node (forwarding)
-
-A client may contact any node in the cluster. If the server that received the request is not the owner it will automatically forward the operation and return the result when `enable_forwarding=True`.
-
-### Dedicated router
-
-A separate service can know the partition map and simply relay operations to the correct nodes.
-
-### Topology aware client
-
-The `Driver` caches the partition map and updates it whenever a `NotOwner` error is received. It can also balance reads across replicas by setting `load_balance_reads`.
-
-### Mapping update
-
-If a partition is split or the cluster is rebalanced call `cluster.update_partition_map()` to distribute the new mapping to all replicas. The method returns the dictionary so drivers or routers can update their cache.
-
-### Automatic partition map updates
-
-The `Driver` registers with the cluster and receives updates whenever `update_partition_map()` is executed, allowing all connected drivers to refresh automatically.
-
-### Read cache
-
-Set `cache_size` when creating each `NodeServer` to enable an LRU read cache. Use `cache_size=0` (default) to disable the feature.
-
-### Stage tests
-
-Run only the routing and driver tests:
-
-```bash
-python -m unittest tests/test_routing.py tests/test_smart_driver.py -v
-```
-
-### Transactions
-
-Start a transaction using `BeginTransaction` and include the returned `tx_id`
-in every `Put` or `Delete` call. Writes remain buffered on the server until you
-issue the `CommitTransaction` RPC to apply them or `AbortTransaction` to
-discard the queued operations. Both RPCs are defined in
-`database/replication/replica/replication.proto`.
+| Method | Path                                     | Description                             |
+| :----- | :--------------------------------------- | :-------------------------------------- |
+| `POST` | `/cluster/actions/check_hot_partitions`  | Split partitions with heavy traffic.    |
+| `POST` | `/cluster/actions/split_partition`       | Manually divide a partition.            |
+| `POST` | `/cluster/actions/merge_partitions`      | Merge two adjacent partitions.          |
+| `POST` | `/cluster/actions/rebalance`             | Evenly redistribute partitions.         |
+
+### Relational UI
+The project includes a web-based dashboard and management UI in the `app/` directory. It provides:
+- **SQL Editor**: An interactive editor to run SQL queries and view results.
+- **Schema Browser**: A tool to view all tables, their columns, types, and defined indexes.
+- **Query Plan Visualizer**: An `EXPLAIN`-like feature to inspect the execution plan chosen by the query optimizer.
+- **Cluster Dashboard**: Health and performance metrics for nodes and partitions.
+
+## Sharding and Partitioning
+The database distributes data across nodes using partitioning.
+- **Partitioning Strategies**: Supports both hash-based partitioning (for even load distribution) and range-based partitioning (for efficient range scans).
+- **Virtual Partitions (vnodes)**: By using a `ConsistentHashPartitioner`, each physical node can be responsible for many small virtual partitions, which allows for smoother rebalancing when nodes are added or removed.
+
+## Transactions
+The database supports transactions with snapshot isolation.
+- **ACID Operations**: Start a transaction with `BeginTransaction`, issue `Put` or `Delete` operations with the `tx_id`, and finalize with `CommitTransaction` or `AbortTransaction`.
+- **Snapshot Isolation**: Each transaction operates on a consistent snapshot of the database, preventing dirty reads.
+- **Conflict Detection**: Commits will fail if another transaction has modified a row that was read, preventing lost updates.
+- **Row-level Locking**: Use the `GetForUpdate` RPC to acquire a lock on a row, preventing write skew and ensuring read-modify-write operations are safe.
+- **Configurable Locking**: Use `tx_lock_strategy="2pl"` to enable pessimistic two-phase locking.
 
 ```python
 from replication import NodeCluster
@@ -469,66 +181,17 @@ from replica.client import GRPCReplicaClient
 cluster = NodeCluster('/tmp/tx_demo', num_nodes=1)
 client = cluster.nodes[0].client
 
+# Basic transaction
 tx = client.begin_transaction()
-client.put('key1', 'v1', tx_id=tx)
-client.delete('old', tx_id=tx)
+client.put('users||1', '{"id": 1, "name": "alice"}', tx_id=tx)
 client.commit_transaction(tx)
 
+# Read-modify-write with locking
 tx2 = client.begin_transaction()
-client.put('temp', '123', tx_id=tx2)
-client.abort_transaction(tx2)
+current = client.get_for_update('counters||c1', tx_id=tx2)[0][0]
+client.put('counters||c1', str(int(current) + 1), tx_id=tx2)
+client.commit_transaction(tx2)
 ```
-
-#### Advanced features
-
-- **Snapshot isolation** &ndash; each transaction sees a consistent snapshot of
-  committed data and ignores uncommitted writes from others.
-- **Conflict detection** &ndash; `CommitTransaction` aborts with `Conflict` if a
-  row read during the transaction was modified concurrently, preventing lost
-  updates.
-- **Row locking** &ndash; use the `GetForUpdate` RPC to lock a key until commit or
-  abort. This avoids lost updates and write skew:
-
-```python
-tx = client.begin_transaction()
-current = client.get_for_update('cnt', tx_id=tx)[0][0]
-client.put('cnt', str(int(current) + 1), tx_id=tx)
-client.commit_transaction(tx)
-```
-
-- **Write locks** ensure only one transaction modifies a key at a time, avoiding
-  dirty writes.
-- **Atomic increment** &ndash; the `Increment` RPC updates numeric values atomically using a per-key lock.
-- **Replicated catalog** &ndash; table schemas are stored as keys and replicated via the ExecuteDDL RPC.
-- **CREATE TABLE support** – use `execute_ddl()` to create tables and persist schemas.
-- **Row serialization** – dictionary values are stored with MessagePack and returned as JSON.
-- **Table-aware keys** – use `compose_key(table, partition, cluster)` for multi-table layouts.
-- **Configurable locking** &ndash; pass `tx_lock_strategy="2pl"` to enable
-  pessimistic two-phase locking or `"basic"` for the original behavior.
-
-## Dedicated Routing Tier
-
-A standalone gRPC router can relay all client requests to the correct node. Start it by passing `start_router=True` when creating the cluster and connect using `GRPCRouterClient`.
-
-```python
-from replication import NodeCluster
-from replica.client import GRPCRouterClient
-
-cluster = NodeCluster('/tmp/router_cluster_<id>', num_nodes=3,
-                      partition_strategy='hash',
-                      start_router=True, router_port=7000)
-
-router = GRPCRouterClient('localhost', 7000)
-router.put('rkey', 'v1')
-print(router.get('rkey'))
-
-# rebalance or split partitions and propagate the new mapping
-import replica.replication_pb2 as pb
-new_map = cluster.update_partition_map()
-router.stub.UpdatePartitionMap(pb.PartitionMap(items=new_map))
-```
-
-This mode centralizes request routing but adds an extra network hop and can become a single point of failure if only one router instance is deployed. Prefer it when clients cannot easily keep the partition map or when a uniform entry point is required.
 
 ## Tests
 
@@ -537,95 +200,58 @@ Run the full test suite to validate the system. Install dependencies from `requi
 pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
-You can also simply run `python -m unittest` to execute the default suite. To test only the driver functionality use:
-```bash
-python -m unittest tests/test_smart_driver.py -v
-```
-Run this command whenever new features are implemented or files change.
 
 ## File structure
 
 ```
-api/                 # HTTP/gRPC API entry points
-app/                 # Frontend web application
- database/
-   clustering/       # cluster management utilities
-   lsm/              # LSM Tree implementation
-   replication/      # gRPC replication logic and services
-   utils/            # shared utilities (consistency, CRDT, clocks)
- driver.py           # topology-aware client
- main.py             # cluster startup example
- setup_router.sh     # helper script to run the router
- tests/              # test cases
+api/                 # HTTP API entry points
+app/                 # Frontend web application (React)
+database/
+  clustering/        # Partitioning, routing, and cluster management
+  lsm/               # LSM Tree storage engine implementation
+  replication/       # gRPC replication logic and services
+  sql/               # SQL parser, planner, and execution engine
+  utils/             # Shared utilities (clocks, CRDTs, etc.)
+driver.py            # Topology-aware client
+main.py              # Main application entry point
+tests/               # Unit and integration tests
 ```
 
-## Example configurations
+## Example Configurations
 
 Several small scripts under `examples/` start the cluster with different options. Each one launches the React UI in the background while the API runs in the foreground. Run them with `python examples/<file>.py` and visit the printed URLs.
 
-The scripts now populate the cluster using simple data generator functions so you can observe how each configuration behaves with a larger workload. Each script prints the partition map and the placement of each generated record.
+- `hash_cluster.py`: A standard hash-partitioned cluster.
+- `range_cluster.py`: A cluster partitioned by explicit key ranges.
+- `index_cluster.py`: A cluster with secondary indexes enabled.
+- `router_cluster.py`: Starts a dedicated gRPC router for client requests.
 
-- `hash_cluster.py` – three-node hash-partitioned cluster using LWW.
-- `range_cluster.py` – cluster with two explicit key ranges and sample composite keys.
-- `index_cluster.py` – enables `index_fields` and stores indexed records.
-- `router_cluster.py` – starts the gRPC router and writes via the router client.
-- `registry_cluster.py` – uses the metadata registry together with the router.
+## Running with Docker
 
+The project can be fully containerized using Docker and Docker Compose.
 
-## Running the examples on Windows
-
-To avoid compatibility issues on Windows, run the project inside Docker. First install **Docker Desktop**, then build and run the image from the repository root:
-
+### Build and Run a Single Example
+To avoid compatibility issues, especially on Windows, run the project inside Docker. First, install **Docker Desktop**.
 ```bash
+# Build the Docker image
 docker build -t py_db .
+
+# Run the default hash_cluster.py example
 docker run -p 8000:8000 -p 5173:5173 py_db
 ```
 
-This starts `hash_cluster.py`, which also launches the API and React UI in the background. You can run a different example by overriding the command:
-
-```bash
-docker run -p 8000:8000 -p 5173:5173 py_db python examples/range_cluster.py
-```
-
-## Running a single node with Docker
-
-You can also start an individual `NodeServer` container using environment
-variables to configure ports and other settings:
-
-```bash
-docker build -t py_db .
-docker run -e NODE_ID=node1 -e GRPC_PORT=50051 -e API_PORT=8000 \
-           -p 50051:50051 -p 8000:8000 py_db
-```
-
-Set `PEERS` to a comma‑separated list of `host:port` pairs when connecting
-multiple containers. Optional variables like `DATA_DIR`, `REGISTRY_HOST` and
-`REGISTRY_PORT` are also respected by `start_node.py`.
-
-## Running with Docker Compose
-
-The repository ships with a `docker-compose.yml` that builds the image and
-starts a metadata registry together with three nodes. Launch everything with:
-
+### Running with Docker Compose
+The repository includes a `docker-compose.yml` file that starts a 3-node cluster with a metadata registry service.
 ```bash
 docker compose up --build
 ```
+This will launch all services. The UI for each node and the central registry will be available on `localhost` at their configured ports:
+- **node1:** [http://localhost:8001](http://localhost:8001) (gRPC on `50051`)
+- **node2:** [http://localhost:8002](http://localhost:8002) (gRPC on `50052`)
+- **node3:** [http://localhost:8003](http://localhost:8003) (gRPC on `50053`)
+- **registry:** Port `9100`
 
-All services bind to `0.0.0.0` so the containers can communicate on the Docker
-network. After startup the dashboards are available at:
-
-- node1: [http://localhost:8001](http://localhost:8001) (gRPC `50051`)
-- node2: [http://localhost:8002](http://localhost:8002) (gRPC `50052`)
-- node3: [http://localhost:8003](http://localhost:8003) (gRPC `50053`)
-
-The registry service listens on port `9100`.
-
-Stopping the container (for example with `docker stop`) sends `SIGTERM` to the
-process. `start_node.py` registers a handler for this signal so each node
-finishes background tasks and shuts down cleanly.
-
-Need more nodes? Duplicate the service definition or scale it with:
-
+To add more nodes, you can scale the service:
 ```bash
-docker compose up --scale node=4
+docker compose up --scale node=5
 ```
