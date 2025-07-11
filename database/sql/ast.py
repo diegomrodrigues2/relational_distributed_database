@@ -76,3 +76,8 @@ class UpdateQuery:
 class DeleteQuery:
     table: str
     where_clause: Optional[Expression] = None
+
+
+@dataclass
+class AnalyzeQuery:
+    table: str

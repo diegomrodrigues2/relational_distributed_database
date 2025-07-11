@@ -69,6 +69,7 @@ from .ast import (
     InsertQuery,
     UpdateQuery,
     DeleteQuery,
+    AnalyzeQuery,
 )
 
 
@@ -195,5 +196,10 @@ def parse_sql(sql_string: str):
         if parsed.args.get("where") is not None:
             where_clause = _map_expression(parsed.args["where"].this)
         return DeleteQuery(table=table, where_clause=where_clause)
+
+    if isinstance(parsed, exp.Analyze):
+        if parsed.args.get("kind") == "TABLE" and isinstance(parsed.this, exp.Table):
+            return AnalyzeQuery(table=parsed.this.name)
+        raise ValueError("Unsupported ANALYZE command")
 
     raise ValueError("Unsupported SQL statement")

@@ -7,6 +7,7 @@ from .ast import (
     InsertQuery,
     UpdateQuery,
     DeleteQuery,
+    AnalyzeQuery,
     Expression,
     BinOp,
     Column,
@@ -19,6 +20,7 @@ from .execution import (
     InsertPlanNode,
     DeletePlanNode,
     UpdatePlanNode,
+    AnalyzePlanNode,
 )
 from .metadata import CatalogManager
 
@@ -124,5 +126,8 @@ class QueryPlanner:
             if not self.service:
                 raise ValueError("service required for UPDATE")
             return UpdatePlanNode(self.service, self, query.table, query.assignments, query.where_clause)
+
+        if isinstance(query, AnalyzeQuery):
+            return AnalyzePlanNode(self.db, self.catalog, query.table)
 
         raise ValueError("Unsupported query type")
