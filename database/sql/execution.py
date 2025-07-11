@@ -193,3 +193,43 @@ class SeqScanNode(PlanNode):
                 yield {c: row.get(c) for c in self.columns}
             else:
                 yield row
+
+
+class IndexScanNode(PlanNode):
+    """Scan rows using a secondary index."""
+
+    def __init__(
+        self,
+        db: SimpleLSMDB,
+        index_manager,
+        table_name: str,
+        index_name: str,
+        lookup_value,
+        columns: List[str] | None = None,
+    ) -> None:
+        self.db = db
+        self.index_manager = index_manager
+        self.table_name = table_name
+        self.index_name = index_name
+        self.lookup_value = lookup_value
+        self.columns = columns
+
+    def execute(self) -> Iterator[dict]:
+        keys = self.index_manager.query(self.index_name, self.lookup_value, self.table_name)
+        for key in keys:
+            records = self.db.get_record(key)
+            if not records:
+                continue
+            value = records[0][0]
+            try:
+                decoded = base64.b64decode(value)
+            except Exception:
+                decoded = value.encode() if isinstance(value, str) else value
+            try:
+                row = RowSerializer.loads(decoded)
+            except Exception:
+                continue
+            if self.columns:
+                yield {c: row.get(c) for c in self.columns}
+            else:
+                yield row

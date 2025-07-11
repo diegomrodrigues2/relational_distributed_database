@@ -9,10 +9,16 @@ import types
 dummy_rep = types.ModuleType("database.replication")
 dummy_rep.NodeCluster = object
 dummy_rep.ClusterNode = object
+dummy_rep.__path__ = []
+sub = types.ModuleType("database.replication.replica")
+sub.replication_pb2 = types.ModuleType("database.replication.replica.replication_pb2")
+sys.modules.setdefault("database.replication.replica", sub)
 sys.modules.setdefault("database.replication", dummy_rep)
 
 from database.lsm.lsm_db import SimpleLSMDB
-from database.sql.execution import MergingIterator, SeqScanNode
+from database.sql.execution import MergingIterator, SeqScanNode, IndexScanNode
+from database.clustering.index_manager import IndexManager
+import time
 from database.sql.ast import Column, Literal, BinOp
 from database.sql.serialization import RowSerializer
 
@@ -79,5 +85,56 @@ def test_seq_scan_with_filter(tmp_path):
     rows = list(node.execute())
     ids = sorted(r["id"] for r in rows)
     assert ids == [3, 4]
+    db.close()
+
+
+def test_index_scan_matches_seq_scan(tmp_path):
+    db = _setup_db(tmp_path)
+    index = IndexManager(["age"])
+    db.put("users||1", _enc({"id": 1, "age": 20}))
+    index.add_record("users||1", _enc({"id": 1, "age": 20}))
+    db.put("users||3", _enc({"id": 3, "age": 30}))
+    index.add_record("users||3", _enc({"id": 3, "age": 30}))
+    db._flush_memtable_to_sstable()
+    db.put("users||2", _enc({"id": 2, "age": 25}))
+    index.add_record("users||2", _enc({"id": 2, "age": 25}))
+    db.put("users||4", _enc({"id": 4, "age": 40}))
+    index.add_record("users||4", _enc({"id": 4, "age": 40}))
+
+    expr = BinOp(left=Column("age"), op="EQ", right=Literal(30))
+    seq = SeqScanNode(db, "users", where_clause=expr)
+    idx = IndexScanNode(db, index, "users", "age", 30)
+
+    seq_rows = sorted(list(seq.execute()), key=lambda r: r["id"])
+    idx_rows = sorted(list(idx.execute()), key=lambda r: r["id"])
+    assert idx_rows == seq_rows
+    db.close()
+
+
+def test_index_scan_faster_than_seq_scan(tmp_path):
+    db = SimpleLSMDB(db_path=tmp_path, max_memtable_size=10000)
+    index = IndexManager(["age"])
+
+    for i in range(10000):
+        row = {"id": i, "age": i}
+        val = _enc(row)
+        key = f"users||{i}"
+        db.put(key, val)
+        index.add_record(key, val)
+    db._flush_memtable_to_sstable()
+
+    expr = BinOp(left=Column("age"), op="EQ", right=Literal(9999))
+    seq = SeqScanNode(db, "users", where_clause=expr)
+    start = time.perf_counter()
+    seq_rows = list(seq.execute())
+    seq_time = time.perf_counter() - start
+
+    idx = IndexScanNode(db, index, "users", "age", 9999)
+    start = time.perf_counter()
+    idx_rows = list(idx.execute())
+    idx_time = time.perf_counter() - start
+
+    assert idx_rows == seq_rows
+    assert idx_time < seq_time / 10
     db.close()
 
