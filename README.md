@@ -500,6 +500,9 @@ client.commit_transaction(tx)
   dirty writes.
 - **Atomic increment** &ndash; the `Increment` RPC updates numeric values atomically using a per-key lock.
 - **Replicated catalog** &ndash; table schemas are stored as keys and replicated via the ExecuteDDL RPC.
+- **CREATE TABLE support** – use `execute_ddl()` to create tables and persist schemas.
+- **Row serialization** – dictionary values are stored with MessagePack and returned as JSON.
+- **Table-aware keys** – use `compose_key(table, partition, cluster)` for multi-table layouts.
 - **Configurable locking** &ndash; pass `tx_lock_strategy="2pl"` to enable
   pessimistic two-phase locking or `"basic"` for the original behavior.
 
