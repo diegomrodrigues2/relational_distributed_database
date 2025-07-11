@@ -25,8 +25,12 @@ from .execution import (
 from .metadata import CatalogManager
 
 
-class QueryPlanner:
-    """Very small rule-based query planner."""
+COST_SEQ_IO = 1
+COST_RANDOM_IO = 4
+
+
+class CostBasedPlanner:
+    """Very small cost-based query planner."""
 
     def __init__(self, db, catalog: CatalogManager, index_manager, service=None) -> None:
         self.db = db
@@ -62,12 +66,37 @@ class QueryPlanner:
         indexed_columns = self._get_index_columns(table)
         eq_pred = self._find_eq_predicate(where_clause)
 
+        # default sequential scan cost using table statistics when available
+        table_stats = self.catalog.get_table_stats(table)
+        seq_cost = float("inf")
+        if table_stats is not None:
+            seq_cost = table_stats.num_rows * COST_SEQ_IO
+
+        best_plan = SeqScanNode(
+            self.db,
+            table,
+            where_clause=where_clause,
+            catalog=self.catalog,
+        )
+        best_cost = seq_cost
+
         if eq_pred and eq_pred[0] in indexed_columns:
             column, value_expr = eq_pred
             lookup_value = None
             if isinstance(value_expr, Literal):
                 lookup_value = value_expr.value
-            return IndexScanNode(
+
+            # estimate cost of using the index
+            col_stats = self.catalog.get_column_stats(table, column)
+            if table_stats is not None and col_stats is not None and col_stats.num_distinct:
+                selectivity = 1 / max(col_stats.num_distinct, 1)
+                est_rows = table_stats.num_rows * selectivity
+                index_cost = est_rows * COST_RANDOM_IO
+            else:
+                # no stats available - fall back to rule-based choice
+                index_cost = 0 if table_stats is None else seq_cost
+
+            index_plan = IndexScanNode(
                 self.db,
                 self.index_manager,
                 table,
@@ -75,12 +104,11 @@ class QueryPlanner:
                 lookup_value,
                 catalog=self.catalog,
             )
-        return SeqScanNode(
-            self.db,
-            table,
-            where_clause=where_clause,
-            catalog=self.catalog,
-        )
+            if index_cost < best_cost:
+                best_plan = index_plan
+                best_cost = index_cost
+
+        return best_plan
 
     # public API -------------------------------------------------------
     def create_plan(self, query):
@@ -131,3 +159,8 @@ class QueryPlanner:
             return AnalyzePlanNode(self.db, self.catalog, query.table)
 
         raise ValueError("Unsupported query type")
+
+
+class QueryPlanner(CostBasedPlanner):
+    """Backward compatible alias for ``CostBasedPlanner``."""
+    pass
