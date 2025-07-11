@@ -11,56 +11,90 @@ class IndexManager:
     """In-memory secondary index manager with thread safety."""
 
     def __init__(self, fields: Iterable[str]) -> None:
+        """Initialize manager with list of indexed columns."""
         self.fields = list(fields)
-        self.indexes: dict[str, dict[Any, set[str]]] = {
-            f: {} for f in self.fields
-        }
+        # Structure: {table: {column: {value: {rids}}}}
+        self.indexes: dict[str, dict[str, dict[Any, set[str]]]] = {}
         self._lock = threading.Lock()
 
-    def add_record(self, key: str, value: str) -> None:
+    def _parse_row(self, value: str) -> dict | None:
+        """Decode ``value`` from JSON or MsgPack, return dict or ``None``."""
         try:
-            data = json.loads(value)
+            return json.loads(value)
         except Exception:
             try:
-                data = RowSerializer.loads(base64.b64decode(value))
+                return RowSerializer.loads(base64.b64decode(value))
             except Exception:
-                return
+                return None
+
+    def _split_key(self, key: str) -> tuple[str, str]:
+        """Return ``(table, rid)`` from storage ``key``."""
+        if "||" in key:
+            table, rid = key.split("||", 1)
+        else:
+            table, rid = "", key
+        return table, rid
+
+    def add_record(self, key: str, value: str) -> None:
+        data = self._parse_row(value)
+        if not isinstance(data, dict):
+            return
+        table, rid = self._split_key(key)
         with self._lock:
+            table_idx = self.indexes.setdefault(table, {})
             for field in self.fields:
                 if field in data:
-                    idx = self.indexes.setdefault(field, {})
-                    idx.setdefault(data[field], set()).add(key)
+                    col_idx = table_idx.setdefault(field, {})
+                    col_idx.setdefault(data[field], set()).add(rid)
 
     def remove_record(self, key: str, value: str) -> None:
-        try:
-            data = json.loads(value)
-        except Exception:
-            try:
-                data = RowSerializer.loads(base64.b64decode(value))
-            except Exception:
+        data = self._parse_row(value)
+        if not isinstance(data, dict):
+            return
+        table, rid = self._split_key(key)
+        with self._lock:
+            table_idx = self.indexes.get(table)
+            if not table_idx:
                 return
-        with self._lock:
             for field in self.fields:
-                if field in data:
-                    val = data[field]
-                    idx = self.indexes.get(field)
-                    if not idx:
-                        continue
-                    keys = idx.get(val)
-                    if not keys:
-                        continue
-                    keys.discard(key)
-                    if not keys:
-                        idx.pop(val, None)
+                if field not in data:
+                    continue
+                col_idx = table_idx.get(field)
+                if not col_idx:
+                    continue
+                rids = col_idx.get(data[field])
+                if not rids:
+                    continue
+                rids.discard(rid)
+                if not rids:
+                    col_idx.pop(data[field], None)
+            # Clean up empty structures
+            for fld in list(table_idx.keys()):
+                if not table_idx[fld]:
+                    table_idx.pop(fld)
+            if not table_idx:
+                self.indexes.pop(table, None)
 
-    def query(self, field: str, value) -> list[str]:
+    def query(self, field: str, value, table: str | None = None) -> list[str]:
+        """Return full keys matching ``field``/``value``.
+
+        If ``table`` is provided, only that table is searched. Otherwise results
+        from all tables are merged.
+        """
         with self._lock:
-            return list(self.indexes.get(field, {}).get(value, set()))
+            tables = [table] if table is not None else list(self.indexes.keys())
+            result: list[str] = []
+            for tbl in tables:
+                t_idx = self.indexes.get(tbl, {})
+                rids = t_idx.get(field, {}).get(value, set())
+                for rid in rids:
+                    result.append(f"{tbl}||{rid}" if tbl else rid)
+            return result
 
     def rebuild(self, db) -> None:
         """Rebuild indexes scanning all DB segments and the memtable."""
         with self._lock:
-            self.indexes = {f: {} for f in self.fields}
+            self.indexes = {}
 
         # Iterate over memtable items
         for key, value, _ in db.get_segment_items("memtable"):
