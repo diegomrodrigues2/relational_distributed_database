@@ -6,8 +6,9 @@ import Transactions from './components/Transactions';
 import Management from './components/Management';
 import ClusterInternals from './components/ClusterInternals';
 import LogViewer from './components/internals/LogViewer';
+import SQLEditor from './components/SQLEditor';
 
-type View = 'dashboard' | 'browser' | 'transactions' | 'management' | 'internals' | 'logs';
+type View = 'dashboard' | 'browser' | 'transactions' | 'management' | 'internals' | 'logs' | 'sql';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
@@ -35,6 +36,8 @@ const App: React.FC = () => {
         return <Transactions />;
       case 'internals':
         return <ClusterInternals />;
+      case 'sql':
+        return <SQLEditor />;
       case 'logs':
         return <LogViewer />;
       case 'management':

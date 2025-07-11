@@ -16,4 +16,6 @@ export {
   abortTransaction,
   getClusterEvents,
   getNodeEvents,
+  runSqlQuery,
+  executeSql,
 } from './api';

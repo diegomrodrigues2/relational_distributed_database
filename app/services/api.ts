@@ -325,3 +325,25 @@ export const getNodeEvents = async (
   );
   return data.events || [];
 };
+
+export interface SqlQueryResult {
+  columns: { name: string; type: string }[];
+  rows: any[];
+}
+
+export const runSqlQuery = async (sql: string): Promise<SqlQueryResult> => {
+  const data = await fetchJson<any>('/sql/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql }),
+  });
+  return { columns: data.columns || [], rows: data.rows || [] };
+};
+
+export const executeSql = async (sql: string): Promise<void> => {
+  await fetchJson('/sql/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql }),
+  });
+};

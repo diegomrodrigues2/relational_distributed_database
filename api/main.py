@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from database.replication import NodeCluster
 from database.replication.replica import replication_pb2
 from concurrent.futures import ThreadPoolExecutor
+from database.sql.query_coordinator import QueryCoordinator
 import time
 import os
 import tempfile
@@ -498,6 +499,35 @@ def query_index(field: str, value: str) -> dict:
     cluster = app.state.cluster
     keys = cluster.secondary_query(field, value)
     return {"keys": keys}
+
+
+@app.post("/sql/query")
+def sql_query(payload: dict) -> dict:
+    """Execute a SELECT query and return rows."""
+    sql = payload.get("sql", "")
+    coordinator = QueryCoordinator(app.state.cluster.nodes)
+    try:
+        rows = coordinator.execute(sql)
+    except Exception as exc:  # pragma: no cover - unexpected errors
+        raise HTTPException(status_code=400, detail=str(exc))
+    columns = list(rows[0].keys()) if rows else []
+    return {
+        "columns": [{"name": c, "type": "text"} for c in columns],
+        "rows": rows,
+    }
+
+
+@app.post("/sql/execute")
+def sql_execute(payload: dict) -> dict:
+    """Execute a non-SELECT SQL statement."""
+    sql = payload.get("sql", "")
+    if sql.strip().upper().startswith("SELECT"):
+        raise HTTPException(status_code=400, detail="Use /sql/query for SELECT")
+    try:
+        app.state.cluster.nodes[0].client.execute_ddl(sql)
+    except Exception as exc:  # pragma: no cover - runtime errors
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
