@@ -1,8 +1,10 @@
 import json
 import os
 import threading
+import base64
 from typing import Iterable, Any
 from ..lsm.sstable import TOMBSTONE
+from ..sql.serialization import RowSerializer
 
 
 class IndexManager:
@@ -19,7 +21,10 @@ class IndexManager:
         try:
             data = json.loads(value)
         except Exception:
-            return
+            try:
+                data = RowSerializer.loads(base64.b64decode(value))
+            except Exception:
+                return
         with self._lock:
             for field in self.fields:
                 if field in data:
@@ -30,7 +35,10 @@ class IndexManager:
         try:
             data = json.loads(value)
         except Exception:
-            return
+            try:
+                data = RowSerializer.loads(base64.b64decode(value))
+            except Exception:
+                return
         with self._lock:
             for field in self.fields:
                 if field in data:

@@ -145,6 +145,11 @@ class ReplicaStub(object):
                 request_serializer=replication__pb2.SSTableContentRequest.SerializeToString,
                 response_deserializer=replication__pb2.StorageEntriesResponse.FromString,
                 _registered_method=True)
+        self.ExecutePlan = channel.unary_stream(
+                '/replication.Replica/ExecutePlan',
+                request_serializer=replication__pb2.PlanRequest.SerializeToString,
+                response_deserializer=replication__pb2.RowData.FromString,
+                _registered_method=True)
 
 
 class ReplicaServicer(object):
@@ -286,6 +291,12 @@ class ReplicaServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ExecutePlan(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ReplicaServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -398,6 +409,11 @@ def add_ReplicaServicer_to_server(servicer, server):
                     servicer.GetSSTableContent,
                     request_deserializer=replication__pb2.SSTableContentRequest.FromString,
                     response_serializer=replication__pb2.StorageEntriesResponse.SerializeToString,
+            ),
+            'ExecutePlan': grpc.unary_stream_rpc_method_handler(
+                    servicer.ExecutePlan,
+                    request_deserializer=replication__pb2.PlanRequest.FromString,
+                    response_serializer=replication__pb2.RowData.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -995,6 +1011,33 @@ class Replica(object):
             '/replication.Replica/GetSSTableContent',
             replication__pb2.SSTableContentRequest.SerializeToString,
             replication__pb2.StorageEntriesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExecutePlan(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/replication.Replica/ExecutePlan',
+            replication__pb2.PlanRequest.SerializeToString,
+            replication__pb2.RowData.FromString,
             options,
             channel_credentials,
             insecure,

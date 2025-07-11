@@ -964,6 +964,18 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         entries = self._node.get_sstable_content(sst_id)
         return replication_pb2.StorageEntriesResponse(entries=entries)
 
+    def ExecutePlan(self, request, context):
+        """Execute a simple plan streaming row data."""
+        from ...sql.execution import SeqScanNode
+        try:
+            plan = json.loads(request.plan)
+            table = plan.get("table")
+        except Exception:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "InvalidPlan")
+        node = SeqScanNode(self._node.db, table)
+        for row in node.execute():
+            yield replication_pb2.RowData(data=json.dumps(row))
+
 class HeartbeatService(replication_pb2_grpc.HeartbeatServiceServicer):
     """Simple heartbeat service used for peer liveness checks."""
 
