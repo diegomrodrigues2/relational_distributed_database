@@ -25,3 +25,13 @@ def test_sql_query_and_execute():
         assert resp.status_code == 200
         data = resp.json()
         assert data['rows'] and data['rows'][0]['id'] == 1
+
+
+def test_sql_explain_endpoint():
+    with TestClient(app) as client:
+        resp = client.post('/sql/execute', json={'sql': 'CREATE TABLE t (id INT PRIMARY KEY)'} )
+        assert resp.status_code == 200
+        resp = client.post('/sql/explain', json={'sql': 'SELECT * FROM t'})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data['node_type'] == 'SeqScan'

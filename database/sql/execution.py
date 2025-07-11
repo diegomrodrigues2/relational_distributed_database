@@ -19,7 +19,14 @@ import time
 class PlanNode:
     """Abstract execution plan node."""
 
+    def __init__(self) -> None:
+        self.blocksAccessed: int = 0
+        self.recordsOutput: int = 0
+
     def execute(self) -> Iterator[dict]:
+        raise NotImplementedError
+
+    def to_dict(self) -> dict:
         raise NotImplementedError
 
 
@@ -151,6 +158,7 @@ class SeqScanNode(PlanNode):
         *,
         catalog: CatalogManager | None = None,
     ) -> None:
+        super().__init__()
         self.db = db
         self.table = table
         self.where_clause = where_clause
@@ -207,6 +215,15 @@ class SeqScanNode(PlanNode):
             else:
                 yield row
 
+    def to_dict(self) -> dict:
+        return {
+            "node_type": "SeqScan",
+            "table": self.table,
+            "blocksAccessed": self.blocksAccessed,
+            "recordsOutput": self.recordsOutput,
+            "children": [],
+        }
+
 
 class IndexScanNode(PlanNode):
     """Scan rows using a secondary index."""
@@ -222,6 +239,7 @@ class IndexScanNode(PlanNode):
         *,
         catalog: CatalogManager | None = None,
     ) -> None:
+        super().__init__()
         self.db = db
         self.index_manager = index_manager
         self.table_name = table_name
@@ -255,6 +273,17 @@ class IndexScanNode(PlanNode):
             else:
                 yield row
 
+    def to_dict(self) -> dict:
+        return {
+            "node_type": "IndexScan",
+            "table": self.table_name,
+            "index": self.index_name,
+            "lookup_value": self.lookup_value,
+            "blocksAccessed": self.blocksAccessed,
+            "recordsOutput": self.recordsOutput,
+            "children": [],
+        }
+
 
 class NestedLoopJoinNode(PlanNode):
     """Batched nested loop join implementation."""
@@ -267,6 +296,7 @@ class NestedLoopJoinNode(PlanNode):
         inner_key: str,
         batch_size: int = 100,
     ) -> None:
+        super().__init__()
         self.outer_plan = outer_plan
         self.inner_plan_builder = inner_plan_builder
         self.outer_key = outer_key
@@ -301,9 +331,21 @@ class NestedLoopJoinNode(PlanNode):
                 for i in matches:
                     yield {**o, **i}
 
+    def to_dict(self) -> dict:
+        inner_plan = self.inner_plan_builder()
+        return {
+            "node_type": "NestedLoopJoin",
+            "outer_key": self.outer_key,
+            "inner_key": self.inner_key,
+            "blocksAccessed": self.blocksAccessed,
+            "recordsOutput": self.recordsOutput,
+            "children": [self.outer_plan.to_dict(), inner_plan.to_dict()],
+        }
+
 
 class InsertPlanNode(PlanNode):
     def __init__(self, service, catalog: CatalogManager, table: str, columns: list[str], values: list[Expression]) -> None:
+        super().__init__()
         self.service = service
         self.catalog = catalog
         self.table = table
@@ -330,9 +372,19 @@ class InsertPlanNode(PlanNode):
         self.service.Put(req, None)
         return iter([])
 
+    def to_dict(self) -> dict:
+        return {
+            "node_type": "Insert",
+            "table": self.table,
+            "blocksAccessed": self.blocksAccessed,
+            "recordsOutput": self.recordsOutput,
+            "children": [],
+        }
+
 
 class DeletePlanNode(PlanNode):
     def __init__(self, service, planner, table: str, where_clause: Expression | None) -> None:
+        super().__init__()
         self.service = service
         self.planner = planner
         self.table = table
@@ -353,9 +405,19 @@ class DeletePlanNode(PlanNode):
             self.service.Delete(req, None)
         return iter([])
 
+    def to_dict(self) -> dict:
+        return {
+            "node_type": "Delete",
+            "table": self.table,
+            "blocksAccessed": self.blocksAccessed,
+            "recordsOutput": self.recordsOutput,
+            "children": [self.planner._plan_table(self.table, self.where_clause).to_dict()],
+        }
+
 
 class UpdatePlanNode(PlanNode):
     def __init__(self, service, planner, table: str, assignments: list[tuple[str, Expression]], where_clause: Expression | None) -> None:
+        super().__init__()
         self.service = service
         self.planner = planner
         self.table = table
@@ -381,9 +443,19 @@ class UpdatePlanNode(PlanNode):
             self.service.Put(req, None)
         return iter([])
 
+    def to_dict(self) -> dict:
+        return {
+            "node_type": "Update",
+            "table": self.table,
+            "blocksAccessed": self.blocksAccessed,
+            "recordsOutput": self.recordsOutput,
+            "children": [self.planner._plan_table(self.table, self.where_clause).to_dict()],
+        }
+
 
 class AnalyzePlanNode(PlanNode):
     def __init__(self, db: SimpleLSMDB, catalog: CatalogManager, table: str) -> None:
+        super().__init__()
         self.db = db
         self.catalog = catalog
         self.table = table
@@ -400,3 +472,12 @@ class AnalyzePlanNode(PlanNode):
         for col, vals in distinct.items():
             self.catalog.save_column_stats(ColumnStats(self.table, col, len(vals)))
         return iter([])
+
+    def to_dict(self) -> dict:
+        return {
+            "node_type": "Analyze",
+            "table": self.table,
+            "blocksAccessed": self.blocksAccessed,
+            "recordsOutput": self.recordsOutput,
+            "children": [SeqScanNode(self.db, self.table, catalog=self.catalog).to_dict()],
+        }

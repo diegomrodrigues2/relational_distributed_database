@@ -340,6 +340,15 @@ export const runSqlQuery = async (sql: string): Promise<SqlQueryResult> => {
   return { columns: data.columns || [], rows: data.rows || [] };
 };
 
+export const explainSql = async (sql: string): Promise<any> => {
+  const data = await fetchJson<any>('/sql/explain', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql }),
+  });
+  return data;
+};
+
 export const executeSql = async (sql: string): Promise<void> => {
   await fetchJson('/sql/execute', {
     method: 'POST',

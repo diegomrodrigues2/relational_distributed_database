@@ -17,5 +17,6 @@ export {
   getClusterEvents,
   getNodeEvents,
   runSqlQuery,
+  explainSql,
   executeSql,
 } from './api';
