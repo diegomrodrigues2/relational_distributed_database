@@ -42,6 +42,40 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         self._node = node
 
 
+    def _apply_put_with_index(
+        self,
+        key: str,
+        store_value: str,
+        index_value: str,
+        *,
+        vector_clock: VectorClock | None = None,
+        timestamp: int | None = None,
+        old_values: list | None = None,
+    ) -> None:
+        """Write to WAL then update MemTable and indexes atomically."""
+        if vector_clock is None:
+            vector_clock = VectorClock({"ts": int(timestamp or 0)})
+
+        self._node.db.wal.append_update_with_index(
+            key,
+            old_values,
+            store_value,
+            self._node.index_fields,
+            vector_clock=vector_clock,
+        )
+        self._node.db.put(
+            key,
+            store_value,
+            vector_clock=vector_clock if timestamp is None else None,
+            timestamp=timestamp,
+            skip_wal=True,
+        )
+        self._node._cache_delete(key)
+        for old in old_values or []:
+            self._node.index_manager.remove_record(key, old)
+        self._node.index_manager.add_record(key, index_value)
+
+
 
     # ------------------------------------------------------------------
     def _owner_for_key(self, key: str) -> str:
@@ -142,18 +176,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     other_data = {}
                 other = type(crdt).from_dict(request.node_id, other_data)
                 crdt.merge(other)
-                if isinstance(existing, list):
-                    for val in existing:
-                        self._node.index_manager.remove_record(request.key, val)
-                elif existing is not None:
-                    self._node.index_manager.remove_record(request.key, existing)
-                self._node.db.put(
+                old_vals = existing if isinstance(existing, list) else ([existing] if existing is not None else [])
+                new_json = json.dumps(crdt.to_dict())
+                self._apply_put_with_index(
                     request.key,
-                    json.dumps(crdt.to_dict()),
+                    new_json,
+                    new_json,
                     vector_clock=new_vc,
+                    old_values=old_vals,
                 )
-                self._node._cache_delete(request.key)
-                self._node.index_manager.add_record(request.key, json.dumps(crdt.to_dict()))
             elif mode in ("vector", "crdt"):
                 versions = self._node.db.get_record(request.key)
                 dominated = False
@@ -163,18 +194,14 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                         dominated = True
                         break
                 if not dominated:
-                    if isinstance(existing, list):
-                        for val in existing:
-                            self._node.index_manager.remove_record(request.key, val)
-                    elif existing is not None:
-                        self._node.index_manager.remove_record(request.key, existing)
-                    self._node.db.put(
+                    old_vals = existing if isinstance(existing, list) else ([existing] if existing is not None else [])
+                    self._apply_put_with_index(
                         request.key,
                         serialized_value,
+                        request.value,
                         vector_clock=new_vc,
+                        old_values=old_vals,
                     )
-                    self._node._cache_delete(request.key)
-                    self._node.index_manager.add_record(request.key, request.value)
                 else:
                     apply_update = False
             else:  # lww
@@ -185,18 +212,14 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                     if ts_val > latest_ts:
                         latest_ts = ts_val
                 if int(request.timestamp) >= latest_ts:
-                    if isinstance(existing, list):
-                        for val in existing:
-                            self._node.index_manager.remove_record(request.key, val)
-                    elif existing is not None:
-                        self._node.index_manager.remove_record(request.key, existing)
-                    self._node.db.put(
+                    old_vals = existing if isinstance(existing, list) else ([existing] if existing is not None else [])
+                    self._apply_put_with_index(
                         request.key,
                         serialized_value,
+                        request.value,
                         timestamp=int(request.timestamp),
+                        old_values=old_vals,
                     )
-                    self._node._cache_delete(request.key)
-                    self._node.index_manager.add_record(request.key, request.value)
                 else:
                     apply_update = False
 

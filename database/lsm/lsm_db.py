@@ -179,6 +179,7 @@ class SimpleLSMDB:
         vector_clock=None,
         clustering_key=None,
         tx_id=None,
+        skip_wal: bool = False,
     ):
         """Insere ou atualiza uma chave."""
         key = compose_key(str(key), clustering_key)
@@ -186,7 +187,8 @@ class SimpleLSMDB:
         if vector_clock is None:
             timestamp = self._generate_timestamp(timestamp)
             vector_clock = VectorClock({"ts": int(timestamp)})
-        self.wal.append("PUT", key, value, vector_clock, clustering_key=None)
+        if not skip_wal:
+            self.wal.append("PUT", key, value, vector_clock, clustering_key=None)
         current = self.memtable.get(key) or []
         if tx_id is not None and current:
             updated = []
@@ -298,6 +300,7 @@ class SimpleLSMDB:
         vector_clock=None,
         clustering_key=None,
         tx_id=None,
+        skip_wal: bool = False,
     ):
         """Marca uma chave como removida."""
         key = compose_key(str(key), clustering_key)
@@ -309,7 +312,8 @@ class SimpleLSMDB:
         if vector_clock is None:
             timestamp = self._generate_timestamp(timestamp)
             vector_clock = VectorClock({"ts": int(timestamp)})
-        self.wal.append("DELETE", key, TOMBSTONE, vector_clock, clustering_key=None)
+        if not skip_wal:
+            self.wal.append("DELETE", key, TOMBSTONE, vector_clock, clustering_key=None)
         current = self.memtable.get(key) or []
         if tx_id is not None and current:
             updated = []
