@@ -22,6 +22,7 @@ from ...clustering.global_index_manager import GlobalIndexManager
 from ...clustering.hash_ring import HashRing
 from ...utils.event_logger import EventLogger
 from ...sql.metadata import ColumnDefinition, TableSchema
+from ...sql.parser import parse_create_table
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,28 +39,7 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
     def __init__(self, node):
         self._node = node
 
-    def _parse_create_table(self, ddl: str) -> TableSchema:
-        """Parse a very small subset of CREATE TABLE statements."""
-        import re
 
-        ddl = ddl.strip().rstrip(';')
-        m = re.match(r"CREATE\s+TABLE\s+(\w+)\s*\((.*)\)", ddl, re.IGNORECASE)
-        if not m:
-            raise ValueError("Invalid CREATE TABLE")
-        name = m.group(1)
-        cols_part = m.group(2)
-        cols = []
-        for col_def in cols_part.split(','):
-            col_def = col_def.strip()
-            if not col_def:
-                continue
-            parts = col_def.split()
-            col_name = parts[0]
-            col_type = parts[1] if len(parts) > 1 else "str"
-            rest = " ".join(parts[2:]).upper()
-            pk = "PRIMARY KEY" in rest
-            cols.append(ColumnDefinition(col_name, col_type, primary_key=pk))
-        return TableSchema(name=name, columns=cols)
 
     # ------------------------------------------------------------------
     def _owner_for_key(self, key: str) -> str:
@@ -635,9 +615,15 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
         ddl = request.ddl.strip()
         if ddl.upper().startswith("CREATE TABLE"):
             try:
-                schema = self._parse_create_table(ddl)
+                schema = parse_create_table(ddl)
             except Exception:
                 context.abort(grpc.StatusCode.INVALID_ARGUMENT, "InvalidDDL")
+            if self._node.catalog.get_schema(schema.name) is not None:
+                context.abort(grpc.StatusCode.ALREADY_EXISTS, "TableExists")
+            tbl_path = os.path.join(self._node.db_path, f"{schema.name}.tbl")
+            if os.path.exists(tbl_path):
+                context.abort(grpc.StatusCode.ALREADY_EXISTS, "TableExists")
+            open(tbl_path, "wb").close()
             self._node.catalog.save_schema(schema)
         else:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "UnsupportedDDL")
