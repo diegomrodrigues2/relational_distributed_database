@@ -44,7 +44,15 @@ class FromClause:
 
 
 @dataclass
+class JoinClause:
+    table: str
+    alias: Optional[str] = None
+    on: Expression | None = None
+
+
+@dataclass
 class SelectQuery:
     select_items: List[SelectItem]
     from_clause: FromClause
+    join_clause: JoinClause | None = None
     where_clause: Optional[Expression] = None
