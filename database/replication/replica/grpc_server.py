@@ -111,6 +111,16 @@ class ReplicaService(replication_pb2_grpc.ReplicaServicer):
                 data_obj = json.loads(request.value) if request.value else None
             except Exception:
                 data_obj = None
+            if isinstance(data_obj, dict) and "||" in request.key and not request.key.startswith("idx:") and not request.key.startswith("_meta:"):
+                table = request.key.split("||", 1)[0]
+                schema = self._node.catalog.get_schema(table)
+                if schema is not None:
+                    try:
+                        schema.validate_row(data_obj)
+                    except Exception as exc:
+                        if context:
+                            context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+                        raise
             if isinstance(data_obj, dict):
                 serialized_value = base64.b64encode(RowSerializer.dumps(data_obj)).decode("ascii")
             else:

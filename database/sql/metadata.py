@@ -70,6 +70,60 @@ class TableSchema:
         indexes = [IndexDefinition(**i) for i in data.get("indexes", [])]
         return cls(name=data["name"], columns=cols, indexes=indexes)
 
+    def validate_row(self, row: dict) -> None:
+        """Validate ``row`` against this table schema.
+
+        Raises ``ValueError`` if the row does not conform to the schema.
+        """
+        if not isinstance(row, dict):
+            raise ValueError("Row must be a dictionary")
+
+        type_map = {
+            "int": int,
+            "integer": int,
+            "str": str,
+            "string": str,
+            "float": float,
+            "double": float,
+            "bool": bool,
+            "boolean": bool,
+        }
+
+        cols_by_name = {c.name: c for c in self.columns}
+
+        # check for missing required columns
+        for col in self.columns:
+            required = col.primary_key or (not col.nullable and col.default is None)
+            if required:
+                if col.name not in row or row[col.name] is None:
+                    raise ValueError(f"Missing value for column '{col.name}'")
+
+        # check for extra columns
+        for name in row.keys():
+            if name not in cols_by_name:
+                raise ValueError(f"Unknown column '{name}'")
+
+        # check types
+        for name, value in row.items():
+            col_def = cols_by_name[name]
+            if value is None:
+                if col_def.primary_key or (not col_def.nullable and col_def.default is None):
+                    raise ValueError(f"Column '{name}' cannot be null")
+                continue
+            expected = type_map.get(col_def.data_type.lower())
+            if expected is None:
+                continue
+            if expected is float:
+                if not isinstance(value, (float, int)):
+                    raise ValueError(
+                        f"Column '{name}' expects float but got {type(value).__name__}"
+                    )
+            else:
+                if not isinstance(value, expected):
+                    raise ValueError(
+                        f"Column '{name}' expects {expected.__name__} but got {type(value).__name__}"
+                    )
+
 
 class CatalogManager:
     """Manages table schemas stored in the database."""
