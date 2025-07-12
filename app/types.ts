@@ -124,3 +124,14 @@ export interface TableSchema {
     columns: TableColumn[];
     indexes: TableIndex[];
 }
+
+export interface TableStats {
+    table_name: string;
+    num_rows: number;
+}
+
+export interface ColumnStats {
+    table_name: string;
+    col_name: string;
+    num_distinct: number;
+}
