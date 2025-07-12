@@ -19,4 +19,6 @@ export {
   runSqlQuery,
   explainSql,
   executeSql,
+  getTableList,
+  getTableSchema,
 } from './api';

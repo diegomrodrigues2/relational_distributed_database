@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import DataBrowser from './components/DataBrowser';
+import SchemaBrowser from './components/SchemaBrowser';
 import Transactions from './components/Transactions';
 import Management from './components/Management';
 import ClusterInternals from './components/ClusterInternals';
 import LogViewer from './components/internals/LogViewer';
 import SQLEditor from './components/SQLEditor';
 
-type View = 'dashboard' | 'browser' | 'transactions' | 'management' | 'internals' | 'logs' | 'sql';
+type View = 'dashboard' | 'browser' | 'schema' | 'transactions' | 'management' | 'internals' | 'logs' | 'sql';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
@@ -27,13 +28,15 @@ const App: React.FC = () => {
   };
 
   const renderView = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return <Dashboard onManageNode={handleManageNode} />;
-      case 'browser':
-        return <DataBrowser />;
-      case 'transactions':
-        return <Transactions />;
+      switch (activeView) {
+        case 'dashboard':
+          return <Dashboard onManageNode={handleManageNode} />;
+        case 'browser':
+          return <DataBrowser />;
+        case 'schema':
+          return <SchemaBrowser />;
+        case 'transactions':
+          return <Transactions />;
       case 'internals':
         return <ClusterInternals />;
       case 'sql':

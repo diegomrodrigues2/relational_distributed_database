@@ -10,6 +10,7 @@ import {
   StorageEntry,
   SSTableInfo,
   TransactionInfo,
+  TableSchema,
 } from '../types';
 import { fetchJson } from './request';
 
@@ -355,4 +356,15 @@ export const executeSql = async (sql: string): Promise<void> => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sql }),
   });
+};
+
+export const getTableList = async (): Promise<string[]> => {
+  const data = await fetchJson<{ tables: string[] }>('/schema/tables');
+  return data.tables || [];
+};
+
+export const getTableSchema = async (name: string): Promise<TableSchema> => {
+  return await fetchJson<TableSchema>(
+    `/schema/tables/${encodeURIComponent(name)}`,
+  );
 };

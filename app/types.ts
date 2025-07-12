@@ -104,3 +104,23 @@ export interface TransactionInfo {
     node: string;
     txId: string;
 }
+
+export interface TableColumn {
+    name: string;
+    data_type: string;
+    primary_key?: boolean;
+    nullable?: boolean;
+    default?: any;
+}
+
+export interface TableIndex {
+    name: string;
+    columns: string[];
+    unique?: boolean;
+}
+
+export interface TableSchema {
+    name: string;
+    columns: TableColumn[];
+    indexes: TableIndex[];
+}
