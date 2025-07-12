@@ -221,10 +221,10 @@ tests/               # Unit and integration tests
 
 Several small scripts under `examples/` start the cluster with different options. Each one launches the React UI in the background while the API runs in the foreground. Run them with `python examples/<file>.py` and visit the printed URLs.
 
-- `hash_cluster.py`: A standard hash-partitioned cluster.
-- `range_cluster.py`: A cluster partitioned by explicit key ranges.
-- `index_cluster.py`: A cluster with secondary indexes enabled.
-- `router_cluster.py`: Starts a dedicated gRPC router for client requests.
+- `hash_cluster.py`: Demonstrates table creation and basic SQL queries on a hash‑partitioned cluster.
+- `range_cluster.py`: Creates a table and inserts rows in a range‑partitioned cluster.
+- `index_cluster.py`: Shows secondary indexes with SQL `SELECT` queries.
+- `router_cluster.py`: Uses the gRPC router to execute SQL inserts and reads.
 
 ## Running with Docker
 
