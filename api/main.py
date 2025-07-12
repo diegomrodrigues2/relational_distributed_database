@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
 from database.replication import NodeCluster
 from database.replication.replica import replication_pb2
 from concurrent.futures import ThreadPoolExecutor
@@ -14,7 +15,22 @@ import time
 import os
 import tempfile
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application startup and shutdown."""
+    app.state.cluster_start = time.time()
+    app.state.cluster = NodeCluster(
+        base_path=os.path.join(tempfile.gettempdir(), "api_cluster"), num_nodes=3
+    )
+    try:
+        yield
+    finally:
+        cluster = getattr(app.state, "cluster", None)
+        if cluster is not None:
+            cluster.shutdown()
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Add CORS middleware
 app.add_middleware(
@@ -32,21 +48,6 @@ class Record(BaseModel):
     value: str
 
 
-@app.on_event("startup")
-def startup_event() -> None:
-    """Initialize the cluster when the API starts."""
-    app.state.cluster_start = time.time()
-    app.state.cluster = NodeCluster(
-        base_path=os.path.join(tempfile.gettempdir(), "api_cluster"), num_nodes=3
-    )
-
-
-@app.on_event("shutdown")
-def shutdown_event() -> None:
-    """Shutdown the cluster when the API stops."""
-    cluster = getattr(app.state, "cluster", None)
-    if cluster is not None:
-        cluster.shutdown()
 
 @app.get("/get/{key}")
 def get_value(key: str):
