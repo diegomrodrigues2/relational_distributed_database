@@ -10,6 +10,7 @@ Este projeto evoluiu de um simples armazenamento de chave-valor distribuído par
 - **Execução de Consultas Distribuída** usando um modelo scatter-gather para processamento paralelo.
 - **Indexação Secundária** para acelerar consultas.
 - **Suporte a Transações** com isolamento de snapshot e bloqueio em nível de linha.
+- **Estatísticas de Tabelas** coletadas com `ANALYZE TABLE` e acessíveis pela API de estatísticas e pelo dashboard.
 
 ## Visão geral da arquitetura
 A arquitetura de armazenamento e replicação subjacente permanece um sistema multi-líder e eventualmente consistente. Uma camada de processamento SQL é construída sobre essa base.
@@ -154,12 +155,22 @@ A API também expõe operações de manutenção para gerenciar o cluster:
 | `POST` | `/cluster/actions/merge_partitions`      | Mescla duas partições adjacentes.         |
 | `POST` | `/cluster/actions/rebalance`             | Redistribui as partições uniformemente.   |
 
+### API de Estatísticas
+Endpoints para coletar e consultar estatísticas de tabelas:
+
+| Método | Caminho | Descrição |
+| :----- | :------ | :--------- |
+| `POST` | `/actions/analyze/{table}` | Calcula estatísticas para a tabela. |
+| `GET`  | `/stats/table/{table}` | Obtém estatísticas gerais da tabela. |
+| `GET`  | `/stats/table/{table}/columns` | Obtém estatísticas por coluna. |
+
 ### UI Relacional
 O projeto inclui um dashboard web e uma UI de gerenciamento no diretório `app/`. Ela fornece:
 - **Editor SQL**: Um editor interativo para executar consultas SQL e visualizar os resultados.
 - **Navegador de Esquema**: Uma ferramenta para visualizar todas as tabelas, suas colunas, tipos e índices definidos.
 - **Visualizador de Plano de Consulta**: Um recurso semelhante ao `EXPLAIN` para inspecionar o plano de execução escolhido pelo otimizador de consultas.
 - **Dashboard do Cluster**: Métricas de saúde e desempenho para nós e partições.
+- **Dashboard de Estatísticas**: Visualiza contagens de linhas e cardinalidade de colunas.
 
 ## Sharding e Particionamento
 O banco de dados distribui os dados entre os nós usando particionamento.

@@ -10,6 +10,7 @@ This project has evolved from a simple distributed key-value store into a system
 - **Distributed Query Execution** using a scatter-gather model for parallel processing.
 - **Secondary Indexing** to accelerate queries.
 - **Transactional Support** with snapshot isolation and row-level locking.
+- **Table Statistics** collected with `ANALYZE TABLE` and available through the Stats API and dashboard.
 
 ## Architecture overview
 The underlying storage and replication architecture remains a multi-leader, eventually consistent system. A SQL processing layer is built on top of this foundation.
@@ -154,12 +155,22 @@ The API also exposes maintenance operations to manage the cluster:
 | `POST` | `/cluster/actions/merge_partitions`      | Merge two adjacent partitions.          |
 | `POST` | `/cluster/actions/rebalance`             | Evenly redistribute partitions.         |
 
+### Statistics API
+Endpoints to gather and view table statistics:
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `POST` | `/actions/analyze/{table}` | Compute statistics for a table. |
+| `GET`  | `/stats/table/{table}` | Retrieve overall table stats. |
+| `GET`  | `/stats/table/{table}/columns` | Retrieve per-column stats. |
+
 ### Relational UI
 The project includes a web-based dashboard and management UI in the `app/` directory. It provides:
 - **SQL Editor**: An interactive editor to run SQL queries and view results.
 - **Schema Browser**: A tool to view all tables, their columns, types, and defined indexes.
 - **Query Plan Visualizer**: An `EXPLAIN`-like feature to inspect the execution plan chosen by the query optimizer.
 - **Cluster Dashboard**: Health and performance metrics for nodes and partitions.
+- **Table Stats Dashboard**: Visualizes row counts and column cardinalities.
 
 ## Sharding and Partitioning
 The database distributes data across nodes using partitioning.
