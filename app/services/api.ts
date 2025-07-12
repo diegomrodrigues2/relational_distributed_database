@@ -368,3 +368,31 @@ export const getTableSchema = async (name: string): Promise<TableSchema> => {
     `/schema/tables/${encodeURIComponent(name)}`,
   );
 };
+
+export interface TableStats {
+  table_name: string;
+  num_rows: number;
+}
+
+export interface ColumnStats {
+  table_name: string;
+  col_name: string;
+  num_distinct: number;
+}
+
+export const getTableStats = async (name: string): Promise<TableStats> => {
+  return await fetchJson<TableStats>(`/stats/table/${encodeURIComponent(name)}`);
+};
+
+export const getColumnStats = async (name: string): Promise<ColumnStats[]> => {
+  const data = await fetchJson<{ columns: ColumnStats[] }>(
+    `/stats/table/${encodeURIComponent(name)}/columns`,
+  );
+  return data.columns || [];
+};
+
+export const analyzeTable = async (name: string): Promise<void> => {
+  await fetchJson(`/actions/analyze/${encodeURIComponent(name)}`, {
+    method: 'POST',
+  });
+};

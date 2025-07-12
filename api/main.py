@@ -555,6 +555,49 @@ def get_table_schema(table_name: str) -> dict:
     return json.loads(schema.to_json())
 
 
+@app.get("/stats/table/{table_name}")
+def get_table_stats_endpoint(table_name: str) -> dict:
+    """Return table level statistics for ``table_name``."""
+    catalog, db = _load_catalog()
+    try:
+        stats = catalog.get_table_stats(table_name)
+        if stats is None:
+            raise HTTPException(status_code=404, detail="stats not found")
+        return json.loads(stats.to_json())
+    finally:
+        db.close()
+
+
+@app.get("/stats/table/{table_name}/columns")
+def get_column_stats_endpoint(table_name: str) -> dict:
+    """Return column statistics for ``table_name``."""
+    catalog, db = _load_catalog()
+    try:
+        cols = [
+            json.loads(s.to_json())
+            for (t, _), s in catalog.column_stats.items()
+            if t == table_name
+        ]
+    finally:
+        db.close()
+    return {"columns": cols}
+
+
+@app.post("/actions/analyze/{table_name}")
+def analyze_table_endpoint(table_name: str) -> dict:
+    """Run ANALYZE TABLE ``table_name`` to gather statistics."""
+    catalog, db = _load_catalog()
+    try:
+        planner = QueryPlanner(db, catalog, index_manager=object())
+        plan = planner.create_plan(parse_sql(f"ANALYZE TABLE {table_name}"))
+        list(plan.execute())
+    except Exception as exc:  # pragma: no cover - runtime errors
+        db.close()
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.close()
+    return {"status": "ok"}
+
+
 @app.post("/sql/query")
 def sql_query(payload: dict) -> dict:
     """Execute a SELECT query and return rows."""
