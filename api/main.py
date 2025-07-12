@@ -9,6 +9,7 @@ from database.sql.parser import parse_sql
 from database.sql.planner import QueryPlanner
 from database.sql.metadata import CatalogManager
 from database.lsm.lsm_db import SimpleLSMDB
+import json
 import time
 import os
 import tempfile
@@ -503,6 +504,55 @@ def query_index(field: str, value: str) -> dict:
     cluster = app.state.cluster
     keys = cluster.secondary_query(field, value)
     return {"keys": keys}
+
+
+def _load_catalog():
+    cluster = app.state.cluster
+    node = cluster.nodes[0]
+    db_path = os.path.join(cluster.base_path, node.node_id)
+
+    class DummyNode:
+        def __init__(self, db):
+            self.db = db
+            self.replication_log = {}
+
+        def next_op_id(self):
+            return "api:1"
+
+        def save_replication_log(self):
+            pass
+
+        def replicate(self, *args, **kwargs):
+            pass
+
+    db = SimpleLSMDB(db_path=db_path)
+    dummy = DummyNode(db)
+    catalog = CatalogManager(dummy)
+    return catalog, db
+
+
+@app.get("/schema/tables")
+def list_tables() -> dict:
+    """Return the names of all tables in the catalog."""
+    catalog, db = _load_catalog()
+    try:
+        tables = sorted(catalog.schemas.keys())
+    finally:
+        db.close()
+    return {"tables": tables}
+
+
+@app.get("/schema/tables/{table_name}")
+def get_table_schema(table_name: str) -> dict:
+    """Return full schema details for ``table_name``."""
+    catalog, db = _load_catalog()
+    try:
+        schema = catalog.get_schema(table_name)
+    finally:
+        db.close()
+    if schema is None:
+        raise HTTPException(status_code=404, detail="table not found")
+    return json.loads(schema.to_json())
 
 
 @app.post("/sql/query")
