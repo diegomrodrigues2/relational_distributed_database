@@ -1,7 +1,9 @@
 import sys
 import os
 import tempfile
+import time
 import uuid
+import json
 
 # Ensure project root is on the import path just like the tests do
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -9,7 +11,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from api.main import app
 from database.replication import NodeCluster
 from examples.service_runner import start_frontend
-from examples.data_generators import generate_hash_items
+from database.clustering.partitioning import compose_key
+from database.sql.query_coordinator import QueryCoordinator
 
 
 def main() -> None:
@@ -25,11 +28,24 @@ def main() -> None:
     for pid, owner in sorted(cluster.get_partition_map().items()):
         print(f"  P{pid}: {owner}")
 
-    for key, value in generate_hash_items(50):
-        cluster.router_client.put(key, value)
-        pid = cluster.get_partition_id(key)
+    # --- Relational setup ---
+    ddl = "CREATE TABLE items (id INT PRIMARY KEY, value STRING)"
+    cluster.nodes[0].client.execute_ddl(ddl)
+    time.sleep(0.5)
+
+    for i in range(1, 6):
+        row = {"id": i, "value": f"v{i}"}
+        key = compose_key("items", str(i), None)
+        cluster.router_client.put(key, json.dumps(row))
+        pid = cluster.get_partition_id(str(i))
         owner = cluster.get_partition_map().get(pid)
-        print(f"Router stored {key} -> {value} in partition {pid} on {owner}")
+        print(f"Router stored row {row} in partition {pid} on {owner}")
+
+    qc = QueryCoordinator(cluster.nodes)
+    rows = qc.execute("SELECT * FROM items")
+    print("Query results:")
+    for r in rows:
+        print(r)
     app.state.cluster = cluster
     front_proc = start_frontend()
     print("API running at http://localhost:8000")
