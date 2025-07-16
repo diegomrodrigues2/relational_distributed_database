@@ -25,6 +25,7 @@ def main() -> None:
         partition_strategy="hash",
         replication_factor=2,
         partitions_per_node=32,
+        host="127.0.0.1",
     )
 
     print("Partition map:")
