@@ -72,6 +72,7 @@ class NodeCluster:
         num_nodes: int = 3,
         topology: dict[int, list[int]] | None = None,
         *,
+        host: str = "localhost",
         consistency_mode: str = "lww",
         replication_factor: int | None = None,
         write_quorum: int | None = None,
@@ -103,6 +104,7 @@ class NodeCluster:
 
         base_port = 9000
         self.base_port = base_port
+        self.host = host
         self.nodes = []
         self.nodes_by_id: dict[str, ClusterNode] = {}
         self.drivers: list = []
@@ -172,7 +174,7 @@ class NodeCluster:
         }
         self._known_keys: set[str] = set()
         peers = [
-            ("localhost", base_port + i, f"node_{i}")
+            (self.host, base_port + i, f"node_{i}")
             for i in range(num_nodes)
         ]
         if self.use_registry:
@@ -222,7 +224,7 @@ class NodeCluster:
                 peers_i = peers
             else:
                 peers_i = [
-                    ("localhost", base_port + j, f"node_{j}")
+                    (self.host, base_port + j, f"node_{j}")
                     for j in topology.get(i, [])
                 ]
 
@@ -238,7 +240,7 @@ class NodeCluster:
                 target=run_server,
                 args=(
                     db_path,
-                    "localhost",
+                    self.host,
                     port,
                     node_id,
                     peers_i,
@@ -263,8 +265,8 @@ class NodeCluster:
             )
             p.start()
             time.sleep(0.2)
-            client = GRPCReplicaClient("localhost", port)
-            node = ClusterNode(node_id, "localhost", port, p, client, node_logger)
+            client = GRPCReplicaClient(self.host, port)
+            node = ClusterNode(node_id, self.host, port, p, client, node_logger)
             self.nodes.append(node)
             self.nodes_by_id[node_id] = node
 
@@ -292,12 +294,12 @@ class NodeCluster:
             raddr = self.registry_addr if self.use_registry else None
             self.router_process = multiprocessing.Process(
                 target=run_router,
-                args=(self, "localhost", router_port, raddr),
+                args=(self, self.host, router_port, raddr),
                 daemon=True,
             )
             self.router_process.start()
             time.sleep(0.2)
-            self.router_client = GRPCRouterClient("localhost", router_port)
+            self.router_client = GRPCRouterClient(self.host, router_port)
 
         self._cold_stop = threading.Event()
         self._cold_thread = None
@@ -1293,7 +1295,7 @@ class NodeCluster:
         node_id = f"node_{idx}"
         db_path = os.path.join(self.base_path, node_id)
         port = self.base_port + idx
-        peers = [("localhost", self.base_port + i, f"node_{i}") for i in range(len(self.nodes) + 1)]
+        peers = [(self.host, self.base_port + i, f"node_{i}") for i in range(len(self.nodes) + 1)]
         if isinstance(self.partitioner, ConsistentHashPartitioner):
             old_ring = list(self.partitioner.ring._ring)
             self.partitioner.ring.add_node(node_id, weight=self.partitions_per_node)
@@ -1305,7 +1307,7 @@ class NodeCluster:
             target=run_server,
             args=(
                 db_path,
-                "localhost",
+                self.host,
                 port,
                 node_id,
                 peers,
@@ -1328,8 +1330,8 @@ class NodeCluster:
         )
         p.start()
         time.sleep(0.2)
-        client = GRPCReplicaClient("localhost", port)
-        node = ClusterNode(node_id, "localhost", port, p, client, node_logger)
+        client = GRPCReplicaClient(self.host, port)
+        node = ClusterNode(node_id, self.host, port, p, client, node_logger)
         self.nodes.append(node)
         self.nodes_by_id[node_id] = node
         self.event_logger.log(f"Node {node_id} adicionado ao cluster.")
