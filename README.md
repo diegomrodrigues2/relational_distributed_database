@@ -243,6 +243,9 @@ The project can be fully containerized using Docker and Docker Compose.
 
 ### Build and Run a Single Example
 To avoid compatibility issues, especially on Windows, run the project inside Docker. First, install **Docker Desktop**.
+On Windows, gRPC may log warnings when binding to `localhost`. The cluster
+now automatically converts `localhost` to `127.0.0.1`, but you can also pass
+`host="127.0.0.1"` explicitly when creating `NodeCluster`.
 ```bash
 # Build the Docker image
 docker build -t py_db .

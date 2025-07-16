@@ -1060,6 +1060,12 @@ class NodeServer:
         tx_lock_strategy: str = "2pl",
         lock_timeout: float = 1.0,
     ):
+        if host == "localhost" and os.name == "nt":
+            # gRPC on Windows fails when binding to IPv4 and IPv6 for
+            # "localhost". Use the IPv4 loopback address to avoid
+            # WSA 10048 errors.
+            host = "127.0.0.1"
+
         self.db_path = db_path
         if isinstance(event_logger, str):
             event_logger = EventLogger(event_logger)

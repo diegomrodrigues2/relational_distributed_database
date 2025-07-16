@@ -102,6 +102,12 @@ class NodeCluster:
         self.event_logger.log("NodeCluster created")
         self.node_loggers: dict[str, EventLogger] = {}
 
+        if host == "localhost" and os.name == "nt":
+            # gRPC on Windows fails when binding to both IPv4 and IPv6
+            # addresses for "localhost". Force IPv4 loopback to avoid
+            # "WSA Error 10048" warnings.
+            host = "127.0.0.1"
+
         base_port = 9000
         self.base_port = base_port
         self.host = host
