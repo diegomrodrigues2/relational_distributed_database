@@ -243,6 +243,10 @@ O projeto pode ser totalmente containerizado usando Docker e Docker Compose.
 
 ### Construir e Executar um Exemplo
 Para evitar problemas de compatibilidade, especialmente no Windows, execute o projeto dentro do Docker. Primeiro, instale o **Docker Desktop**.
+No Windows, o gRPC pode emitir avisos ao tentar vincular `localhost`. O
+cluster agora converte automaticamente `localhost` para `127.0.0.1`, mas
+você também pode definir explicitamente `host="127.0.0.1"` ao criar o
+`NodeCluster`.
 ```bash
 # Construir a imagem Docker
 docker build -t py_db .
