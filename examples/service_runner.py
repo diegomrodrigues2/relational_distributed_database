@@ -9,8 +9,6 @@ def start_frontend() -> subprocess.Popen:
     proc = subprocess.Popen(
         cmd,
         cwd=os.path.join(os.path.dirname(__file__), "..", "app"),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
         shell=platform.system() == "Windows",
     )
     ui_url = "http://localhost:5173"

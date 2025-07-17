@@ -19,9 +19,11 @@ import tempfile
 async def lifespan(app: FastAPI):
     """Manage application startup and shutdown."""
     app.state.cluster_start = time.time()
-    app.state.cluster = NodeCluster(
-        base_path=os.path.join(tempfile.gettempdir(), "api_cluster"), num_nodes=3
-    )
+
+    if not hasattr(app.state, "cluster") or app.state.cluster is None:
+        app.state.cluster = NodeCluster(
+            base_path=os.path.join(tempfile.gettempdir(), "api_cluster"), num_nodes=3
+        )
     try:
         yield
     finally:
