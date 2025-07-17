@@ -4,6 +4,7 @@ import { sql as sqlLang } from '@codemirror/lang-sql';
 import Button from './common/Button';
 import Card from './common/Card';
 import { runSqlQuery, executeSql } from '../services/api';
+import Alert from './common/Alert';
 
 interface ColumnDef {
   name: string;
@@ -17,6 +18,7 @@ const SQLEditor: React.FC = () => {
   const [columns, setColumns] = useState<ColumnDef[]>([]);
   const [rows, setRows] = useState<any[]>([]);
   const [history, setHistory] = useState<string[]>([]);
+  const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     const h = localStorage.getItem(HISTORY_KEY);
@@ -33,14 +35,20 @@ const SQLEditor: React.FC = () => {
     const trimmed = sql.trim();
     if (!trimmed) return;
     saveHistory(trimmed);
-    if (trimmed.toUpperCase().startsWith('SELECT')) {
-      const res = await runSqlQuery(trimmed);
-      setColumns(res.columns);
-      setRows(res.rows);
-    } else {
-      await executeSql(trimmed);
-      setColumns([]);
-      setRows([]);
+    try {
+      if (trimmed.toUpperCase().startsWith('SELECT')) {
+        const res = await runSqlQuery(trimmed);
+        setColumns(res.columns);
+        setRows(res.rows);
+      } else {
+        await executeSql(trimmed);
+        setColumns([]);
+        setRows([]);
+        setAlert({ message: 'Statement executed', type: 'success' });
+      }
+    } catch (err: any) {
+      console.error('SQL execution failed:', err);
+      setAlert({ message: err.message || 'Failed to execute SQL', type: 'error' });
     }
   };
 
@@ -58,6 +66,13 @@ const SQLEditor: React.FC = () => {
           <Button onClick={execute}>Run</Button>
         </div>
       </Card>
+      {alert && (
+        <Alert
+          message={alert.message}
+          type={alert.type}
+          onClose={() => setAlert(null)}
+        />
+      )}
       {columns.length > 0 && (
         <Card className="p-4 overflow-auto">
           <table className="min-w-full text-sm text-left text-green-300">
