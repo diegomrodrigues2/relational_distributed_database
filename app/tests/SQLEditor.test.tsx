@@ -32,4 +32,13 @@ describe('SQLEditor', () => {
     expect(screen.getByText('id')).toBeInTheDocument()
     expect(screen.getAllByText('1')[0]).toBeInTheDocument()
   })
+
+  it('shows error alert on failure', async () => {
+    ;(runSqlQuery as any).mockRejectedValue(new Error('bad query'))
+    render(<SQLEditor />)
+    const input = screen.getByTestId('sql-input')
+    fireEvent.change(input, { target: { value: 'SELECT * FROM bad' } })
+    fireEvent.click(screen.getByText('Run'))
+    await screen.findByText('bad query')
+  })
 })
