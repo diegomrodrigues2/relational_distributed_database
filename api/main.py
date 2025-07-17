@@ -22,7 +22,8 @@ async def lifespan(app: FastAPI):
 
     if not hasattr(app.state, "cluster") or app.state.cluster is None:
         app.state.cluster = NodeCluster(
-            base_path=os.path.join(tempfile.gettempdir(), "api_cluster"), num_nodes=3
+            base_path=os.path.join(tempfile.gettempdir(), "api_cluster"),
+            num_nodes=3,
         )
     try:
         yield
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
         cluster = getattr(app.state, "cluster", None)
         if cluster is not None:
             cluster.shutdown()
+            app.state.cluster = None
 
 
 app = FastAPI(lifespan=lifespan)
@@ -327,7 +329,9 @@ def start_node(node_id: str) -> dict:
 @app.get("/nodes/{node_id}/replication_status")
 def node_replication_status(node_id: str) -> dict:
     """Return replication status information for ``node_id``."""
-    cluster = app.state.cluster
+    cluster = getattr(app.state, "cluster", None)
+    if cluster is None:
+        raise HTTPException(status_code=503, detail="cluster not running")
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
@@ -345,7 +349,9 @@ def node_replication_status(node_id: str) -> dict:
 @app.get("/nodes/{node_id}/wal")
 def node_wal(node_id: str, offset: int = 0, limit: int | None = None) -> dict:
     """Return Write Ahead Log entries stored on ``node_id`` with optional pagination."""
-    cluster = app.state.cluster
+    cluster = getattr(app.state, "cluster", None)
+    if cluster is None:
+        raise HTTPException(status_code=503, detail="cluster not running")
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
@@ -371,7 +377,9 @@ def node_wal(node_id: str, offset: int = 0, limit: int | None = None) -> dict:
 @app.get("/nodes/{node_id}/memtable")
 def node_memtable(node_id: str, offset: int = 0, limit: int | None = None) -> dict:
     """Return current MemTable contents for ``node_id`` with optional pagination."""
-    cluster = app.state.cluster
+    cluster = getattr(app.state, "cluster", None)
+    if cluster is None:
+        raise HTTPException(status_code=503, detail="cluster not running")
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
@@ -396,7 +404,9 @@ def node_memtable(node_id: str, offset: int = 0, limit: int | None = None) -> di
 @app.get("/nodes/{node_id}/sstables")
 def node_sstables(node_id: str) -> dict:
     """Return metadata for SSTables stored by ``node_id``."""
-    cluster = app.state.cluster
+    cluster = getattr(app.state, "cluster", None)
+    if cluster is None:
+        raise HTTPException(status_code=503, detail="cluster not running")
     node = cluster.nodes_by_id.get(node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found")
@@ -420,7 +430,9 @@ def node_sstables(node_id: str) -> dict:
 @app.get("/nodes/{node_id}/events")
 def node_events(node_id: str, offset: int = 0, limit: int | None = None) -> dict:
     """Return recent event log entries for ``node_id``."""
-    cluster = app.state.cluster
+    cluster = getattr(app.state, "cluster", None)
+    if cluster is None:
+        raise HTTPException(status_code=503, detail="cluster not running")
     logger = cluster.node_loggers.get(node_id)
     if logger is None:
         raise HTTPException(status_code=404, detail="node not found")
