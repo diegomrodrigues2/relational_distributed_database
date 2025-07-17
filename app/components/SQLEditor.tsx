@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql as sqlLang } from '@codemirror/lang-sql';
+import { oneDark } from '@codemirror/theme-one-dark';
 import Button from './common/Button';
 import Card from './common/Card';
 import { runSqlQuery, executeSql } from '../services/api';
@@ -59,6 +60,7 @@ const SQLEditor: React.FC = () => {
           value={sql}
           height="200px"
           extensions={[sqlLang()]}
+          theme={oneDark}
           onChange={(v) => setSql(v)}
         />
         <textarea data-testid="sql-input" value={sql} onChange={e => setSql(e.target.value)} className="hidden" />
